@@ -29,6 +29,7 @@ const modes: { key: Mode; label: string }[] = [
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const [isUiHidden, setIsUiHidden] = useState(false);
@@ -434,6 +435,7 @@ export default function Home() {
           }`}
         >
           <form
+            ref={formRef}
             onSubmit={handleSubmit}
             className="flex flex-col gap-4 w-full"
           >
@@ -441,6 +443,13 @@ export default function Home() {
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    // Prefer requestSubmit to trigger native form submission flow
+                    formRef.current?.requestSubmit();
+                  }
+                }}
                 placeholder="ここに補足があれば入力（空でもOK / 例: 注釈は太字で）"
                 className="w-full p-3 pr-12 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 resize-none"
                 rows={2}
