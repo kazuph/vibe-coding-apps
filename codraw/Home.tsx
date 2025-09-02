@@ -11,6 +11,7 @@ import {
   Trash2,
   Eraser,
   Pencil,
+  Copy,
 } from 'lucide-react';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import { buildPrompt, type Mode, type UseCase, type Tone } from './prompt';
@@ -363,6 +364,30 @@ export default function Home() {
     document.body.removeChild(a);
   };
 
+  const copyCanvasToClipboard = async () => {
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const tmp = document.createElement('canvas');
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const tctx = tmp.getContext('2d');
+      if (!tctx) return;
+      tctx.fillStyle = 'white';
+      tctx.fillRect(0, 0, tmp.width, tmp.height);
+      tctx.drawImage(canvas, 0, 0);
+      const blob: Blob | null = await new Promise((resolve) => tmp.toBlob((b) => resolve(b), 'image/png'));
+      if (!blob) throw new Error('画像の準備に失敗しました');
+      // @ts-ignore ClipboardItem may not be in lib DOM typing in some envs
+      const item = new ClipboardItem({ 'image/png': blob });
+      // @ts-ignore
+      await navigator.clipboard.write([item]);
+    } catch (e) {
+      console.error(e);
+      setError('クリップボードへのコピーに失敗しました。ブラウザの許可設定をご確認ください。');
+    }
+  };
+
   const generateImage = async (finalPrompt: string) => {
     const canvas = canvasRef.current;
     if (!canvas || !finalPrompt) {
@@ -606,6 +631,15 @@ export default function Home() {
                 aria-label="画像をダウンロード"
               >
                 <Download className="w-5 h-5" />
+              </button>
+            )}
+            {!isCanvasEmpty && (
+              <button
+                onClick={copyCanvasToClipboard}
+                className="p-2 bg-white/80 backdrop-blur-sm rounded-full text-gray-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                aria-label="クリップボードにコピー"
+              >
+                <Copy className="w-5 h-5" />
               </button>
             )}
             <button
