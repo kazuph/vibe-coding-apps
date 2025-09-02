@@ -1,0 +1,66 @@
+
+
+
+
+@keyframes fade-in-out {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  10%, 90% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+}
+
+.animate-fade-in-out {
+  animation: fade-in-out 5s ease-in-out forwards;
+}
+
+html, body {
+  /* Prevents overscroll/bounce effect which can cancel drawing on mobile devices. */
+  overscroll-behavior: none;
+  height: 100%;
+  overflow: hidden; /* avoid accidental page scroll on iPad */
+}
+
+html {
+  color-scheme: light;
+  background-color: white;
+}
+
+canvas#draw {
+  /* This is crucial for preventing default browser gestures on touch devices.
+     It disables scrolling, pinch-zooming, and double-tap-zooming on the canvas. */
+  touch-action: none;
+
+  /* These properties prevent text selection, long-press menus (callouts),
+     and the grey tap highlight on iOS, which can interfere with drawing. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+
+  /* Prevents accidentally dragging the canvas element itself. */
+  -webkit-user-drag: none;
+}
+
+/* This class is toggled on the <html> element during a drawing action
+   to globally disable text selection, ensuring a smoother experience
+   if the pointer leaves the canvas briefly. */
+.no-select, .no-select * {
+  user-select: none;
+  -webkit-user-select: none;      /* iOS */
+  -webkit-touch-callout: none;    /* iOS */
+}
+
+/* iPad-friendly typography: slightly smaller base */
+@media (min-width: 768px) and (max-width: 1024px) {
+  :root {
+    font-size: 14px;
+  }
+}

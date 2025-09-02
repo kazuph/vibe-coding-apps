@@ -1,0 +1,28 @@
+{
+  "name": "gemini-co-drawing-for-大学講義資料",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "NODE_ENV=production vite build --mode production",
+    "preview": "vite preview",
+    "deploy": "NODE_ENV=production wrangler deploy",
+    "tail": "wrangler tail",
+    "tail:json": "wrangler tail --format json"
+  },
+  "dependencies": {
+    "@google/genai": "^0.7.0",
+    "hono": "^4.6.9",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.487.0",
+    "@tailwindcss/browser": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "wrangler": "^4.0.0"
+  }
+}
