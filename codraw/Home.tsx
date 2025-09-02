@@ -18,7 +18,8 @@ import { buildPrompt, type Mode, type UseCase, type Tone } from './prompt';
 
 // In production, we call our Workers API with Basic Auth; no API keys in the client.
 
-const modes: { key: Mode; label: string }[] = [
+const modes: { key: Mode | 'none'; label: string }[] = [
+  { key: 'none', label: 'なし' },
   { key: 'sketch_restyle', label: '手書き' },
   { key: 'autoshape', label: 'オートシェイプ' },
   { key: 'figma_vectorize', label: 'Figma' },
@@ -33,7 +34,6 @@ export default function Home() {
   const formRef = useRef<HTMLFormElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
-  const skipNextModeChangeRef = useRef(false);
   const [isUiHidden, setIsUiHidden] = useState(false);
   const uiVisibilityTimeoutRef = useRef<number | null>(null);
   const [prompt, setPrompt] = useState('');
@@ -520,7 +520,7 @@ export default function Home() {
               <div>
                 <div className="text-xs mb-1 text-gray-600">モード</div>
                 <div className="overflow-x-auto">
-                  <div className="grid grid-cols-5 gap-2 min-w-max">
+                  <div className="grid grid-cols-6 gap-2 min-w-max">
                     {modes.map((m, idx) => (
                       <label
                         htmlFor={`mode-${idx}`}
@@ -534,19 +534,8 @@ export default function Home() {
                           value={m.key}
                           checked={selectedMode === m.key}
                           onChange={(e) => {
-                            if (skipNextModeChangeRef.current) {
-                              skipNextModeChangeRef.current = false;
-                              return;
-                            }
-                            setSelectedMode(e.target.value as Mode);
-                          }}
-                          onMouseDown={(e) => {
-                            if (selectedMode === m.key) {
-                              // Toggle off current selection
-                              e.preventDefault();
-                              skipNextModeChangeRef.current = true;
-                              setSelectedMode(null);
-                            }
+                            const val = e.target.value as Mode | 'none';
+                            setSelectedMode(val === 'none' ? null : (val as Mode));
                           }}
                           className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                         />
