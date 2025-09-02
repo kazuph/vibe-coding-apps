@@ -9,8 +9,8 @@ export type Tone = 'フォーマル' | 'スタイリッシュ' | 'サイバー' 
 
 export interface PromptOpts {
   mode?: Mode | null;
-  useCase: UseCase;
-  tone: Tone;
+  useCase?: UseCase | null;
+  tone?: Tone | null;
   content?: string; // user scene description
 }
 
@@ -63,7 +63,8 @@ const useCaseBlock = (useCase: UseCase) => {
 };
 
 // Mode-aware variants to prevent style conflicts, especially for hand-drawn mode.
-const useCaseBlockForMode = (mode: Mode | null | undefined, useCase: UseCase) => {
+const useCaseBlockForMode = (mode: Mode | null | undefined, useCase?: UseCase | null) => {
+  if (!useCase) return undefined;
   if (mode === 'sketch_restyle') {
     switch (useCase) {
       case '資料図':
@@ -92,7 +93,8 @@ const toneBlock = (tone: Tone) => {
   }
 };
 
-const toneBlockForMode = (mode: Mode | null | undefined, tone: Tone) => {
+const toneBlockForMode = (mode: Mode | null | undefined, tone?: Tone | null) => {
+  if (!tone) return undefined;
   if (mode === 'sketch_restyle') {
     switch (tone) {
       case 'フォーマル':
@@ -123,6 +125,8 @@ export function buildPrompt(o: PromptOpts) {
         return 'Content: Convert the sketch into modern app UI components (app bar, list/cards/forms, primary/secondary buttons). Ensure legible typographic hierarchy and hit targets.';
       case 'プレゼン背景':
         return 'Content: Produce a minimal presentation background from the sketch structure, with generous negative space for overlaid text and unobtrusive decorative geometry only.';
+      default:
+        return 'Content: Use the input sketch composition and redraw under the above constraints, prioritizing readability and simplicity.';
     }
   })();
 

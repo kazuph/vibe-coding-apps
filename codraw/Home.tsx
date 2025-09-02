@@ -38,8 +38,8 @@ export default function Home() {
   const uiVisibilityTimeoutRef = useRef<number | null>(null);
   const [prompt, setPrompt] = useState('');
   const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
-  const [useCase, setUseCase] = useState<UseCase>('資料図');
-  const [tone, setTone] = useState<Tone>('フォーマル');
+  const [useCase, setUseCase] = useState<UseCase | null>(null);
+  const [tone, setTone] = useState<Tone | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCanvasEmpty, setIsCanvasEmpty] = useState(true);
@@ -550,10 +550,11 @@ export default function Home() {
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">用途</span>
                   <select
-                    value={useCase}
-                    onChange={(e) => setUseCase(e.target.value as UseCase)}
+                    value={useCase ?? ''}
+                    onChange={(e) => setUseCase(e.target.value ? (e.target.value as UseCase) : null)}
                     className="p-2 border border-gray-300 rounded-lg bg-white"
                   >
+                    <option value="">なし</option>
                     <option value="資料図">資料図</option>
                     <option value="Webサイト">Webサイト</option>
                     <option value="アプリUI">アプリUI</option>
@@ -564,10 +565,11 @@ export default function Home() {
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">トーン</span>
                   <select
-                    value={tone}
-                    onChange={(e) => setTone(e.target.value as Tone)}
+                    value={tone ?? ''}
+                    onChange={(e) => setTone(e.target.value ? (e.target.value as Tone) : null)}
                     className="p-2 border border-gray-300 rounded-lg bg-white"
                   >
+                    <option value="">なし</option>
                     <option value="フォーマル">フォーマル</option>
                     <option value="スタイリッシュ">スタイリッシュ</option>
                     <option value="サイバー">サイバー</option>
