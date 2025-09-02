@@ -9,6 +9,8 @@ import {
   LoaderCircle,
   SendHorizontal,
   Trash2,
+  Eraser,
+  Pencil,
 } from 'lucide-react';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import { buildPrompt, type Mode, type UseCase, type Tone } from './prompt';
@@ -28,6 +30,7 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const [drawing, setDrawing] = useState(false);
+  const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const [isUiHidden, setIsUiHidden] = useState(false);
   const uiVisibilityTimeoutRef = useRef<number | null>(null);
   const [prompt, setPrompt] = useState('');
@@ -38,6 +41,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isCanvasEmpty, setIsCanvasEmpty] = useState(true);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   // Basic Auth is enforced server-side for the whole origin.
 
   // Paste & Drag support helpers
@@ -162,6 +166,8 @@ export default function Home() {
       canvas.height = rect.height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
       ctx.strokeStyle = 'black';
       ctx.lineWidth = 5;
     };
@@ -203,16 +209,21 @@ export default function Home() {
     canvas.setPointerCapture(e.pointerId);
     const ctx = ctxRef.current;
     if (!ctx) return;
+    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : 'black';
+    ctx.lineWidth = tool === 'eraser' ? 24 : 5; // ignore pressure; fixed widths
     ctx.beginPath();
     ctx.moveTo(e.offsetX, e.offsetY);
+    lastPointRef.current = { x: e.offsetX, y: e.offsetY };
     setDrawing(true);
     setIsCanvasEmpty(false);
-  }, []);
+  }, [tool]);
 
   const stopDrawing = useCallback((e: PointerEvent) => {
     if (!drawing) return;
     e.preventDefault();
     setDrawing(false);
+    lastPointRef.current = null;
 
     uiVisibilityTimeoutRef.current = window.setTimeout(() => {
       setIsUiHidden(false);
@@ -229,8 +240,28 @@ export default function Home() {
   const draw = useCallback((e: PointerEvent) => {
     if (!drawing) return;
     e.preventDefault();
-    ctxRef.current?.lineTo(e.offsetX, e.offsetY);
-    ctxRef.current?.stroke();
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    const last = lastPointRef.current;
+    const x = e.offsetX;
+    const y = e.offsetY;
+    if (!last) {
+      ctx.moveTo(x, y);
+      lastPointRef.current = { x, y };
+      return;
+    }
+    const dx = x - last.x;
+    const dy = y - last.y;
+    const dist = Math.hypot(dx, dy);
+    // If there is an abnormal jump (e.g., pen hover artifact), start a new segment to avoid spikes.
+    if (dist > 48) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+    lastPointRef.current = { x, y };
   }, [drawing]);
 
   useEffect(() => {
@@ -292,6 +323,16 @@ export default function Home() {
     // Second stage: no generated image; clear the canvas contents.
     clearCanvas();
   };
+
+  // Toggle tool via keyboard (E = eraser, P = pen)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'e' || e.key === 'E') setTool('eraser');
+      if (e.key === 'p' || e.key === 'P') setTool('pen');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const downloadImage = () => {
     if (!generatedImage) return;
@@ -511,6 +552,24 @@ export default function Home() {
               <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">ここにスケッチを描いてください</p>
           )}
           <div className="absolute top-2 right-2 flex items-center gap-2">
+            <div className="flex items-center bg-white/80 backdrop-blur-sm rounded-full overflow-hidden border border-gray-200">
+              <button
+                onClick={() => setTool('pen')}
+                className={`px-2 py-1 flex items-center gap-1 ${tool === 'pen' ? 'bg-white text-blue-600' : 'text-gray-700 hover:bg-white'}`}
+                aria-label="ペンに切り替え"
+              >
+                <Pencil className="w-4 h-4" />
+                <span className="hidden sm:inline">ペン</span>
+              </button>
+              <button
+                onClick={() => setTool('eraser')}
+                className={`px-2 py-1 flex items-center gap-1 ${tool === 'eraser' ? 'bg-white text-blue-600' : 'text-gray-700 hover:bg-white'}`}
+                aria-label="消しゴムに切り替え"
+              >
+                <Eraser className="w-4 h-4" />
+                <span className="hidden sm:inline">消しゴム</span>
+              </button>
+            </div>
             <button
               onClick={pasteFromClipboard}
               className="px-2 py-1 bg-white/80 backdrop-blur-sm rounded-full text-gray-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
