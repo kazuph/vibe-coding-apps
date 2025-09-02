@@ -62,6 +62,23 @@ const useCaseBlock = (useCase: UseCase) => {
   }
 };
 
+// Mode-aware variants to prevent style conflicts, especially for hand-drawn mode.
+const useCaseBlockForMode = (mode: Mode | null | undefined, useCase: UseCase) => {
+  if (mode === 'sketch_restyle') {
+    switch (useCase) {
+      case '資料図':
+        return 'Keep a clean hand-drawn look (no vectorization). Use readable handwritten-style labels, simple arrows, and thin strokes. Emphasize clarity without snapping to perfect geometry.';
+      case 'Webサイト':
+        return 'Hand-drawn hero/sections: headings and simple icons in a neat sketched style. Maintain alignment loosely, but do NOT convert to crisp vector UI blocks.';
+      case 'アプリUI':
+        return 'Represent UI as sketched wireframes with hand-drawn components. Avoid precise pixel-perfect vector shapes; preserve the sketch aesthetic.';
+      case 'プレゼン背景':
+        return 'Light hand-drawn elements with generous negative space for overlay text. Keep textures minimal, preserve sketched strokes.';
+    }
+  }
+  return useCaseBlock(useCase);
+};
+
 const toneBlock = (tone: Tone) => {
   switch (tone) {
     case 'フォーマル':
@@ -73,6 +90,22 @@ const toneBlock = (tone: Tone) => {
     case 'ポップ':
       return 'Pop tone: vivid colors, thicker lines, rounded shapes, friendly approachable look.';
   }
+};
+
+const toneBlockForMode = (mode: Mode | null | undefined, tone: Tone) => {
+  if (mode === 'sketch_restyle') {
+    switch (tone) {
+      case 'フォーマル':
+        return 'Formal but hand-drawn: keep tidy handwritten strokes, reduced wobble, minimal texture; absolutely no vector auto-shapes.';
+      case 'スタイリッシュ':
+        return 'Stylish but hand-drawn: confident sketched lines, sparse accents; do NOT convert to sharp geometric vector graphics.';
+      case 'サイバー':
+        return 'Cyber mood as sketched motifs (simple neon-like accents), yet preserve the hand-drawn style and avoid precise vector geometry.';
+      case 'ポップ':
+        return 'Pop and friendly in a sketched style: rounded hand-drawn strokes and simple fills; avoid vector-clean outlines.';
+    }
+  }
+  return toneBlock(tone);
 };
 
 export function buildPrompt(o: PromptOpts) {
@@ -99,10 +132,12 @@ export function buildPrompt(o: PromptOpts) {
 
   return [
     o.mode ? modeBlock(o.mode) : undefined,
-    useCaseBlock(o.useCase),
-    toneBlock(o.tone),
+    useCaseBlockForMode(o.mode, o.useCase),
+    toneBlockForMode(o.mode, o.tone),
     bg,
     content,
-    negative,
+    o.mode === 'sketch_restyle'
+      ? `${negative} Do not vectorize or replace strokes with perfectly crisp geometric shapes.`
+      : negative,
   ].filter(Boolean).join('\n');
 }
