@@ -40,9 +40,9 @@ export default function Home() {
   const [tone, setTone] = useState<Tone>('フォーマル');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isCanvasEmpty, setIsCanvasEmpty] = useState(true);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const preGenSnapshotRef = useRef<string | null>(null);
   // Basic Auth is enforced server-side for the whole origin.
 
   // Paste & Drag support helpers
@@ -86,6 +86,14 @@ export default function Home() {
     };
     img.onerror = () => URL.revokeObjectURL(url);
     img.src = url;
+  };
+
+  const drawDataUrl = (dataUrl: string) => {
+    const img = new Image();
+    img.onload = () => {
+      drawImageFit(img);
+    };
+    img.src = dataUrl;
   };
 
   const handlePasteEvent = (e: ClipboardEvent) => {
@@ -308,21 +316,21 @@ export default function Home() {
     if (canvas && ctx) {
       const dpr = window.devicePixelRatio || 1;
       ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-      setGeneratedImage(null);
       setError(null);
       setIsCanvasEmpty(true);
     }
   };
 
   const deleteOrRevert = () => {
-    if (generatedImage) {
-      // First stage: if a generated image is shown, remove it to reveal the underlying sketch/paste.
-      setGeneratedImage(null);
+    const snap = preGenSnapshotRef.current;
+    if (snap) {
+      drawDataUrl(snap);
+      preGenSnapshotRef.current = null;
       setError(null);
-      return;
+    } else {
+      // No snapshot; clear fully
+      clearCanvas();
     }
-    // Second stage: no generated image; clear the canvas contents.
-    clearCanvas();
   };
 
   // Toggle tool via keyboard (E = eraser, P = pen)
@@ -336,13 +344,23 @@ export default function Home() {
   }, []);
 
   const downloadImage = () => {
-    if (!generatedImage) return;
-    const link = document.createElement('a');
-    link.href = generatedImage;
-    link.download = 'generated-diagram.png';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const tmp = document.createElement('canvas');
+    tmp.width = canvas.width;
+    tmp.height = canvas.height;
+    const tctx = tmp.getContext('2d');
+    if (!tctx) return;
+    tctx.fillStyle = 'white';
+    tctx.fillRect(0, 0, tmp.width, tmp.height);
+    tctx.drawImage(canvas, 0, 0);
+    const url = tctx.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'diagram.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const generateImage = async (finalPrompt: string) => {
@@ -372,7 +390,6 @@ export default function Home() {
     }
 
     setLoading(true);
-    setGeneratedImage(null);
     setError(null);
 
     try {
@@ -395,7 +412,7 @@ export default function Home() {
       }
       const json = await res.json();
       if (json.imageDataUrl) {
-        setGeneratedImage(json.imageDataUrl);
+        drawDataUrl(json.imageDataUrl);
       } else {
         setError('画像の生成に失敗しました。');
       }
@@ -414,6 +431,9 @@ export default function Home() {
       return;
     }
     const userPrompt = prompt.trim();
+    // Snapshot current canvas before applying generation result
+    const cvs = canvasRef.current;
+    if (cvs) preGenSnapshotRef.current = cvs.toDataURL('image/png');
 
     const finalPrompt = buildPrompt({
       mode: selectedMode,
@@ -550,14 +570,7 @@ export default function Home() {
               <p className="text-red-500 text-center">{error}</p>
             </div>
           )}
-          {generatedImage && (
-              <img
-                src={generatedImage}
-                alt="Generated diagram"
-                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-              />
-          )}
-          {!loading && !error && !generatedImage && isCanvasEmpty && (
+          {!loading && !error && isCanvasEmpty && (
               <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">ここにスケッチを描いてください</p>
           )}
           <div className="absolute top-2 right-2 flex items-center gap-2">
@@ -586,7 +599,7 @@ export default function Home() {
             >
               貼り付け
             </button>
-            {generatedImage && (
+            {!isCanvasEmpty && (
               <button
                 onClick={downloadImage}
                 className="p-2 bg-white/80 backdrop-blur-sm rounded-full text-gray-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
