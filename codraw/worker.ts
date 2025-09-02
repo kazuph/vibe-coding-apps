@@ -58,9 +58,27 @@ app.post('/api/generate', async (c) => {
   }
   const ai = new GoogleGenAI({ apiKey });
 
+  // Optional: translate non-English prompt to English for best image fidelity
+  let effectivePrompt = prompt;
+  try {
+    const hasNonAscii = /[^\x00-\x7F]/.test(prompt);
+    if (hasNonAscii) {
+      const translate = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [{ parts: [{
+          text: 'Translate the following user instruction into natural, professional English suitable for an image generation prompt. Preserve technical terms and formatting. Return only the translated text without any explanations.'
+        }, { text: prompt }]}],
+      });
+      const t = translate.candidates?.[0]?.content?.parts?.map(p => ('text' in p ? (p as any).text : '')).join('')?.trim();
+      if (t) effectivePrompt = t;
+    }
+  } catch (e) {
+    // Fall back to original prompt on any translation error
+  }
+
   const imagePart = { inlineData: { data: base64, mimeType: 'image/png' } } as const;
   const BG_SUFFIX_WHITE = ' Ensure the background is perfectly pure white (RGB 255,255,255) with no gradients or textures.';
-  const finalPrompt = `${prompt}${BG_SUFFIX_WHITE}`;
+  const finalPrompt = `${effectivePrompt}${BG_SUFFIX_WHITE}`;
   const textPart = { text: finalPrompt } as const;
 
   try {
