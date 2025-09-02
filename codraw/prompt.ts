@@ -8,7 +8,7 @@ export type UseCase = '資料図' | 'Webサイト' | 'アプリUI' | 'プレゼ�
 export type Tone = 'フォーマル' | 'スタイリッシュ' | 'サイバー' | 'ポップ';
 
 export interface PromptOpts {
-  mode: Mode;
+  mode?: Mode | null;
   useCase: UseCase;
   tone: Tone;
   content?: string; // user scene description
@@ -98,7 +98,7 @@ export function buildPrompt(o: PromptOpts) {
     : defaultContent;
 
   return [
-    modeBlock(o.mode),
+    o.mode ? modeBlock(o.mode) : undefined,
     useCaseBlock(o.useCase),
     toneBlock(o.tone),
     bg,

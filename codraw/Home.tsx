@@ -36,7 +36,7 @@ export default function Home() {
   const [isUiHidden, setIsUiHidden] = useState(false);
   const uiVisibilityTimeoutRef = useRef<number | null>(null);
   const [prompt, setPrompt] = useState('');
-  const [selectedMode, setSelectedMode] = useState<Mode>('sketch_restyle');
+  const [selectedMode, setSelectedMode] = useState<Mode | null>('sketch_restyle');
   const [useCase, setUseCase] = useState<UseCase>('資料図');
   const [tone, setTone] = useState<Tone>('フォーマル');
   const [loading, setLoading] = useState(false);
@@ -533,6 +533,12 @@ export default function Home() {
                           value={m.key}
                           checked={selectedMode === m.key}
                           onChange={(e) => setSelectedMode(e.target.value as Mode)}
+                          onClick={(e) => {
+                            if (selectedMode === m.key) {
+                              e.preventDefault();
+                              setSelectedMode(null);
+                            }
+                          }}
                           className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                         />
                         <span className="ml-3 text-xs md:text-sm font-medium text-gray-700">{m.label}</span>
