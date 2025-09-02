@@ -532,7 +532,7 @@ export default function Home() {
                           id={`mode-${idx}`}
                           name="mode"
                           value={m.key}
-                          checked={selectedMode === m.key}
+                          checked={m.key === 'none' ? selectedMode === null : selectedMode === (m.key as Mode)}
                           onChange={(e) => {
                             const val = e.target.value as Mode | 'none';
                             setSelectedMode(val === 'none' ? null : (val as Mode));
