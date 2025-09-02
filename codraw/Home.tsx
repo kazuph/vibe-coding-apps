@@ -33,6 +33,7 @@ export default function Home() {
   const formRef = useRef<HTMLFormElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
+  const skipNextModeChangeRef = useRef(false);
   const [isUiHidden, setIsUiHidden] = useState(false);
   const uiVisibilityTimeoutRef = useRef<number | null>(null);
   const [prompt, setPrompt] = useState('');
@@ -532,10 +533,18 @@ export default function Home() {
                           name="mode"
                           value={m.key}
                           checked={selectedMode === m.key}
-                          onChange={(e) => setSelectedMode(e.target.value as Mode)}
-                          onClick={(e) => {
+                          onChange={(e) => {
+                            if (skipNextModeChangeRef.current) {
+                              skipNextModeChangeRef.current = false;
+                              return;
+                            }
+                            setSelectedMode(e.target.value as Mode);
+                          }}
+                          onMouseDown={(e) => {
                             if (selectedMode === m.key) {
+                              // Toggle off current selection
                               e.preventDefault();
+                              skipNextModeChangeRef.current = true;
                               setSelectedMode(null);
                             }
                           }}
