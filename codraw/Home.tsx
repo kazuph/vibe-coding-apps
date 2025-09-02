@@ -36,7 +36,7 @@ export default function Home() {
   const [isUiHidden, setIsUiHidden] = useState(false);
   const uiVisibilityTimeoutRef = useRef<number | null>(null);
   const [prompt, setPrompt] = useState('');
-  const [selectedMode, setSelectedMode] = useState<Mode | null>('sketch_restyle');
+  const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
   const [useCase, setUseCase] = useState<UseCase>('資料図');
   const [tone, setTone] = useState<Tone>('フォーマル');
   const [loading, setLoading] = useState(false);
