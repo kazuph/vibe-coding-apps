@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:worker": "wrangler dev",
+    "dev:all": "node scripts/dev-all.mjs",
     "build": "NODE_ENV=production vite build --mode production",
     "preview": "vite preview",
     "deploy": "NODE_ENV=production wrangler deploy",
+    "deploy:gas": "bash scripts/gas/deploy.sh",
     "tail": "wrangler tail",
     "tail:json": "wrangler tail --format json"
   },

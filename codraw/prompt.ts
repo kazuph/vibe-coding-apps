@@ -1,27 +1,39 @@
 /**
  * Centralized prompt builder for image generation.
- * Encodes mode (sketch vs vector), use case, tone, and background.
+ * Encodes mode (style), use case, tone, and background.
+ *
+ * Note: This file is used by the frontend to generate a single
+ * string prompt that we pass to the backend as-is.
  */
 
-export type Mode = 'sketch_restyle' | 'autoshape' | 'figma_vectorize' | 'photoreal' | 'kawaii_illustration';
+export type Mode =
+  | 'pencil_sketch'
+  | 'autoshape'
+  | 'figma_vectorize'
+  | 'photoreal'
+  | 'kawaii_illustration'
+  | '3d_cg';
+
 export type UseCase = '資料図' | 'Webサイト' | 'アプリUI' | 'プレゼン背景';
 export type Tone = 'フォーマル' | 'スタイリッシュ' | 'サイバー' | 'ポップ';
+export type Background = 'default' | 'white' | 'transparent';
 
 export interface PromptOpts {
   mode?: Mode | null;
   useCase?: UseCase | null;
   tone?: Tone | null;
+  background?: Background;
   content?: string; // user scene description
 }
 
 const modeBlock = (mode: Mode) => {
   switch (mode) {
-    case 'sketch_restyle':
+    case 'pencil_sketch':
       return [
-        'Redraw the provided sketch from scratch in a clean, hand-drawn style.',
-        'Treat the input image as a wireframe only: do not reuse or stylize any original pixels.',
-        'Remove paper texture, pencil grain, scanning artifacts, jitter, and wobble.',
-        'Use smooth, pleasant stroke variation and minimal shading. Keep readability first.',
+        'Redraw the provided sketch cleanly in a tidy, hand-drawn pencil style.',
+        'Treat the input only as composition guidance; do not reuse original pixels.',
+        'Remove paper texture, scanning artifacts, and jitter while preserving a sketched feel.',
+        'Use smooth strokes with subtle variation and minimal shading for clarity.',
       ].join(' ');
     case 'autoshape':
       return [
@@ -46,6 +58,12 @@ const modeBlock = (mode: Mode) => {
         'Use rounded shapes, simplified forms, bold clean outlines, and simple cel-shading.',
         'Keep expressions friendly and approachable; avoid gritty textures or realism.',
       ].join(' ');
+    case '3d_cg':
+      return [
+        'Recreate the sketch as a clean 3D CG render.',
+        'Use simple materials, soft global illumination, and subtle shadows; avoid noisy textures.',
+        'Maintain clear readability and composition from the input while using 3D form.',
+      ].join(' ');
   }
 };
 
@@ -65,7 +83,7 @@ const useCaseBlock = (useCase: UseCase) => {
 // Mode-aware variants to prevent style conflicts, especially for hand-drawn mode.
 const useCaseBlockForMode = (mode: Mode | null | undefined, useCase?: UseCase | null) => {
   if (!useCase) return undefined;
-  if (mode === 'sketch_restyle') {
+  if (mode === 'pencil_sketch') {
     switch (useCase) {
       case '資料図':
         return 'Keep a clean hand-drawn look (no vectorization). Use readable handwritten-style labels, simple arrows, and thin strokes. Emphasize clarity without snapping to perfect geometry.';
@@ -95,7 +113,7 @@ const toneBlock = (tone: Tone) => {
 
 const toneBlockForMode = (mode: Mode | null | undefined, tone?: Tone | null) => {
   if (!tone) return undefined;
-  if (mode === 'sketch_restyle') {
+  if (mode === 'pencil_sketch') {
     switch (tone) {
       case 'フォーマル':
         return 'Formal but hand-drawn: keep tidy handwritten strokes, reduced wobble, minimal texture; absolutely no vector auto-shapes.';
@@ -110,9 +128,18 @@ const toneBlockForMode = (mode: Mode | null | undefined, tone?: Tone | null) => 
   return toneBlock(tone);
 };
 
-export function buildPrompt(o: PromptOpts) {
-  const bg = 'Background must be perfectly pure white (RGB 255,255,255), flat, without gradients or textures.';
+function backgroundBlock(bg?: Background) {
+  switch (bg) {
+    case 'white':
+      return 'Background: perfectly pure white (RGB 255,255,255), flat, no gradients or textures.';
+    case 'transparent':
+      return 'Background: fully transparent with no texture or drop shadow; ensure clean alpha where empty.';
+    default:
+      return undefined; // leave unspecified
+  }
+}
 
+export function buildPrompt(o: PromptOpts) {
   const negative = 'Negative: do not leave any original scan artifacts, paper creases, pencil noise, photo depth-of-field effects, or heavy textures.';
 
   const defaultContent = (() => {
@@ -138,9 +165,9 @@ export function buildPrompt(o: PromptOpts) {
     o.mode ? modeBlock(o.mode) : undefined,
     useCaseBlockForMode(o.mode, o.useCase),
     toneBlockForMode(o.mode, o.tone),
-    bg,
+    backgroundBlock(o.background),
     content,
-    o.mode === 'sketch_restyle'
+    o.mode === 'pencil_sketch'
       ? `${negative} Do not vectorize or replace strokes with perfectly crisp geometric shapes.`
       : negative,
   ].filter(Boolean).join('\n');
