@@ -9,7 +9,12 @@ interface Env {
   // Optional: GAS fallback endpoint when Google API rejects by region
   GAS_FALLBACK_URL?: string; // e.g. deployed Apps Script Web App URL
   GAS_SHARED_SECRET?: string; // deprecated; prefer GAS_ACCESS_TOKEN
-  GAS_ACCESS_TOKEN?: string; // token sent as x_token for GAS auth
+  GAS_ACCESS_TOKEN?: string; // token sent as 'x-token' header for GAS auth
+  // OpenRouter (primary) for free Gemini image model
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_SITE_URL?: string;   // optional HTTP-Referer for rankings
+  OPENROUTER_SITE_NAME?: string;  // optional X-Title for rankings
+  OPENROUTER_MODEL?: string;      // optional override (defaults to free preview model)
 }
 
 // Constant‑time string comparison
@@ -59,20 +64,22 @@ app.post('/api/generate', async (c) => {
     return c.json({ error: 'imageDataUrl and prompt are required' }, 400);
   }
 
-  const base64 = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : imageDataUrl;
+  // Extract base64 payload and mime type from data URL
+  const urlParts = imageDataUrl.split(',', 2);
+  const headerPart = urlParts[0] || '';
+  const base64 = urlParts[1] || '';
+  const mimeMatch = /data:([^;]+);base64/.exec(headerPart);
+  const mimeType = (mimeMatch?.[1] || 'image/png') as 'image/png' | 'image/jpeg' | 'image/webp' | string;
   if (!base64) return c.json({ error: 'Invalid image data' }, 400);
 
   const apiKey = c.env.GEMINI_API_KEY || c.env.GEMINI_API_TOKEN;
-  if (!apiKey) {
-    return c.json({ error: 'Server config error: GEMINI_API_KEY (or GEMINI_API_TOKEN) is not set.' }, 500);
-  }
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
   // Optional: translate non-English prompt to English for best image fidelity
   let effectivePrompt = prompt;
   try {
     const hasNonAscii = /[^\x00-\x7F]/.test(prompt);
-    if (hasNonAscii) {
+    if (hasNonAscii && ai) {
       const translate = await ai.models.generateContent({
         model: 'gemini-2.0-flash',
         contents: [{ parts: [{
@@ -86,15 +93,88 @@ app.post('/api/generate', async (c) => {
     // Fall back to original prompt on any translation error
   }
 
-  const imagePart = { inlineData: { data: base64, mimeType: 'image/png' } } as const;
+  const imagePart = { inlineData: { data: base64, mimeType } } as const;
   const extraImageParts = historyDataUrls
-    .map((u) => (u && u.includes(',') ? u.split(',')[1] : ''))
-    .filter((b64) => !!b64)
-    .map((b64) => ({ inlineData: { data: b64, mimeType: 'image/png' } } as const));
+    .map((u) => {
+      const p = (u || '').split(',', 2);
+      const h = p[0] || '';
+      const b = p[1] || '';
+      const m = /data:([^;]+);base64/.exec(h)?.[1] || mimeType;
+      return { b, m };
+    })
+    .filter(({ b }) => !!b)
+    .map(({ b, m }) => ({ inlineData: { data: b, mimeType: m } } as const));
   const textPart = { text: effectivePrompt } as const;
+
+  // Helper to call OpenRouter (primary)
+  const callOpenRouter = async () => {
+    const key = c.env.OPENROUTER_API_KEY;
+    if (!key) throw new Error('OpenRouter is not configured');
+    const model = c.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash-image-preview:free';
+    const messages: any[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: effectivePrompt },
+          { type: 'image_url', image_url: { url: imageDataUrl } },
+          ...historyDataUrls
+            .filter((u) => !!u)
+            .map((u) => ({ type: 'image_url', image_url: { url: u } })),
+        ],
+      },
+    ];
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    };
+    if (c.env.OPENROUTER_SITE_URL) headers['HTTP-Referer'] = c.env.OPENROUTER_SITE_URL;
+    if (c.env.OPENROUTER_SITE_NAME) headers['X-Title'] = c.env.OPENROUTER_SITE_NAME;
+
+    const payload = {
+      model,
+      messages,
+      // Request image output from models that support image generation via chat
+      modalities: [Modality.IMAGE, Modality.TEXT].map((m) => (m === Modality.IMAGE ? 'image' : 'text')),
+    };
+
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    let data: any = {};
+    try { data = JSON.parse(text); } catch {}
+    if (!res.ok) {
+      const msg = data?.error?.message || data?.error || `OpenRouter error: ${res.status}`;
+      throw new Error(msg);
+    }
+    const choice = data?.choices?.[0];
+    const message = choice?.message;
+    const content = message?.content;
+    let dataUrl: string | undefined;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part?.type === 'image_url' && part?.image_url?.url?.startsWith('data:image/')) {
+          dataUrl = part.image_url.url;
+          break;
+        }
+        // Some providers may return base64 under different keys; accept plain string if it looks like data URL
+        if (typeof part === 'string' && part.startsWith('data:image/')) {
+          dataUrl = part;
+          break;
+        }
+      }
+    } else if (typeof content === 'string' && content.startsWith('data:image/')) {
+      dataUrl = content;
+    }
+    if (!dataUrl) throw new Error('OpenRouter returned no image');
+    return { ok: true as const, imageDataUrl: dataUrl };
+  };
 
   // Helper to try direct Gemini call
   const callDirect = async () => {
+    if (!ai) throw new Error('Google API key is not configured');
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image-preview',
       contents: [{ parts: [imagePart, ...extraImageParts, textPart] }],
@@ -119,15 +199,10 @@ app.post('/api/generate', async (c) => {
       prompt: effectivePrompt,
       historyDataUrls,
     };
-    const params: string[] = [];
-    if (c.env.GAS_ACCESS_TOKEN) params.push(`x_token=${encodeURIComponent(c.env.GAS_ACCESS_TOKEN)}`);
-    else if (c.env.GAS_SHARED_SECRET) params.push(`x_secret=${encodeURIComponent(c.env.GAS_SHARED_SECRET)}`);
-    const qs = params.length ? `?${params.join('&')}` : '';
-    const res = await fetch(url + qs, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (c.env.GAS_ACCESS_TOKEN) headers['x-token'] = c.env.GAS_ACCESS_TOKEN;
+    else if (c.env.GAS_SHARED_SECRET) headers['x-secret'] = c.env.GAS_SHARED_SECRET;
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const text = await res.text();
     let data: any = {};
     try { data = JSON.parse(text); } catch {}
@@ -140,21 +215,29 @@ app.post('/api/generate', async (c) => {
   };
 
   try {
-    const direct = await callDirect();
-    return c.json({ imageDataUrl: direct.imageDataUrl });
+    // 1) Try OpenRouter (free)
+    const viaOpenRouter = await callOpenRouter();
+    return c.json({ imageDataUrl: viaOpenRouter.imageDataUrl, provider: 'openrouter' as const });
   } catch (err: any) {
-    const msg = String(err?.message || err);
-    const isRegionError = /location is not supported/i.test(msg) || /FAILED_PRECONDITION/i.test(msg);
-    const hasFallback = !!c.env.GAS_FALLBACK_URL;
-    if (isRegionError && hasFallback) {
-      try {
-        const viaGas = await callGAS();
-        return c.json({ imageDataUrl: viaGas.imageDataUrl });
-      } catch (e2: any) {
-        return c.json({ error: e2?.message || 'Fallback generation failed' }, 502);
+    // 2) Fallback to direct Gemini via Google API
+    try {
+      const direct = await callDirect();
+      return c.json({ imageDataUrl: direct.imageDataUrl, provider: 'workers' as const });
+    } catch (err2: any) {
+      const msg2 = String(err2?.message || err2);
+      const isRegionError = /location is not supported/i.test(msg2) || /FAILED_PRECONDITION/i.test(msg2);
+      const hasFallback = !!c.env.GAS_FALLBACK_URL;
+      if (hasFallback && (isRegionError || true)) {
+        try {
+          // 3) Fallback to GAS web app
+          const viaGas = await callGAS();
+          return c.json({ imageDataUrl: viaGas.imageDataUrl, provider: 'gas' as const });
+        } catch (e2: any) {
+          return c.json({ error: e2?.message || 'Fallback generation failed', provider: 'gas' as const }, 502);
+        }
       }
+      return c.json({ error: msg2 || 'Generation failed', provider: 'workers' as const }, 500);
     }
-    return c.json({ error: msg || 'Generation failed' }, 500);
   }
 });
 

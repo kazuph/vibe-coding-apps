@@ -61,6 +61,8 @@ export default function Home() {
   const [background, setBackground] = useState<Background>('default');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Toast state
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isCanvasEmpty, setIsCanvasEmpty] = useState(true);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const historyIdCounter = useRef<number>(Date.now());
@@ -169,6 +171,22 @@ export default function Home() {
       return () => clearTimeout(t);
     }
   }, [error]);
+
+  // Auto-clear toast
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(null), 2800);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
+
+  const prettyProvider = (p?: string): string => {
+    if (!p) return '';
+    if (p === 'openrouter') return 'OpenRouter';
+    if (p === 'workers') return 'Cloudflare Workers';
+    if (p === 'gas') return 'GAS';
+    return p;
+  };
 
   const handlePastedImage = async (imageBlob: Blob) => {
     try {
@@ -573,8 +591,19 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageDataUrl: dataUrl, prompt: finalPrompt, historyDataUrls }),
       });
-      if (res.status === 401) { setError('認証に失敗しました。ユーザー名/パスワードを確認してください。'); return; }
-      if (!res.ok) { const err = await res.json().catch(() => ({})); setError(`サーバーエラー: ${err?.error || res.statusText}`); return; }
+      if (res.status === 401) {
+        setError('認証に失敗しました。ユーザー名/パスワードを確認してください。');
+        setToast({ type: 'error', message: '認証に失敗しました' });
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as any));
+        const provider = prettyProvider((err as any)?.provider);
+        const msg = (err as any)?.error || res.statusText || 'エラー';
+        setError(`サーバーエラー: ${msg}`);
+        setToast({ type: 'error', message: provider ? `${msg}（${provider}）` : `${msg}` });
+        return;
+      }
       const json = await res.json();
       if (json.imageDataUrl) {
         await drawDataUrl(json.imageDataUrl);
@@ -582,8 +611,11 @@ export default function Home() {
           const newState = canvasRef.current.toDataURL('image/png');
           await addNewHistoryItem(newState);
         }
+        const provider = prettyProvider(json.provider);
+        setToast({ type: 'success', message: provider ? `画像を生成しました（${provider}）` : '画像を生成しました' });
       } else {
         setError('画像の生成に失敗しました。');
+        setToast({ type: 'error', message: '画像の生成に失敗しました' });
       }
     } catch (e: any) {
       console.error(e);
@@ -812,7 +844,20 @@ export default function Home() {
           </div>
         </div>
       )}
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-[60]">
+          <div className={`min-w-[240px] max-w-[90vw] text-sm px-4 py-3 rounded-md shadow-lg border ${toast.type === 'success' ? 'bg-white text-gray-800 border-green-200' : 'bg-white text-gray-800 border-red-200'}`}>
+            <div className="flex items-start gap-2">
+              {toast.type === 'success' ? (
+                <span className="mt-0.5 inline-block w-2.5 h-2.5 rounded-full bg-green-500"></span>
+              ) : (
+                <span className="mt-0.5 inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span>
+              )}
+              <div className="leading-snug">{toast.message}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
