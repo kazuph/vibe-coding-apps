@@ -612,7 +612,14 @@ export default function Home() {
           await addNewHistoryItem(newState);
         }
         const provider = prettyProvider(json.provider);
-        setToast({ type: 'success', message: provider ? `画像を生成しました（${provider}）` : '画像を生成しました' });
+        // If previous stage failed, show its error + the succeeding provider
+        if (json.prevError && json.prevError.message) {
+          const prevFrom = prettyProvider(json.prevError.from);
+          const msg = `${prevFrom} のエラー: ${json.prevError.message} → ${provider || '次段'}で生成`;
+          setToast({ type: 'success', message: msg });
+        } else {
+          setToast({ type: 'success', message: provider ? `画像を生成しました（${provider}）` : '画像を生成しました' });
+        }
       } else {
         setError('画像の生成に失敗しました。');
         setToast({ type: 'error', message: '画像の生成に失敗しました' });

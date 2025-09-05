@@ -214,29 +214,32 @@ app.post('/api/generate', async (c) => {
     throw new Error('GAS returned no image');
   };
 
+  let prevError: { from: 'openrouter' | 'workers'; message: string } | undefined;
   try {
     // 1) Try OpenRouter (free)
     const viaOpenRouter = await callOpenRouter();
     return c.json({ imageDataUrl: viaOpenRouter.imageDataUrl, provider: 'openrouter' as const });
   } catch (err: any) {
+    prevError = { from: 'openrouter', message: String(err?.message || err) };
     // 2) Fallback to direct Gemini via Google API
     try {
       const direct = await callDirect();
-      return c.json({ imageDataUrl: direct.imageDataUrl, provider: 'workers' as const });
+      return c.json({ imageDataUrl: direct.imageDataUrl, provider: 'workers' as const, prevError });
     } catch (err2: any) {
       const msg2 = String(err2?.message || err2);
+      prevError = { from: 'workers', message: msg2 };
       const isRegionError = /location is not supported/i.test(msg2) || /FAILED_PRECONDITION/i.test(msg2);
       const hasFallback = !!c.env.GAS_FALLBACK_URL;
       if (hasFallback && (isRegionError || true)) {
         try {
           // 3) Fallback to GAS web app
           const viaGas = await callGAS();
-          return c.json({ imageDataUrl: viaGas.imageDataUrl, provider: 'gas' as const });
+          return c.json({ imageDataUrl: viaGas.imageDataUrl, provider: 'gas' as const, prevError });
         } catch (e2: any) {
-          return c.json({ error: e2?.message || 'Fallback generation failed', provider: 'gas' as const }, 502);
+          return c.json({ error: e2?.message || 'Fallback generation failed', provider: 'gas' as const, prevError }, 502);
         }
       }
-      return c.json({ error: msg2 || 'Generation failed', provider: 'workers' as const }, 500);
+      return c.json({ error: msg2 || 'Generation failed', provider: 'workers' as const, prevError }, 500);
     }
   }
 });
