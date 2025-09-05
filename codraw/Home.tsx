@@ -13,7 +13,7 @@ import {
   PencilLine,
   Copy,
   Share2,
-  Undo2,
+  // Undo2, // removed
   X,
   FilePlus2,
   Check,
@@ -474,19 +474,7 @@ export default function Home() {
     });
   };
 
-  const handleUndo = async () => {
-    if (canvasHistory.length === 0) {
-      if (!isCanvasEmpty) clearCanvas();
-      return;
-    }
-    const lastItem = canvasHistory[canvasHistory.length - 1];
-    if (lastItem) await deleteHistoryItemFromDB(lastItem.id);
-    const newHistory = canvasHistory.slice(0, -1);
-    setCanvasHistory(newHistory);
-    setSelectedHistoryIds(new Set());
-    if (newHistory.length > 0) await drawDataUrl(newHistory[newHistory.length - 1].dataUrl);
-    else clearCanvas();
-  };
+  // Removed: undo (最新の画像削除) 機能
 
   // Keyboard tool toggle
   useEffect(() => {
@@ -833,9 +821,7 @@ export default function Home() {
               <button onClick={handleNewCanvas} disabled={loading || isCanvasEmpty} className="p-2 bg-white/80 backdrop-blur-sm rounded-full text-gray-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50" aria-label="キャンバスをクリア">
                 <FilePlus2 className="w-5 h-5" />
               </button>
-              <button onClick={handleUndo} disabled={loading || (isCanvasEmpty && canvasHistory.length === 0)} className="p-2 bg-white/80 backdrop-blur-sm rounded-full text-gray-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50" aria-label="元に戻す">
-                <Undo2 className="w-5 h-5" />
-              </button>
+              {/* Undo button removed as requested */}
             </div>
           </div>
         </main>

@@ -218,27 +218,35 @@ app.post('/api/generate', async (c) => {
   try {
     // 1) Try OpenRouter (free)
     const viaOpenRouter = await callOpenRouter();
+    console.info('[generate] succeeded via openrouter');
     return c.json({ imageDataUrl: viaOpenRouter.imageDataUrl, provider: 'openrouter' as const });
   } catch (err: any) {
     prevError = { from: 'openrouter', message: String(err?.message || err) };
+    console.warn('[generate] openrouter failed:', prevError.message);
     // 2) Fallback to direct Gemini via Google API
     try {
       const direct = await callDirect();
+      console.info('[generate] fallback succeeded via workers after openrouter failure');
       return c.json({ imageDataUrl: direct.imageDataUrl, provider: 'workers' as const, prevError });
     } catch (err2: any) {
       const msg2 = String(err2?.message || err2);
       prevError = { from: 'workers', message: msg2 };
+      console.warn('[generate] workers failed:', msg2);
       const isRegionError = /location is not supported/i.test(msg2) || /FAILED_PRECONDITION/i.test(msg2);
       const hasFallback = !!c.env.GAS_FALLBACK_URL;
       if (hasFallback && (isRegionError || true)) {
         try {
           // 3) Fallback to GAS web app
           const viaGas = await callGAS();
+          console.info('[generate] fallback succeeded via gas after workers failure');
           return c.json({ imageDataUrl: viaGas.imageDataUrl, provider: 'gas' as const, prevError });
         } catch (e2: any) {
-          return c.json({ error: e2?.message || 'Fallback generation failed', provider: 'gas' as const, prevError }, 502);
+          const m3 = String(e2?.message || 'Fallback generation failed');
+          console.error('[generate] gas failed:', m3);
+          return c.json({ error: m3, provider: 'gas' as const, prevError }, 502);
         }
       }
+      console.error('[generate] generation failed without gas fallback:', msg2);
       return c.json({ error: msg2 || 'Generation failed', provider: 'workers' as const, prevError }, 500);
     }
   }
