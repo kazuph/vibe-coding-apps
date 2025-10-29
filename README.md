@@ -16,10 +16,12 @@ vibe-coding-apps/
 │   ├── index.html          # メインランディングページ
 │   ├── face-crop/          # Face Cropperのライブデモ
 │   ├── fitness-bike/       # Fitness Bikeのライブデモ
-│   └── kids-learning/      # Kids Learningのライブデモ
+│   ├── kids-learning/      # Kids Learningのライブデモ
+│   └── inverted-pendulum-control/ # 倒立振子シミュレーターのライブデモ
 ├── face-crop-app/          # AI Face Cropperソースコード
 ├── fitness-bike-webbluetooth/ # Fitness Bike Reactアプリソースコード
 ├── fitness-bike-node-ble-tui/ # Fitness Bike Node.jsアプリソースコード
+├── inverted-pendulum-control/ # 倒立振子シミュレーターソースコード
 ├── techbook-preview-extension/ # Chrome Extension
 └── techbook-swipe-extension/   # Chrome Extension
 ```
@@ -31,6 +33,7 @@ vibe-coding-apps/
 | `face-crop-app/` | `docs/face-crop/` | MediaPipe Face Detector |
 | `fitness-bike-webbluetooth/` | `docs/fitness-bike/` | Web Bluetooth API版 |
 | `fitness-bike-node-ble-tui/` | なし | Node.js TUI版（Bluetooth制御） |
+| `inverted-pendulum-control/` | `docs/inverted-pendulum-control/` | 倒立振子シミュレーター |
 | `techbook-*-extension/` | なし | Chrome Extensions |
 | なし | `docs/kids-learning/` | 学習アプリ（スタンドアロン） |
 
@@ -58,12 +61,26 @@ Web Bluetooth APIを使用したフィットネスバイク制御アプリケー
 - **ライブデモ**: https://kazuph.github.io/vibe-coding-apps/fitness-bike/
 - **ソースコード**: [fitness-bike-webbluetooth/](./fitness-bike-webbluetooth/)
 - **技術スタック**: React, Web Bluetooth API, TypeScript, Vite
-- **機能**: 
+- **機能**:
   - BLE経由でのフィットネスバイク接続・制御
   - リアルタイム運動データ表示（速度、パワー、カロリー）
   - 負荷レベル調整（80段階）
   - ワークアウト統計とグラフ表示
   - 運動記録の保存・管理
+
+### 🎯 倒立振子シミュレーター
+P/PD/PID制御を比較できる制御工学シミュレーター
+
+- **ライブデモ**: https://kazuph.github.io/vibe-coding-apps/inverted-pendulum-control/
+- **ソースコード**: [inverted-pendulum-control/](./inverted-pendulum-control/)
+- **技術スタック**: Canvas API, JavaScript, HTML5
+- **機能**:
+  - 車輪型倒立振子の物理シミュレーション
+  - P制御、PD制御、PID制御の切り替え
+  - リアルタイムパラメータ調整（Kp, Kd, Ki）
+  - オシロスコープ風グラフ表示（角度、角速度、制御入力、位置）
+  - 外乱入力による制御性能テスト
+  - 初期角度設定機能
 
 ### 📚 技術書典プレビュー Chrome Extension
 技術書典の本一覧ページで、本のリンクにマウスオーバーすると詳細情報をプレビュー表示するChrome Extension

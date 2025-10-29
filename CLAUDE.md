@@ -8,8 +8,9 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 
 1. **AI Face Cropper** - MediaPipe-based face detection and image cropping using Cloudflare Workers
 2. **Fitness Bike Controllers** - BLE control systems for fitness bikes with both Node.js/TUI and React/WebBluetooth implementations
-3. **Chrome Extensions** - Browser extensions for technical book previews and Tinder-style swiping interfaces
-4. **Kids Learning App** - Educational application with hiragana, katakana, alphabet, and number puzzles
+3. **Inverted Pendulum Simulator** - Interactive control theory simulator demonstrating P/PD/PID control algorithms
+4. **Chrome Extensions** - Browser extensions for technical book previews and Tinder-style swiping interfaces
+5. **Kids Learning App** - Educational application with hiragana, katakana, alphabet, and number puzzles
 
 ## Monorepo Structure
 
@@ -20,6 +21,7 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | `face-crop-app/` | `docs/face-crop/` | MediaPipe Face Detector |
 | `fitness-bike-webbluetooth/` | `docs/fitness-bike/` | Web Bluetooth API version |
 | `fitness-bike-node-ble-tui/` | None | Node.js TUI version (Bluetooth control) |
+| `inverted-pendulum-control/` | `docs/inverted-pendulum-control/` | P/PD/PID Control Simulator |
 | `techbook-*-extension/` | None | Chrome Extensions |
 | None | `docs/kids-learning/` | Standalone learning app |
 

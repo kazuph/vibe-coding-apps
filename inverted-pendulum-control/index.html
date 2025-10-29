@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>倒立振子シミュレーター - P/PD/PID制御比較</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            overflow-x: hidden;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-section {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .control-section h3 {
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            color: #fff;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 5px;
+        }
+
+        .mode-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            font-size: 0.95em;
+        }
+
+        button.mode-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border: 2px solid transparent;
+        }
+
+        button.mode-btn.active {
+            background: #4CAF50;
+            border-color: #fff;
+            box-shadow: 0 0 15px rgba(76, 175, 80, 0.6);
+        }
+
+        button.action-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px;
+        }
+
+        button.action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        button.reset-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .param-control {
+            margin-bottom: 12px;
+        }
+
+        .param-control label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+
+        .param-value {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+        }
+
+        .simulation-area {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .canvas-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            border-radius: 6px;
+            background: #000;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            font-size: 0.85em;
+        }
+
+        .stat-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-label {
+            opacity: 0.7;
+            font-size: 0.85em;
+        }
+
+        .stat-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-top: 3px;
+        }
+
+        .info-text {
+            font-size: 0.85em;
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 1024px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 倒立振子シミュレーター - 制御理論比較</h1>
+
+        <div class="main-layout">
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <div class="control-section">
+                    <h3>制御モード</h3>
+                    <div class="mode-buttons">
+                        <button class="mode-btn" data-mode="P">P制御</button>
+                        <button class="mode-btn active" data-mode="PD">PD制御</button>
+                        <button class="mode-btn" data-mode="PID">PID制御</button>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>制御パラメータ</h3>
+                    <div class="param-control">
+                        <label>
+                            <span>比例ゲイン (Kp)</span>
+                            <span class="param-value" id="kp-value">150.0</span>
+                        </label>
+                        <input type="range" id="kp-slider" min="0" max="300" step="1" value="150">
+                    </div>
+                    <div class="param-control">
+                        <label>
+                            <span>微分ゲイン (Kd)</span>
+                            <span class="param-value" id="kd-value">80.0</span>
+                        </label>
+                        <input type="range" id="kd-slider" min="0" max="200" step="1" value="80">
+                    </div>
+                    <div class="param-control">
+                        <label>
+                            <span>積分ゲイン (Ki)</span>
+                            <span class="param-value" id="ki-value">5.0</span>
+                        </label>
+                        <input type="range" id="ki-slider" min="0" max="20" step="0.1" value="5">
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>シミュレーション設定</h3>
+                    <div class="param-control">
+                        <label>
+                            <span>初期角度 (度)</span>
+                            <span class="param-value" id="angle-value">10.0</span>
+                        </label>
+                        <input type="range" id="angle-slider" min="-30" max="30" step="1" value="10">
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>操作</h3>
+                    <button class="action-btn" id="disturbance-btn">外乱を加える</button>
+                    <button class="action-btn reset-btn" id="reset-btn" style="margin-top: 10px;">リセット</button>
+                </div>
+
+                <div class="control-section">
+                    <h3>説明</h3>
+                    <div class="info-text">
+                        <strong>P制御:</strong> 角度誤差に比例して制御。不安定になりやすい。<br><br>
+                        <strong>PD制御:</strong> P制御 + 角速度による制動。かなり安定。<br><br>
+                        <strong>PID制御:</strong> PD制御 + 誤差の累積補正。最も安定で位置も保持。
+                    </div>
+                </div>
+            </div>
+
+            <!-- Simulation Area -->
+            <div class="simulation-area">
+                <div class="canvas-container">
+                    <canvas id="pendulumCanvas" width="900" height="300"></canvas>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-label">角度</div>
+                        <div class="stat-value" id="angle-stat">0.0°</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">角速度</div>
+                        <div class="stat-value" id="angular-velocity-stat">0.0°/s</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">制御入力</div>
+                        <div class="stat-value" id="control-stat">0.0 N</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">台車位置</div>
+                        <div class="stat-value" id="position-stat">0.0 m</div>
+                    </div>
+                </div>
+
+                <div class="canvas-container">
+                    <canvas id="graphCanvas" width="900" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Canvas setup
+        const pendulumCanvas = document.getElementById('pendulumCanvas');
+        const pendulumCtx = pendulumCanvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const graphCtx = graphCanvas.getContext('2d');
+
+        // Simulation parameters
+        let controlMode = 'PD';
+        let Kp = 150;
+        let Kd = 80;
+        let Ki = 5;
+
+        // Physical constants
+        const g = 9.81; // gravity
+        const M = 1.0; // cart mass (kg)
+        const m = 0.3; // pendulum mass (kg)
+        const L = 0.5; // pendulum length (m)
+        const friction = 0.1; // friction coefficient
+
+        // State variables
+        let x = 0; // cart position
+        let v = 0; // cart velocity
+        let theta = 0.1; // pendulum angle (radians, 0 = upright)
+        let omega = 0; // angular velocity
+        let integralError = 0; // integral of error for I control
+        let controlForce = 0; // current control force
+
+        // Graph data
+        const maxDataPoints = 300;
+        let timeData = [];
+        let angleData = [];
+        let angularVelocityData = [];
+        let controlData = [];
+        let positionData = [];
+        let time = 0;
+
+        // Animation
+        let lastTime = 0;
+        const dt = 0.016; // ~60 fps
+
+        // UI Elements
+        const modeButtons = document.querySelectorAll('.mode-btn');
+        const kpSlider = document.getElementById('kp-slider');
+        const kdSlider = document.getElementById('kd-slider');
+        const kiSlider = document.getElementById('ki-slider');
+        const angleSlider = document.getElementById('angle-slider');
+        const disturbanceBtn = document.getElementById('disturbance-btn');
+        const resetBtn = document.getElementById('reset-btn');
+
+        // Event listeners
+        modeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                controlMode = btn.dataset.mode;
+                resetSimulation();
+            });
+        });
+
+        kpSlider.addEventListener('input', (e) => {
+            Kp = parseFloat(e.target.value);
+            document.getElementById('kp-value').textContent = Kp.toFixed(1);
+        });
+
+        kdSlider.addEventListener('input', (e) => {
+            Kd = parseFloat(e.target.value);
+            document.getElementById('kd-value').textContent = Kd.toFixed(1);
+        });
+
+        kiSlider.addEventListener('input', (e) => {
+            Ki = parseFloat(e.target.value);
+            document.getElementById('ki-value').textContent = Ki.toFixed(1);
+        });
+
+        angleSlider.addEventListener('input', (e) => {
+            const angle = parseFloat(e.target.value);
+            document.getElementById('angle-value').textContent = angle.toFixed(1);
+        });
+
+        disturbanceBtn.addEventListener('click', () => {
+            omega += (Math.random() - 0.5) * 10;
+            v += (Math.random() - 0.5) * 3;
+        });
+
+        resetBtn.addEventListener('click', () => {
+            resetSimulation();
+        });
+
+        function resetSimulation() {
+            const initialAngle = parseFloat(angleSlider.value) * Math.PI / 180;
+            theta = initialAngle;
+            omega = 0;
+            x = 0;
+            v = 0;
+            integralError = 0;
+            controlForce = 0;
+            timeData = [];
+            angleData = [];
+            angularVelocityData = [];
+            controlData = [];
+            positionData = [];
+            time = 0;
+        }
+
+        function calculateControl() {
+            const targetAngle = 0; // upright position
+            const error = targetAngle - theta;
+
+            let control = 0;
+
+            if (controlMode === 'P') {
+                // P control only
+                control = Kp * error;
+            } else if (controlMode === 'PD') {
+                // PD control
+                const P_term = Kp * error;
+                const D_term = -Kd * omega; // damping term
+                control = P_term + D_term;
+            } else if (controlMode === 'PID') {
+                // PID control
+                integralError += error * dt;
+                // Anti-windup
+                integralError = Math.max(-1, Math.min(1, integralError));
+
+                const P_term = Kp * error;
+                const I_term = Ki * integralError;
+                const D_term = -Kd * omega;
+                control = P_term + I_term + D_term;
+            }
+
+            // Limit control force
+            control = Math.max(-100, Math.min(100, control));
+            return control;
+        }
+
+        function updatePhysics(F) {
+            // Inverted pendulum on a cart dynamics
+            // Using simplified equations of motion
+
+            const sinTheta = Math.sin(theta);
+            const cosTheta = Math.cos(theta);
+            const sin2Theta = sinTheta * sinTheta;
+
+            // Cart acceleration
+            const numerator1 = F - friction * v + m * L * omega * omega * sinTheta - m * g * sinTheta * cosTheta;
+            const denominator1 = M + m * (1 - cosTheta * cosTheta);
+            const a = numerator1 / denominator1;
+
+            // Angular acceleration
+            const numerator2 = (M + m) * g * sinTheta - (F - friction * v) * cosTheta - m * L * omega * omega * sinTheta * cosTheta;
+            const denominator2 = L * (M + m * (1 - cosTheta * cosTheta));
+            const alpha = numerator2 / denominator2;
+
+            // Update velocities
+            v += a * dt;
+            omega += alpha * dt;
+
+            // Update positions
+            x += v * dt;
+            theta += omega * dt;
+
+            // Apply some damping to prevent runaway
+            v *= 0.999;
+            omega *= 0.999;
+
+            // Wrap angle to [-π, π]
+            while (theta > Math.PI) theta -= 2 * Math.PI;
+            while (theta < -Math.PI) theta += 2 * Math.PI;
+
+            // Keep cart in bounds
+            if (Math.abs(x) > 3) {
+                x = Math.sign(x) * 3;
+                v = 0;
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('angle-stat').textContent = (theta * 180 / Math.PI).toFixed(1) + '°';
+            document.getElementById('angular-velocity-stat').textContent = (omega * 180 / Math.PI).toFixed(1) + '°/s';
+            document.getElementById('control-stat').textContent = controlForce.toFixed(1) + ' N';
+            document.getElementById('position-stat').textContent = x.toFixed(2) + ' m';
+        }
+
+        function drawPendulum() {
+            const ctx = pendulumCtx;
+            const width = pendulumCanvas.width;
+            const height = pendulumCanvas.height;
+
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw ground
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, height * 0.7);
+            ctx.lineTo(width, height * 0.7);
+            ctx.stroke();
+
+            // Grid
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+            }
+
+            // Scale and origin
+            const scale = 80; // pixels per meter
+            const originX = width / 2;
+            const originY = height * 0.7;
+
+            // Cart position in pixels
+            const cartX = originX + x * scale;
+            const cartY = originY;
+
+            // Draw cart
+            const cartWidth = 80;
+            const cartHeight = 40;
+
+            // Cart body
+            ctx.fillStyle = '#3498db';
+            ctx.strokeStyle = '#2980b9';
+            ctx.lineWidth = 3;
+            ctx.fillRect(cartX - cartWidth/2, cartY - cartHeight, cartWidth, cartHeight);
+            ctx.strokeRect(cartX - cartWidth/2, cartY - cartHeight, cartWidth, cartHeight);
+
+            // Wheels
+            const wheelRadius = 10;
+            const wheelOffset = 25;
+
+            ctx.fillStyle = '#2c3e50';
+            ctx.strokeStyle = '#34495e';
+
+            // Left wheel
+            ctx.beginPath();
+            ctx.arc(cartX - wheelOffset, cartY, wheelRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Right wheel
+            ctx.beginPath();
+            ctx.arc(cartX + wheelOffset, cartY, wheelRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Pendulum rod
+            const pendulumLength = L * scale;
+            const pendulumEndX = cartX + pendulumLength * Math.sin(theta);
+            const pendulumEndY = cartY - pendulumLength * Math.cos(theta);
+
+            // Draw pendulum rod
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(cartX, cartY - cartHeight/2);
+            ctx.lineTo(pendulumEndX, pendulumEndY);
+            ctx.stroke();
+
+            // Pendulum pivot
+            ctx.fillStyle = '#95a5a6';
+            ctx.beginPath();
+            ctx.arc(cartX, cartY - cartHeight/2, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Pendulum bob
+            ctx.fillStyle = '#e74c3c';
+            ctx.strokeStyle = '#c0392b';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(pendulumEndX, pendulumEndY, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw control force arrow
+            if (Math.abs(controlForce) > 1) {
+                const arrowScale = 2;
+                const arrowLength = controlForce * arrowScale;
+                const arrowY = cartY - cartHeight/2;
+
+                ctx.strokeStyle = '#2ecc71';
+                ctx.fillStyle = '#2ecc71';
+                ctx.lineWidth = 3;
+
+                // Arrow line
+                ctx.beginPath();
+                ctx.moveTo(cartX, arrowY);
+                ctx.lineTo(cartX + arrowLength, arrowY);
+                ctx.stroke();
+
+                // Arrow head
+                const headSize = 10;
+                const direction = Math.sign(arrowLength);
+                ctx.beginPath();
+                ctx.moveTo(cartX + arrowLength, arrowY);
+                ctx.lineTo(cartX + arrowLength - direction * headSize, arrowY - headSize/2);
+                ctx.lineTo(cartX + arrowLength - direction * headSize, arrowY + headSize/2);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Draw angle indicator
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(cartX, cartY - cartHeight/2);
+            ctx.lineTo(cartX, cartY - cartHeight/2 - 60);
+            ctx.stroke();
+
+            // Angle arc
+            ctx.strokeStyle = '#f39c12';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cartX, cartY - cartHeight/2, 40, -Math.PI/2, -Math.PI/2 + theta, theta > 0);
+            ctx.stroke();
+
+            // Control mode indicator
+            ctx.fillStyle = '#2ecc71';
+            ctx.font = 'bold 24px monospace';
+            ctx.fillText(controlMode + ' Control', 20, 30);
+        }
+
+        function drawGraphs() {
+            const ctx = graphCtx;
+            const width = graphCanvas.width;
+            const height = graphCanvas.height;
+
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // Grid
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+
+            // Vertical grid lines
+            for (let i = 0; i < width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+            }
+
+            // Horizontal grid lines
+            const graphHeight = height / 4;
+            for (let i = 0; i < 4; i++) {
+                const y = i * graphHeight;
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+
+                // Center lines
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, y + graphHeight/2);
+                ctx.lineTo(width, y + graphHeight/2);
+                ctx.stroke();
+            }
+
+            // Labels
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('Angle (°)', 5, 15);
+            ctx.fillText('Angular Vel (°/s)', 5, graphHeight + 15);
+            ctx.fillText('Control (N)', 5, graphHeight * 2 + 15);
+            ctx.fillText('Position (m)', 5, graphHeight * 3 + 15);
+
+            // Draw data
+            if (timeData.length > 1) {
+                // Angle graph
+                drawGraph(ctx, angleData, 0, graphHeight, '#e74c3c', 30);
+
+                // Angular velocity graph
+                drawGraph(ctx, angularVelocityData, graphHeight, graphHeight, '#f39c12', 50);
+
+                // Control force graph
+                drawGraph(ctx, controlData, graphHeight * 2, graphHeight, '#2ecc71', 50);
+
+                // Position graph
+                drawGraph(ctx, positionData, graphHeight * 3, graphHeight, '#3498db', 2);
+            }
+        }
+
+        function drawGraph(ctx, data, offsetY, height, color, scale) {
+            const width = graphCanvas.width;
+            const centerY = offsetY + height / 2;
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            for (let i = 0; i < data.length; i++) {
+                const x = width - (data.length - i) * (width / maxDataPoints);
+                const y = centerY - data[i] * scale;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        function updateGraphData() {
+            timeData.push(time);
+            angleData.push(theta * 180 / Math.PI);
+            angularVelocityData.push(omega * 180 / Math.PI);
+            controlData.push(controlForce);
+            positionData.push(x);
+
+            // Keep only last maxDataPoints
+            if (timeData.length > maxDataPoints) {
+                timeData.shift();
+                angleData.shift();
+                angularVelocityData.shift();
+                controlData.shift();
+                positionData.shift();
+            }
+        }
+
+        function animate(currentTime) {
+            // Calculate control force
+            controlForce = calculateControl();
+
+            // Update physics
+            updatePhysics(controlForce);
+
+            // Update time
+            time += dt;
+
+            // Update graph data
+            updateGraphData();
+
+            // Draw
+            drawPendulum();
+            drawGraphs();
+            updateStats();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        resetSimulation();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
