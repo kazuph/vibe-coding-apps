@@ -45,7 +45,7 @@ clasp run setPropsFromJson --params '["{\\"ACCESS_TOKEN\\":\\"YOUR_GAS_TOKEN\\",
 
 Required properties:
 - `GEMINI_API_KEY` (or `GEMINI_API_TOKEN`): Gemini server API key
-- `ACCESS_TOKEN` (recommended): token that the Worker will send as `x_token`
+- `ACCESS_TOKEN` (recommended): token that the Worker will send in the JSON body as `token` (or as query param `x_token` if you call it manually)
 
 6) Configure Worker fallback
 
@@ -60,4 +60,3 @@ GAS_ACCESS_TOKEN=YOUR_GAS_TOKEN
 
 - Request (JSON): `{ imageDataUrl: string, prompt: string, historyDataUrls?: string[] }`
 - Response (JSON): `{ imageDataUrl: string }` or `{ error: string }`
-

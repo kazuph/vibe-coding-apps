@@ -588,7 +588,12 @@ export default function Home() {
         const err = await res.json().catch(() => ({} as any));
         const provider = prettyProvider((err as any)?.provider);
         const msg = (err as any)?.error || res.statusText || 'エラー';
-        setError(`サーバーエラー: ${msg}`);
+        // Aggregate previous errors if provided
+        const prevErrors: Array<{ from: string; message: string }> = Array.isArray((err as any)?.prevErrors) ? (err as any).prevErrors : [];
+        const prevStr = prevErrors.length
+          ? prevErrors.map((e) => `${prettyProvider(e.from)} のエラー: ${e.message}`).join(' / ') + ' → 最終段で失敗'
+          : '';
+        setError(prevStr ? `サーバーエラー: ${msg}（${prevStr}）` : `サーバーエラー: ${msg}`);
         setToast({ type: 'error', message: provider ? `${msg}（${provider}）` : `${msg}` });
         return;
       }
@@ -600,8 +605,16 @@ export default function Home() {
           await addNewHistoryItem(newState);
         }
         const provider = prettyProvider(json.provider);
-        // If previous stage failed, show its error + the succeeding provider
-        if (json.prevError && json.prevError.message) {
+        // Prefer aggregated previous errors if provided
+        const prevErrors: Array<{ from: string; message: string }> = Array.isArray(json.prevErrors) ? json.prevErrors : [];
+        if (prevErrors.length > 0) {
+          const joined = prevErrors
+            .map((e) => `${prettyProvider(e.from)} のエラー: ${e.message}`)
+            .join(' / ');
+          const msg = `${joined} → ${provider || '次段'}で生成`;
+          setToast({ type: 'success', message: msg });
+        } else if (json.prevError && json.prevError.message) {
+          // Backward compatibility for single prevError
           const prevFrom = prettyProvider(json.prevError.from);
           const msg = `${prevFrom} のエラー: ${json.prevError.message} → ${provider || '次段'}で生成`;
           setToast({ type: 'success', message: msg });

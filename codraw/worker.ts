@@ -9,7 +9,7 @@ interface Env {
   // Optional: GAS fallback endpoint when Google API rejects by region
   GAS_FALLBACK_URL?: string; // e.g. deployed Apps Script Web App URL
   GAS_SHARED_SECRET?: string; // deprecated; prefer GAS_ACCESS_TOKEN
-  GAS_ACCESS_TOKEN?: string; // token sent as 'x-token' header for GAS auth
+  GAS_ACCESS_TOKEN?: string; // token sent in body as 'token' for GAS auth
   // OpenRouter (primary) for free Gemini image model
   OPENROUTER_API_KEY?: string;
   OPENROUTER_SITE_URL?: string;   // optional HTTP-Referer for rankings
@@ -194,19 +194,21 @@ app.post('/api/generate', async (c) => {
   const callGAS = async () => {
     const url = c.env.GAS_FALLBACK_URL;
     if (!url) throw new Error('GAS_FALLBACK_URL is not configured');
-    const payload = {
+    const payload: Record<string, any> = {
       imageDataUrl,
       prompt: effectivePrompt,
       historyDataUrls,
     };
+    // GAS Web Apps cannot read custom headers reliably; pass token in body
+    if (c.env.GAS_ACCESS_TOKEN) payload.token = c.env.GAS_ACCESS_TOKEN;
+    else if (c.env.GAS_SHARED_SECRET) payload.token = c.env.GAS_SHARED_SECRET;
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (c.env.GAS_ACCESS_TOKEN) headers['x-token'] = c.env.GAS_ACCESS_TOKEN;
-    else if (c.env.GAS_SHARED_SECRET) headers['x-secret'] = c.env.GAS_SHARED_SECRET;
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const text = await res.text();
     let data: any = {};
     try { data = JSON.parse(text); } catch {}
-    if (!res.ok) {
+    // Apps Script Web Apps often always return 200; surface error field if present
+    if (!res.ok || (data && data.error)) {
       const msg = (data && data.error) ? data.error : `GAS error: ${res.status}`;
       throw new Error(msg);
     }
@@ -214,23 +216,25 @@ app.post('/api/generate', async (c) => {
     throw new Error('GAS returned no image');
   };
 
-  let prevError: { from: 'openrouter' | 'workers'; message: string } | undefined;
+  const prevErrors: Array<{ from: 'openrouter' | 'workers'; message: string }> = [];
   try {
     // 1) Try OpenRouter (free)
     const viaOpenRouter = await callOpenRouter();
     console.info('[generate] succeeded via openrouter');
-    return c.json({ imageDataUrl: viaOpenRouter.imageDataUrl, provider: 'openrouter' as const });
+    return c.json({ imageDataUrl: viaOpenRouter.imageDataUrl, provider: 'openrouter' as const, prevErrors });
   } catch (err: any) {
-    prevError = { from: 'openrouter', message: String(err?.message || err) };
-    console.warn('[generate] openrouter failed:', prevError.message);
+    const pe = { from: 'openrouter' as const, message: String(err?.message || err) };
+    prevErrors.push(pe);
+    console.warn('[generate] openrouter failed:', pe.message);
     // 2) Fallback to direct Gemini via Google API
     try {
       const direct = await callDirect();
       console.info('[generate] fallback succeeded via workers after openrouter failure');
-      return c.json({ imageDataUrl: direct.imageDataUrl, provider: 'workers' as const, prevError });
+      return c.json({ imageDataUrl: direct.imageDataUrl, provider: 'workers' as const, prevErrors });
     } catch (err2: any) {
       const msg2 = String(err2?.message || err2);
-      prevError = { from: 'workers', message: msg2 };
+      const pe2 = { from: 'workers' as const, message: msg2 };
+      prevErrors.push(pe2);
       console.warn('[generate] workers failed:', msg2);
       const isRegionError = /location is not supported/i.test(msg2) || /FAILED_PRECONDITION/i.test(msg2);
       const hasFallback = !!c.env.GAS_FALLBACK_URL;
@@ -239,15 +243,21 @@ app.post('/api/generate', async (c) => {
           // 3) Fallback to GAS web app
           const viaGas = await callGAS();
           console.info('[generate] fallback succeeded via gas after workers failure');
-          return c.json({ imageDataUrl: viaGas.imageDataUrl, provider: 'gas' as const, prevError });
+          if (prevErrors.length) {
+            console.info('[generate] previous errors:', prevErrors.map(e => `${e.from}: ${e.message}`).join(' | '));
+          }
+          return c.json({ imageDataUrl: viaGas.imageDataUrl, provider: 'gas' as const, prevErrors });
         } catch (e2: any) {
           const m3 = String(e2?.message || 'Fallback generation failed');
           console.error('[generate] gas failed:', m3);
-          return c.json({ error: m3, provider: 'gas' as const, prevError }, 502);
+          if (prevErrors.length) {
+            console.info('[generate] previous errors:', prevErrors.map(e => `${e.from}: ${e.message}`).join(' | '));
+          }
+          return c.json({ error: m3, provider: 'gas' as const, prevErrors }, 502);
         }
       }
       console.error('[generate] generation failed without gas fallback:', msg2);
-      return c.json({ error: msg2 || 'Generation failed', provider: 'workers' as const, prevError }, 500);
+      return c.json({ error: msg2 || 'Generation failed', provider: 'workers' as const, prevErrors }, 500);
     }
   }
 });
