@@ -1,0 +1,9 @@
+# Playwright test setup
+node_modules/
+playwright-test-screenshot.png
+test-screenshot.png
+playwright-test-result.png
+
+# OS files
+.DS_Store
+Thumbs.db
