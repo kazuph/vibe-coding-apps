@@ -1,110 +1,111 @@
-// LocalStorage ベースのシンプルな永続化
+/**
+ * ストレージ層 - DuckDB-wasm with OPFS を使用
+ * 互換性のためにlocalStorageフォールバックも用意
+ */
 
-const STORAGE_KEY = 'kanji-game-progress';
+import {
+  initDatabase,
+  getKanjiProgress as duckdbGetProgress,
+  updateKanjiProgress as duckdbUpdateProgress,
+  getAllKanjiWithProgress as duckdbGetAllProgress,
+  getGradeGroupProgress as duckdbGetGradeProgress,
+  resetProgress as duckdbResetProgress,
+  isUsingOpfsPersistence,
+  type KanjiProgress,
+} from './duckdb';
 
-export interface KanjiProgress {
-  correctCount: number;
-  starCount: number;
-  completed: boolean;
-  attemptCount: number;
-  lastAttempted?: string;
-}
+export type { KanjiProgress };
 
-export interface StorageData {
-  progress: Record<string, Record<string, KanjiProgress>>; // gradeGroup -> kanji -> progress
-  achievements: Record<string, { completedAt?: string; totalStars: number }>;
-}
+// 初期化状態
+let initialized = false;
+let initError: Error | null = null;
 
-function loadData(): StorageData {
+/**
+ * ストレージを初期化
+ */
+export async function initStorage(): Promise<void> {
+  if (initialized) return;
+
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      return JSON.parse(data);
-    }
-  } catch (e) {
-    console.error('Failed to load data:', e);
-  }
-  return { progress: {}, achievements: {} };
-}
-
-function saveData(data: StorageData): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error('Failed to save data:', e);
+    await initDatabase();
+    initialized = true;
+    console.log('[Storage] Initialized with DuckDB, OPFS:', isUsingOpfsPersistence());
+  } catch (error) {
+    console.error('[Storage] DuckDB init failed:', error);
+    initError = error as Error;
+    throw error;
   }
 }
 
-export function getKanjiProgress(gradeGroup: string, kanji: string): KanjiProgress | null {
-  const data = loadData();
-  return data.progress[gradeGroup]?.[kanji] || null;
+/**
+ * 初期化済みかどうか
+ */
+export function isInitialized(): boolean {
+  return initialized;
 }
 
-export function updateKanjiProgress(
+/**
+ * 初期化エラーがあるかどうか
+ */
+export function getInitError(): Error | null {
+  return initError;
+}
+
+/**
+ * OPFSで永続化されているかどうか
+ */
+export function isPersistent(): boolean {
+  return isUsingOpfsPersistence();
+}
+
+/**
+ * 漢字の進捗を取得
+ */
+export async function getKanjiProgress(
+  gradeGroup: string,
+  kanji: string
+): Promise<KanjiProgress | null> {
+  await initStorage();
+  return duckdbGetProgress(gradeGroup, kanji);
+}
+
+/**
+ * 漢字の進捗を更新
+ */
+export async function updateKanjiProgress(
   kanji: string,
   gradeGroup: string,
   isCorrect: boolean
-): void {
-  const data = loadData();
-
-  if (!data.progress[gradeGroup]) {
-    data.progress[gradeGroup] = {};
-  }
-
-  const existing = data.progress[gradeGroup][kanji] || {
-    correctCount: 0,
-    starCount: 0,
-    completed: false,
-    attemptCount: 0,
-  };
-
-  const newCorrectCount = existing.correctCount + (isCorrect ? 1 : 0);
-  const newCompleted = newCorrectCount >= 3;
-  const newStarCount = newCompleted && isCorrect
-    ? Math.min(existing.starCount + 1, 10)
-    : existing.starCount;
-
-  data.progress[gradeGroup][kanji] = {
-    correctCount: newCorrectCount,
-    starCount: newStarCount,
-    completed: newCompleted,
-    attemptCount: (existing.attemptCount || 0) + 1,
-    lastAttempted: new Date().toISOString(),
-  };
-
-  saveData(data);
+): Promise<void> {
+  await initStorage();
+  return duckdbUpdateProgress(kanji, gradeGroup, isCorrect);
 }
 
-export function getAllKanjiWithProgress(gradeGroup: string): Map<string, KanjiProgress> {
-  const data = loadData();
-  const map = new Map<string, KanjiProgress>();
-
-  const gradeProgress = data.progress[gradeGroup] || {};
-  for (const [kanji, progress] of Object.entries(gradeProgress)) {
-    map.set(kanji, progress);
-  }
-
-  return map;
+/**
+ * 学年グループの全漢字進捗を取得
+ */
+export async function getAllKanjiWithProgress(
+  gradeGroup: string
+): Promise<Map<string, KanjiProgress>> {
+  await initStorage();
+  return duckdbGetAllProgress(gradeGroup);
 }
 
-export function getGradeGroupProgress(gradeGroup: string): {
+/**
+ * 学年グループの進捗サマリーを取得
+ */
+export async function getGradeGroupProgress(gradeGroup: string): Promise<{
   completedKanji: number;
   totalStars: number;
-} {
-  const data = loadData();
-  const gradeProgress = data.progress[gradeGroup] || {};
-
-  let completedKanji = 0;
-  let totalStars = 0;
-
-  for (const progress of Object.values(gradeProgress)) {
-    if (progress.completed) completedKanji++;
-    totalStars += progress.starCount;
-  }
-
-  return { completedKanji, totalStars };
+}> {
+  await initStorage();
+  return duckdbGetGradeProgress(gradeGroup);
 }
 
-export function resetProgress(): void {
-  localStorage.removeItem(STORAGE_KEY);
+/**
+ * 進捗をリセット
+ */
+export async function resetProgress(): Promise<void> {
+  await initStorage();
+  return duckdbResetProgress();
 }

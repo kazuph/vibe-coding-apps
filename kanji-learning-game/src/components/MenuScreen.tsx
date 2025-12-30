@@ -4,13 +4,14 @@ import { initSound } from '../hooks/useSound';
 
 interface MenuScreenProps {
   onStartGame: (gradeGroup: GradeGroupKey) => void;
-  getProgress: (gradeGroup: GradeGroupKey) => {
+  getProgress: (gradeGroup: GradeGroupKey) => Promise<{
     total: number;
     completed: number;
     stars: number;
     percentage: number;
-  };
+  }>;
   isLoading: boolean;
+  isDbReady: boolean;
 }
 
 interface GradeProgress {
@@ -20,7 +21,7 @@ interface GradeProgress {
   percentage: number;
 }
 
-export function MenuScreen({ onStartGame, getProgress, isLoading }: MenuScreenProps) {
+export function MenuScreen({ onStartGame, getProgress, isLoading, isDbReady }: MenuScreenProps) {
   const [progressData, setProgressData] = useState<Record<GradeGroupKey, GradeProgress | null>>({
     'grade1-3': null,
     'grade4': null,
@@ -29,22 +30,30 @@ export function MenuScreen({ onStartGame, getProgress, isLoading }: MenuScreenPr
   });
 
   useEffect(() => {
-    const keys = Object.keys(GRADE_GROUPS) as GradeGroupKey[];
-    const newData: Record<GradeGroupKey, GradeProgress | null> = {
-      'grade1-3': null,
-      'grade4': null,
-      'grade5': null,
-      'grade6': null,
-    };
-    for (const key of keys) {
-      try {
-        newData[key] = getProgress(key);
-      } catch (e) {
-        console.error(e);
+    if (!isDbReady) return;
+
+    const loadProgress = async () => {
+      const keys = Object.keys(GRADE_GROUPS) as GradeGroupKey[];
+      const newData: Record<GradeGroupKey, GradeProgress | null> = {
+        'grade1-3': null,
+        'grade4': null,
+        'grade5': null,
+        'grade6': null,
+      };
+
+      for (const key of keys) {
+        try {
+          newData[key] = await getProgress(key);
+        } catch (e) {
+          console.error(e);
+        }
       }
-    }
-    setProgressData(newData);
-  }, [getProgress]);
+
+      setProgressData(newData);
+    };
+
+    loadProgress();
+  }, [getProgress, isDbReady]);
 
   const gradeKeys = Object.keys(GRADE_GROUPS) as GradeGroupKey[];
 
@@ -67,7 +76,7 @@ export function MenuScreen({ onStartGame, getProgress, isLoading }: MenuScreenPr
                 initSound();
                 onStartGame(key);
               }}
-              disabled={isLoading}
+              disabled={isLoading || !isDbReady}
             >
               <div className="grade-header">
                 <span className="grade-label">{group.label}</span>

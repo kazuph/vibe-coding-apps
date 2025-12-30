@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { getKanjiByGrade, GRADE_GROUPS, type GradeGroupKey } from '../data/kanjiData';
 import { kanjiReadings, getKanjiReading } from '../data/kanjiReadings';
 import {
+  initStorage,
   updateKanjiProgress,
   getAllKanjiWithProgress,
   getGradeGroupProgress,
@@ -118,11 +119,29 @@ export function useGameState() {
     totalStars: 0,
   });
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isDbReady, setIsDbReady] = useState(false);
   const [progressMap, setProgressMap] = useState<Map<string, KanjiProgress>>(new Map());
 
+  // 初期化
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await initStorage();
+        setIsDbReady(true);
+      } catch (error) {
+        console.error('Failed to initialize storage:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    init();
+  }, []);
+
   // ゲーム開始
-  const startGame = useCallback((gradeGroup: GradeGroupKey) => {
+  const startGame = useCallback(async (gradeGroup: GradeGroupKey) => {
+    if (!isDbReady) return;
+
     setIsLoading(true);
 
     try {
@@ -130,8 +149,8 @@ export function useGameState() {
       const grades = GRADE_GROUPS[gradeGroup].grades;
       const allKanji = getKanjiByGrade(grades);
 
-      // 進捗を取得
-      const progress = getAllKanjiWithProgress(gradeGroup);
+      // 進捗を取得（非同期）
+      const progress = await getAllKanjiWithProgress(gradeGroup);
       setProgressMap(progress);
 
       // 未完了の漢字をフィルタリング（3回正解していない漢字）
@@ -193,16 +212,18 @@ export function useGameState() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isDbReady]);
 
   // 回答
-  const submitAnswer = useCallback((answer: string) => {
+  const submitAnswer = useCallback(async (answer: string) => {
     const currentQuestion = state.questions[state.currentIndex];
     const isCorrect = answer === currentQuestion.correctAnswer;
 
-    // 進捗を更新
+    // 進捗を更新（非同期、await不要 - Fire and forget）
     if (state.gradeGroup) {
-      updateKanjiProgress(currentQuestion.kanji, state.gradeGroup, isCorrect);
+      updateKanjiProgress(currentQuestion.kanji, state.gradeGroup, isCorrect).catch(err => {
+        console.error('Failed to update progress:', err);
+      });
     }
 
     const newAnswers = [...state.answers, { question: currentQuestion, userAnswer: answer, isCorrect }];
@@ -275,11 +296,11 @@ export function useGameState() {
     });
   }, []);
 
-  // 進捗取得
-  const getProgress = useCallback((gradeGroup: GradeGroupKey) => {
+  // 進捗取得（非同期）
+  const getProgress = useCallback(async (gradeGroup: GradeGroupKey) => {
     const grades = GRADE_GROUPS[gradeGroup].grades;
     const allKanji = getKanjiByGrade(grades);
-    const progress = getGradeGroupProgress(gradeGroup);
+    const progress = await getGradeGroupProgress(gradeGroup);
 
     return {
       total: allKanji.length,
@@ -292,6 +313,7 @@ export function useGameState() {
   return {
     state,
     isLoading,
+    isDbReady,
     progressMap,
     startGame,
     submitAnswer,

@@ -9,6 +9,7 @@ function App() {
   const {
     state,
     isLoading,
+    isDbReady,
     progressMap,
     startGame,
     submitAnswer,
@@ -33,6 +34,7 @@ function App() {
           onStartGame={startGame}
           getProgress={getProgress}
           isLoading={isLoading}
+          isDbReady={isDbReady}
         />
       )}
 
