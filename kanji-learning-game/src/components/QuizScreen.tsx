@@ -47,10 +47,10 @@ export function QuizScreen({
       playIncorrectSound();
     }
 
-    // 少し待ってから次へ
+    // 正解時は速く次へ、不正解時はしっかり確認できる時間を確保
     setTimeout(() => {
       onAnswer(answer);
-    }, correct ? 800 : 1500);
+    }, correct ? 350 : 2000);
   };
 
   const progress = progressMap.get(question.kanji);

@@ -8,35 +8,35 @@ function getAudioContext(): AudioContext {
   return audioContext;
 }
 
-// 正解音（高い2音）
+// 正解音（ピンポン!! - 速くて明るい2音）
 export function playCorrectSound(): void {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
 
-    // 1音目
+    // 1音目「ピン」- 高くて短い
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.connect(gain1);
     gain1.connect(ctx.destination);
-    osc1.frequency.value = 880; // A5
+    osc1.frequency.value = 1047; // C6
     osc1.type = 'sine';
-    gain1.gain.setValueAtTime(0.3, now);
-    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    gain1.gain.setValueAtTime(0.4, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
     osc1.start(now);
-    osc1.stop(now + 0.15);
+    osc1.stop(now + 0.08);
 
-    // 2音目
+    // 2音目「ポン」- さらに高くて短い（すぐ続く）
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
-    osc2.frequency.value = 1320; // E6
+    osc2.frequency.value = 1319; // E6
     osc2.type = 'sine';
-    gain2.gain.setValueAtTime(0.3, now + 0.1);
-    gain2.gain.setValueAtTime(0.01, now + 0.3);
-    osc2.start(now + 0.1);
-    osc2.stop(now + 0.3);
+    gain2.gain.setValueAtTime(0.4, now + 0.06);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+    osc2.start(now + 0.06);
+    osc2.stop(now + 0.18);
   } catch (e) {
     console.warn('Sound playback failed:', e);
   }
