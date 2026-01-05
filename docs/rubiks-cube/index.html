@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ルービックキューブソルバー</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .control-panel {
+            pointer-events: auto;
+        }
+        .step-card {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900">
+    <div id="canvas-container"></div>
+
+    <div id="ui-overlay">
+        <!-- Header -->
+        <div class="p-4 flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-white">🎲 ルービックキューブソルバー</h1>
+            <a href="../" class="control-panel bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-all">
+                ← 戻る
+            </a>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel absolute top-20 left-4 bg-white/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 max-w-md">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">コントロール</h2>
+
+            <!-- Input Section -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">キューブの状態を入力</h3>
+                <p class="text-sm text-gray-600 mb-3">各面の色を選択してください</p>
+
+                <div class="grid grid-cols-3 gap-2 mb-4" id="color-palette">
+                    <button class="color-btn w-full h-12 rounded-lg border-2 border-gray-300 hover:border-gray-500"
+                            data-color="white" style="background-color: white;"></button>
+                    <button class="color-btn w-full h-12 rounded-lg border-2 border-gray-300 hover:border-gray-500"
+                            data-color="yellow" style="background-color: #FFD700;"></button>
+                    <button class="color-btn w-full h-12 rounded-lg border-2 border-gray-300 hover:border-gray-500"
+                            data-color="red" style="background-color: #FF0000;"></button>
+                    <button class="color-btn w-full h-12 rounded-lg border-2 border-gray-300 hover:border-gray-500"
+                            data-color="orange" style="background-color: #FF8C00;"></button>
+                    <button class="color-btn w-full h-12 rounded-lg border-2 border-gray-300 hover:border-gray-500"
+                            data-color="green" style="background-color: #00FF00;"></button>
+                    <button class="color-btn w-full h-12 rounded-lg border-2 border-gray-300 hover:border-gray-500"
+                            data-color="blue" style="background-color: #0000FF;"></button>
+                </div>
+
+                <div class="flex gap-2 mb-4">
+                    <button id="btn-scramble" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-all">
+                        🎲 ランダム
+                    </button>
+                    <button id="btn-reset" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-all">
+                        ♻️ リセット
+                    </button>
+                </div>
+
+                <button id="btn-solve" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold px-6 py-3 rounded-lg transition-all shadow-lg">
+                    ✨ 解法を開始
+                </button>
+            </div>
+
+            <!-- Solution Steps -->
+            <div id="solution-container" class="hidden">
+                <div class="border-t border-gray-300 pt-4">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">解法ステップ</h3>
+                    <div id="current-phase" class="mb-3 p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg">
+                        <div class="font-semibold" id="phase-name">フェーズ 1</div>
+                        <div class="text-sm opacity-90" id="phase-description">準備中...</div>
+                    </div>
+
+                    <div id="step-display" class="mb-4 p-4 bg-gray-100 rounded-lg min-h-[100px]">
+                        <div class="text-center text-gray-500">解法を開始してください</div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="btn-prev" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            ← 前へ
+                        </button>
+                        <button id="btn-next" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            次へ →
+                        </button>
+                    </div>
+
+                    <div class="mt-3 text-center text-sm text-gray-600">
+                        <span id="step-counter">ステップ: 0 / 0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="control-panel absolute bottom-4 right-4 bg-white/90 backdrop-blur-sm rounded-2xl shadow-2xl p-4 max-w-sm">
+            <h3 class="font-semibold mb-2 text-gray-800">操作方法</h3>
+            <ul class="text-sm text-gray-700 space-y-1">
+                <li>🖱️ ドラッグ: キューブを回転</li>
+                <li>🔍 スクロール: ズーム</li>
+                <li>🎲 ランダム: キューブをシャッフル</li>
+                <li>✨ 解法を開始: ステップバイステップで解法を表示</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="rubiks-cube.js"></script>
+</body>
+</html>
