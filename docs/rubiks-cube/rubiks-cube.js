@@ -1,5 +1,13 @@
 // ルービックキューブソルバー - Three.js実装
 
+console.log('Rubiks Cube Solver script loaded');
+
+// グローバルエラーハンドリング
+window.addEventListener('error', (e) => {
+    console.error('Global error:', e.error);
+    alert('エラーが発生しました: ' + e.message);
+});
+
 // グローバル変数
 let scene, camera, renderer;
 let cubeGroup;
@@ -35,11 +43,20 @@ const FACES = {
 
 // 初期化
 function init() {
+    console.log('Initializing Rubiks Cube...');
+    console.log('THREE.js version:', THREE.REVISION);
+
     const container = document.getElementById('canvas-container');
+    if (!container) {
+        console.error('Container element not found!');
+        return;
+    }
+    console.log('Container found:', container);
 
     // シーン作成
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a1a2e);
+    console.log('Scene created');
 
     // カメラ作成
     camera = new THREE.PerspectiveCamera(
@@ -70,15 +87,19 @@ function init() {
 
     // ルービックキューブ作成
     createRubiksCube();
+    console.log('Rubiks cube created, cubies count:', cubies.length);
 
     // イベントリスナー設定
     setupEventListeners();
+    console.log('Event listeners setup');
 
     // アニメーション開始
     animate();
+    console.log('Animation started');
 
     // キューブの状態を初期化
     resetCube();
+    console.log('Cube reset, initialization complete!');
 }
 
 // ルービックキューブ作成
@@ -446,4 +467,13 @@ function sleep(ms) {
 }
 
 // 初期化実行
-init();
+if (document.readyState === 'loading') {
+    console.log('Waiting for DOMContentLoaded...');
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOMContentLoaded fired, initializing...');
+        init();
+    });
+} else {
+    console.log('DOM already loaded, initializing immediately...');
+    init();
+}
