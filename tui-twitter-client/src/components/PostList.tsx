@@ -1,15 +1,15 @@
 import React from 'react';
 import { Box, Text } from '@opentui/react';
-import type { Tweet } from '../types/tweet.js';
+import type { Post } from '../types/post.js';
 
-interface TweetListProps {
-  tweets: Tweet[];
+interface PostListProps {
+  posts: Post[];
   isActive: boolean;
   selectedIndex: number;
   title: string;
 }
 
-export const TweetList: React.FC<TweetListProps> = ({ tweets, isActive, selectedIndex, title }) => {
+export const PostList: React.FC<PostListProps> = ({ posts, isActive, selectedIndex, title }) => {
   return (
     <Box
       flexDirection="column"
@@ -24,15 +24,15 @@ export const TweetList: React.FC<TweetListProps> = ({ tweets, isActive, selected
         </Text>
       </Box>
 
-      {tweets.length === 0 ? (
+      {posts.length === 0 ? (
         <Box>
-          <Text dimColor>No tweets yet</Text>
+          <Text dimColor>No posts yet</Text>
         </Box>
       ) : (
         <Box flexDirection="column">
-          {tweets.map((tweet, index) => (
+          {posts.map((post, index) => (
             <Box
-              key={tweet.id}
+              key={post.id}
               flexDirection="column"
               marginBottom={1}
               paddingLeft={1}
@@ -40,13 +40,21 @@ export const TweetList: React.FC<TweetListProps> = ({ tweets, isActive, selected
               borderColor="yellow"
             >
               <Box>
-                <Text color="white">{tweet.text.slice(0, 80)}{tweet.text.length > 80 ? '...' : ''}</Text>
+                <Text color="white">{post.text.slice(0, 80)}{post.text.length > 80 ? '...' : ''}</Text>
+                {post.favorite && <Text color="yellow"> ⭐</Text>}
               </Box>
               <Box marginTop={0}>
                 <Text dimColor>
-                  {new Date(tweet.createdAt).toLocaleString()}
+                  {new Date(post.createdAt).toLocaleString()}
                 </Text>
               </Box>
+              {post.tags && post.tags.length > 0 && (
+                <Box marginTop={0}>
+                  <Text dimColor>
+                    {post.tags.map(tag => `#${tag}`).join(' ')}
+                  </Text>
+                </Box>
+              )}
             </Box>
           ))}
         </Box>

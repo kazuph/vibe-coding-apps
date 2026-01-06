@@ -1,14 +1,14 @@
 import React from 'react';
 import { Box, Text } from '@opentui/react';
-import type { Tweet } from '../types/tweet.js';
+import type { Post } from '../types/post.js';
 
 interface TimelineProps {
-  tweets: Tweet[];
+  posts: Post[];
   isActive: boolean;
   selectedIndex: number;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ tweets, isActive, selectedIndex }) => {
+export const Timeline: React.FC<TimelineProps> = ({ posts, isActive, selectedIndex }) => {
   const formatDate = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -36,15 +36,15 @@ export const Timeline: React.FC<TimelineProps> = ({ tweets, isActive, selectedIn
         </Text>
       </Box>
 
-      {tweets.length === 0 ? (
+      {posts.length === 0 ? (
         <Box>
-          <Text dimColor>No tweets to display</Text>
+          <Text dimColor>No posts to display</Text>
         </Box>
       ) : (
         <Box flexDirection="column">
-          {tweets.map((tweet, index) => (
+          {posts.map((post, index) => (
             <Box
-              key={tweet.id}
+              key={post.id}
               flexDirection="column"
               marginBottom={1}
               paddingLeft={1}
@@ -52,19 +52,16 @@ export const Timeline: React.FC<TimelineProps> = ({ tweets, isActive, selectedIn
               borderColor="yellow"
             >
               <Box>
-                <Text bold color="green">
-                  {tweet.author.name}
-                </Text>
-                <Text dimColor> @{tweet.author.username}</Text>
-                <Text dimColor> · {formatDate(tweet.createdAt)}</Text>
+                <Text dimColor>{formatDate(post.createdAt)}</Text>
+                {post.favorite && <Text color="yellow"> ⭐</Text>}
               </Box>
               <Box marginTop={0}>
-                <Text>{tweet.text}</Text>
+                <Text>{post.text}</Text>
               </Box>
-              {tweet.metrics && (
+              {post.tags && post.tags.length > 0 && (
                 <Box marginTop={0}>
                   <Text dimColor>
-                    💬 {tweet.metrics.replies} 🔁 {tweet.metrics.retweets} ❤️ {tweet.metrics.likes}
+                    {post.tags.map(tag => `#${tag}`).join(' ')}
                   </Text>
                 </Box>
               )}

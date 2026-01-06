@@ -20,12 +20,12 @@ export const ComposeBox: React.FC<ComposeBoxProps> = ({ text, onSubmit, isActive
     >
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          Compose Tweet {isActive && '(Active)'}
+          Compose Post {isActive && '(Active)'}
         </Text>
       </Box>
 
       <Box marginBottom={1}>
-        <Text>{text || '(Type your tweet here...)'}</Text>
+        <Text>{text || '(Type your post here...)'}</Text>
       </Box>
 
       <Box justifyContent="space-between">
@@ -33,7 +33,7 @@ export const ComposeBox: React.FC<ComposeBoxProps> = ({ text, onSubmit, isActive
           {remaining} characters remaining
         </Text>
         <Text dimColor>
-          Press Ctrl+Enter to tweet
+          Press Ctrl+Enter to post
         </Text>
       </Box>
     </Box>
