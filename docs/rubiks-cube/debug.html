@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Rubiks Cube</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #0f0;
+        }
+        #log {
+            background: #000;
+            padding: 10px;
+            border: 1px solid #0f0;
+            min-height: 400px;
+            overflow-y: auto;
+        }
+        .error { color: #f00; }
+        .info { color: #0ff; }
+        .success { color: #0f0; }
+    </style>
+</head>
+<body>
+    <h1>Rubiks Cube Debug Console</h1>
+    <div id="log"></div>
+
+    <h2>Tests</h2>
+    <button onclick="testThreeJS()">Test Three.js</button>
+    <button onclick="testDOM()">Test DOM</button>
+    <button onclick="redirectToMain()">Go to Main Page</button>
+
+    <script>
+        const logDiv = document.getElementById('log');
+
+        function log(msg, type = 'info') {
+            const line = document.createElement('div');
+            line.className = type;
+            line.textContent = `[${new Date().toISOString()}] ${msg}`;
+            logDiv.appendChild(line);
+            console.log(msg);
+        }
+
+        // Capture all console messages
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        console.log = function(...args) {
+            log(args.join(' '), 'info');
+            originalLog.apply(console, args);
+        };
+
+        console.error = function(...args) {
+            log('ERROR: ' + args.join(' '), 'error');
+            originalError.apply(console, args);
+        };
+
+        console.warn = function(...args) {
+            log('WARN: ' + args.join(' '), 'info');
+            originalWarn.apply(console, args);
+        };
+
+        // Capture global errors
+        window.addEventListener('error', (e) => {
+            log(`GLOBAL ERROR: ${e.message} at ${e.filename}:${e.lineno}:${e.colno}`, 'error');
+        });
+
+        log('Debug page loaded', 'success');
+        log('User Agent: ' + navigator.userAgent, 'info');
+
+        function testThreeJS() {
+            log('Testing Three.js...', 'info');
+            if (typeof THREE !== 'undefined') {
+                log('Three.js loaded! Version: ' + THREE.REVISION, 'success');
+                try {
+                    const scene = new THREE.Scene();
+                    log('Scene created successfully', 'success');
+                } catch (e) {
+                    log('Failed to create scene: ' + e.message, 'error');
+                }
+            } else {
+                log('Three.js NOT loaded!', 'error');
+            }
+        }
+
+        function testDOM() {
+            log('Testing DOM elements...', 'info');
+            const container = document.getElementById('canvas-container');
+            if (container) {
+                log('canvas-container found', 'success');
+            } else {
+                log('canvas-container NOT found', 'error');
+            }
+        }
+
+        function redirectToMain() {
+            window.location.href = './index.html';
+        }
+
+        // Auto-load Three.js
+        log('Loading Three.js...', 'info');
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js';
+        script.onload = () => {
+            log('Three.js loaded successfully!', 'success');
+            testThreeJS();
+        };
+        script.onerror = () => {
+            log('Failed to load Three.js from CDN!', 'error');
+        };
+        document.head.appendChild(script);
+
+        // Try to load main script
+        log('Loading rubiks-cube.js...', 'info');
+        const mainScript = document.createElement('script');
+        mainScript.src = './rubiks-cube.js';
+        mainScript.onload = () => {
+            log('rubiks-cube.js loaded', 'success');
+        };
+        mainScript.onerror = () => {
+            log('Failed to load rubiks-cube.js', 'error');
+        };
+        document.head.appendChild(mainScript);
+    </script>
+</body>
+</html>
