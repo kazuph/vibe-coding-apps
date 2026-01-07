@@ -83,7 +83,9 @@ var (
 			Foreground(lipgloss.Color("8")) // Gray
 
 	selectedStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("236"))
+			Background(lipgloss.Color("39")).  // Bright cyan background
+			Foreground(lipgloss.Color("232")). // Dark text for contrast
+			Bold(true)
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8"))
