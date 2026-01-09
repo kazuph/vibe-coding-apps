@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.glass-header {
+    background: linear-gradient(rgba(12, 74, 110, 0.8), rgba(12, 74, 110, 0.9)), url('https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Traktor_Ice_Arena_%2813125574365%29.jpg/1024px-Traktor_Ice_Arena_%2813125574365%29.jpg');
+    background-size: cover;
+    background-position: center;
+}
+
+.video-container {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+    height: 0;
+    overflow: hidden;
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    background-color: #000;
+}
+.video-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
