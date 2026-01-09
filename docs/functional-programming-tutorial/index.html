@@ -289,16 +289,23 @@
 
         /* 2-column layout: when only 2 code blocks exist */
         .code-comparison:has(.code-block:nth-child(2):last-child) {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: 1fr 1fr;
             max-width: 100%;
+        }
+
+        .code-comparison:has(.code-block:nth-child(2):last-child) .code-block {
+            min-width: 0;
         }
 
         .code-comparison:has(.code-block:nth-child(2):last-child) .code-block pre {
             max-height: none;
             overflow-x: auto;
+            white-space: pre;
+            font-size: 0.85rem;
         }
 
         .code-block {
+            min-width: 0;
             background: var(--code-bg);
             border-radius: 12px;
             overflow: hidden;
@@ -329,6 +336,7 @@
             background: var(--code-bg);
             color: var(--code-text);
             margin: 0;
+            white-space: pre;
         }
 
         code {
