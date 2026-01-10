@@ -1,0 +1,28 @@
+# Build outputs
+dist/
+dist_worker/
+.wrangler/
+
+# Dependencies
+node_modules/
+
+# Test artifacts with potentially sensitive data
+.artifacts/
+
+# Environment variables
+.env
+.env.local
+.dev.vars
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log

@@ -1,0 +1,20 @@
+name = "ai-wakuwaku-zukan"
+main = "src/index.tsx"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# API Keyは .dev.vars または Cloudflare Dashboard で設定
+# GEMINI_API_KEY = "..."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wakuwaku-zukan-db"
+database_id = "2c01b05f-71cb-4789-a9eb-218c997e97c8"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "wakuwaku-zukan-images"
+
+[site]
+bucket = "./dist"
