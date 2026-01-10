@@ -16,6 +16,18 @@ type Bindings = {
   __STATIC_CONTENT: KVNamespace
 }
 
+// カタカナをひらがなに変換（検索用正規化）
+function katakanaToHiragana(str: string): string {
+  return str.replace(/[\u30A1-\u30F6]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x60)
+  );
+}
+
+// 検索用に正規化（カタカナ→ひらがな、小文字化）
+function normalizeForSearch(str: string): string {
+  return katakanaToHiragana(str).toLowerCase();
+}
+
 const app = new Hono<{ Bindings: Bindings }>()
 
 // Basic認証 (全リクエストに適用)
@@ -58,9 +70,84 @@ app.get('/api/history', async (c) => {
     imageUrl: row.image_url,
     category: row.category_name,
     categoryId: row.category_id,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    isFavorite: row.is_favorite === 1
   }))
   return c.json(transformed)
+})
+
+// 画像削除
+app.delete('/api/images/:id', async (c) => {
+  const id = c.req.param('id')
+
+  // お気に入りチェック
+  const { results } = await c.env.DB.prepare('SELECT is_favorite, image_url FROM Images WHERE id = ?').bind(id).all()
+  if (results.length === 0) {
+    return c.json({ error: 'Image not found' }, 404)
+  }
+
+  const image = results[0] as any
+  if (image.is_favorite === 1) {
+    return c.json({ error: 'お気に入りの画像は削除できません', code: 'FAVORITE_PROTECTED' }, 400)
+  }
+
+  // R2から画像を削除
+  try {
+    const urlPath = new URL(image.image_url).pathname
+    const key = urlPath.split('/').pop()
+    if (key) {
+      await c.env.BUCKET.delete(key)
+    }
+  } catch (e) {
+    console.error('Failed to delete from R2:', e)
+  }
+
+  // DBから削除
+  await c.env.DB.prepare('DELETE FROM Images WHERE id = ?').bind(id).run()
+
+  return c.json({ ok: true })
+})
+
+// お気に入りトグル
+app.post('/api/images/:id/favorite', async (c) => {
+  const id = c.req.param('id')
+
+  // 現在の状態を取得
+  const { results } = await c.env.DB.prepare('SELECT is_favorite FROM Images WHERE id = ?').bind(id).all()
+  if (results.length === 0) {
+    return c.json({ error: 'Image not found' }, 404)
+  }
+
+  const currentFav = (results[0] as any).is_favorite === 1
+  const newFav = currentFav ? 0 : 1
+
+  await c.env.DB.prepare('UPDATE Images SET is_favorite = ? WHERE id = ?').bind(newFav, id).run()
+
+  return c.json({ isFavorite: newFav === 1 })
+})
+
+// カテゴリー変更
+app.patch('/api/images/:id/category', async (c) => {
+  const id = c.req.param('id')
+  const { categoryId } = await c.req.json()
+
+  // 画像の存在確認
+  const { results: imageResults } = await c.env.DB.prepare('SELECT id FROM Images WHERE id = ?').bind(id).all()
+  if (imageResults.length === 0) {
+    return c.json({ error: 'Image not found' }, 404)
+  }
+
+  // カテゴリーの存在確認
+  const { results: catResults } = await c.env.DB.prepare('SELECT id, name FROM Categories WHERE id = ?').bind(categoryId).all()
+  if (catResults.length === 0) {
+    return c.json({ error: 'Category not found' }, 404)
+  }
+
+  // カテゴリーを更新
+  await c.env.DB.prepare('UPDATE Images SET category_id = ? WHERE id = ?').bind(categoryId, id).run()
+
+  const category = catResults[0] as { id: number; name: string }
+  return c.json({ categoryId: category.id, categoryName: category.name })
 })
 
 // 画像生成
@@ -91,7 +178,7 @@ app.post('/api/generate', async (c) => {
       名前は必ずひらがな・カタカナで、「〜さん」などの敬称は除去してください。
     `
 
-    const normalizeRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    const normalizeRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -127,25 +214,25 @@ app.post('/api/generate', async (c) => {
   let categoryId = null
   let categoryName = 'その他'
 
-  // カテゴリーマッピング (キーワードベース)
+  // カテゴリーマッピング (キーワードベース - ひらがな＋漢字両方)
   const categoryKeywords: Record<string, string[]> = {
-    'どうぶつ': ['きりん', 'らいおん', 'ぱんだ', 'ぺんぎん', 'くま', 'ぞう', 'うさぎ', 'ねこ', 'いぬ', 'とり', 'さる', 'うま', 'うし', 'ぶた', 'ひつじ', 'やぎ', 'しか', 'きつね', 'たぬき', 'りす', 'ねずみ', 'かば', 'さい', 'わに', 'かめ', 'へび', 'とかげ', 'かえる', 'いるか', 'くじら', 'さめ', 'たこ', 'いか', 'かに', 'えび', 'さかな', 'こあら', 'かんがるー'],
-    'のりもの': ['しょうぼうしゃ', 'パトカー', 'でんしゃ', 'ひこうき', 'バス', 'くるま', 'じてんしゃ', 'バイク', 'ふね', 'ヘリコプター', 'ロケット', 'きゅうきゅうしゃ', 'タクシー', 'トラック', 'しんかんせん', 'ショベルカー', 'ダンプカー', 'クレーン'],
-    'たべもの': ['いちご', 'バナナ', 'おにぎり', 'カレー', 'メロン', 'りんご', 'みかん', 'ぶどう', 'すいか', 'もも', 'さくらんぼ', 'パン', 'ケーキ', 'アイス', 'ラーメン', 'すし', 'ピザ', 'ハンバーグ', 'やさい', 'にんじん', 'トマト', 'きゅうり', 'キャベツ', 'たまねぎ'],
-    'むし': ['かぶとむし', 'ちょうちょ', 'とんぼ', 'ばった', 'あり', 'くわがた', 'せみ', 'はち', 'てんとうむし', 'かまきり', 'こおろぎ', 'ほたる', 'かたつむり'],
-    'おはな': ['チューリップ', 'さくら', 'あさがお', 'ひまわり', 'たんぽぽ', 'ばら', 'ゆり', 'すみれ', 'コスモス', 'あじさい', 'つばき', 'もみじ', 'はな'],
-    'がっこう': ['えんぴつ', 'けしごむ', 'ノート', 'ランドセル', 'つくえ', 'いす', 'こくばん', 'チョーク', 'じょうぎ', 'はさみ', 'のり', 'クレヨン', 'えのぐ', 'ふでばこ', 'きょうかしょ', 'たいいくかん', 'こうてい', 'プール', 'おんがくしつ'],
+    'どうぶつ': ['きりん', 'らいおん', 'ぱんだ', 'ぺんぎん', 'くま', 'ぞう', 'うさぎ', 'ねこ', 'いぬ', 'とり', 'さる', 'うま', 'うし', 'ぶた', 'ひつじ', 'やぎ', 'しか', 'きつね', 'たぬき', 'りす', 'ねずみ', 'かば', 'さい', 'わに', 'かめ', 'へび', 'とかげ', 'かえる', 'いるか', 'くじら', 'さめ', 'たこ', 'いか', 'かに', 'えび', 'さかな', 'こあら', 'かんがるー', '動物', '犬', '猫', '鳥', '魚'],
+    'のりもの': ['しょうぼうしゃ', 'ぱとかー', 'でんしゃ', 'ひこうき', 'ばす', 'くるま', 'じてんしゃ', 'ばいく', 'ふね', 'へりこぷたー', 'ろけっと', 'きゅうきゅうしゃ', 'たくしー', 'とらっく', 'しんかんせん', 'しょべるかー', 'だんぷかー', 'くれーん', 'かーきゃりあ', 'きゃりあかー', 'れっかーしゃ', 'みきさーしゃ', 'ごみしゅうしゅうしゃ', 'はたらくくるま', '消防車', '救急車', '電車', '飛行機', '新幹線', '自転車', '自動車', '車', 'パトカー', 'バス', 'トラック'],
+    'たべもの': ['いちご', 'ばなな', 'おにぎり', 'かれー', 'めろん', 'りんご', 'みかん', 'ぶどう', 'すいか', 'もも', 'さくらんぼ', 'ぱん', 'けーき', 'あいす', 'らーめん', 'すし', 'ぴざ', 'はんばーぐ', 'やさい', 'にんじん', 'とまと', 'きゅうり', 'きゃべつ', 'たまねぎ', '食べ物', '果物', '野菜', 'ラーメン', 'カレー'],
+    'むし': ['かぶとむし', 'ちょうちょ', 'とんぼ', 'ばった', 'あり', 'くわがた', 'せみ', 'はち', 'てんとうむし', 'かまきり', 'こおろぎ', 'ほたる', 'かたつむり', '昆虫', '虫', '蝶', '蜂'],
+    'おはな': ['ちゅーりっぷ', 'さくら', 'あさがお', 'ひまわり', 'たんぽぽ', 'ばら', 'ゆり', 'すみれ', 'こすもす', 'あじさい', 'つばき', 'もみじ', 'はな', '花', '桜', '植物'],
+    'がっこう': ['えんぴつ', 'けしごむ', 'のーと', 'らんどせる', 'つくえ', 'いす', 'こくばん', 'ちょーく', 'じょうぎ', 'はさみ', 'のり', 'くれよん', 'えのぐ', 'ふでばこ', 'きょうかしょ', 'たいいくかん', 'こうてい', 'ぷーる', 'おんがくしつ', '学校', '鉛筆', 'ノート', '机', '椅子'],
   }
 
   try {
       const { results } = await c.env.DB.prepare('SELECT name, id FROM Categories').all()
-      const promptLower = prompt.toLowerCase()
+      const promptNormalized = normalizeForSearch(prompt)
 
-      // キーワードマッチングでカテゴリーを探す
+      // キーワードマッチングでカテゴリーを探す（正規化して比較）
       let matched = false
       for (const [catName, keywords] of Object.entries(categoryKeywords)) {
           for (const keyword of keywords) {
-              if (promptLower.includes(keyword.toLowerCase())) {
+              if (promptNormalized.includes(keyword)) {
                   categoryName = catName
                   matched = true
                   break
@@ -158,12 +245,28 @@ app.post('/api/generate', async (c) => {
       if (!matched) {
           const categories = results.map((r: any) => r.name).join(', ')
           const catPrompt = `
-            "${prompt}"を次のカテゴリーのどれかに分類してください: [${categories}]
-            必ず次のJSON形式で回答: { "category": "カテゴリー名" }
-            カテゴリー名は必ず上記リストから選んでください。
+あなたは子供向け図鑑アプリのカテゴリー分類AIです。
+「${prompt}」を最も適切なカテゴリーに分類してください。
+
+【重要な分類ルール】
+- 車の名前・車種名（シエンタ、プリウス、アルファード、N-BOX、フィット等）→「のりもの」
+- 電車の名前（はやぶさ、のぞみ、こまち等）→「のりもの」
+- 飛行機の名前（ボーイング、ジャンボ等）→「のりもの」
+- 働く車（消防車、救急車、パトカー、ショベルカー等）→「のりもの」
+
+カテゴリー一覧:
+- どうぶつ: 動物、生き物（犬、猫、象、魚、鳥、恐竜など）
+- のりもの: 乗り物全般（車、車種名、電車、飛行機、バス、トラック、船、バイク、働く車など）
+- たべもの: 食べ物、飲み物（果物、野菜、料理、お菓子など）
+- むし: 昆虫（カブトムシ、蝶々、バッタなど）
+- おはな: 植物、花（チューリップ、桜、ひまわりなど）
+- がっこう: 学校用品（鉛筆、ノート、ランドセルなど）
+- その他: 上記に当てはまらないもの
+
+回答は必ずJSON形式: { "category": "カテゴリー名" }
           `
 
-          const catRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+          const catRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -173,12 +276,22 @@ app.post('/api/generate', async (c) => {
           })
 
           const catData = await catRes.json()
+          console.log(`[Category] Gemini raw response:`, JSON.stringify(catData).slice(0, 500))
           // @ts-ignore
           const catText = catData.candidates?.[0]?.content?.parts?.[0]?.text
-          console.log(`[Category] Gemini response: ${catText}`)
+          console.log(`[Category] Gemini parsed text: ${catText}`)
           if (catText) {
-              const parsed = JSON.parse(catText)
-              categoryName = parsed.category
+              try {
+                  const parsed = JSON.parse(catText)
+                  if (parsed.category) {
+                      categoryName = parsed.category
+                      console.log(`[Category] Gemini classified as: ${categoryName}`)
+                  }
+              } catch (parseErr) {
+                  console.error(`[Category] JSON parse error:`, parseErr)
+              }
+          } else {
+              console.log(`[Category] Gemini returned no text, falling back to "その他"`)
           }
       }
 

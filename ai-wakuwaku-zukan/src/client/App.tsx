@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, BookOpen, Sparkles, RefreshCw, Trash2, Home } from 'lucide-react';
+import { Mic, MicOff, BookOpen, Sparkles, RefreshCw, Trash2, Home, Star, X, ChevronDown } from 'lucide-react';
+
+// 画像アイテムの型定義
+type GalleryItem = {
+  id: string;
+  prompt: string;
+  imageUrl: string;
+  category?: string;
+  categoryId?: number;
+  createdAt?: string;
+  isFavorite?: boolean;
+};
 
 const App = () => {
   const [view, setView] = useState('home'); // 'home', 'category', 'create', 'gallery'
@@ -8,9 +19,15 @@ const App = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [gallery, setGallery] = useState<any[]>([]);
+  const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // 詳細モーダル用のstate
+  const [detailModal, setDetailModal] = useState<{
+    showing: boolean;
+    item: GalleryItem | null;
+  }>({ showing: false, item: null });
 
   // 削除確認モーダル用のstate
   const [deleteModal, setDeleteModal] = useState<{
@@ -21,6 +38,9 @@ const App = () => {
     userAnswer: string;
     wrongAttempt: boolean;
   }>({ showing: false, targetId: null, num1: 0, num2: 0, userAnswer: '', wrongAttempt: false });
+
+  // カテゴリーピッカー用のstate
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
   const recognitionRef = useRef<any>(null);
 
@@ -135,8 +155,75 @@ const App = () => {
     }
   };
   
+  // 詳細モーダルを開く
+  const openDetailModal = (item: GalleryItem) => {
+    setDetailModal({ showing: true, item });
+  };
+
+  // 詳細モーダルを閉じる
+  const closeDetailModal = () => {
+    setDetailModal({ showing: false, item: null });
+    setShowCategoryPicker(false);
+  };
+
+  // お気に入りトグル
+  const toggleFavorite = async (id: string) => {
+    try {
+      const res = await fetch(`/api/images/${id}/favorite`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setGallery(prev => prev.map(item =>
+          item.id === id ? { ...item, isFavorite: data.isFavorite } : item
+        ));
+        // 詳細モーダルのアイテムも更新
+        if (detailModal.item?.id === id) {
+          setDetailModal(prev => ({
+            ...prev,
+            item: prev.item ? { ...prev.item, isFavorite: data.isFavorite } : null
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to toggle favorite:', e);
+    }
+  };
+
+  // カテゴリー変更
+  const updateCategory = async (id: string, categoryId: number) => {
+    try {
+      const res = await fetch(`/api/images/${id}/category`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGallery(prev => prev.map(item =>
+          item.id === id ? { ...item, categoryId: data.categoryId, category: data.categoryName } : item
+        ));
+        // 詳細モーダルのアイテムも更新
+        if (detailModal.item?.id === id) {
+          setDetailModal(prev => ({
+            ...prev,
+            item: prev.item ? { ...prev.item, categoryId: data.categoryId, category: data.categoryName } : null
+          }));
+        }
+        setShowCategoryPicker(false);
+      }
+    } catch (e) {
+      console.error('Failed to update category:', e);
+    }
+  };
+
   // 削除ボタンをクリック時 - かけ算問題を出題
   const handleDeleteClick = (id: string) => {
+    // お気に入りチェック
+    const item = gallery.find(g => g.id === id);
+    if (item?.isFavorite) {
+      setError('⭐ おきにいりの えは けせないよ！');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
     // 2桁の数 (10-99) と 1桁の数 (2-9) を生成
     const num1 = Math.floor(Math.random() * 90) + 10; // 10-99
     const num2 = Math.floor(Math.random() * 8) + 2;   // 2-9
@@ -156,10 +243,29 @@ const App = () => {
     const userNum = parseInt(deleteModal.userAnswer, 10);
 
     if (userNum === correctAnswer) {
-      // 正解 - 削除実行
-      const newGallery = gallery.filter(item => item.id !== deleteModal.targetId);
-      setGallery(newGallery);
-      setDeleteModal({ showing: false, targetId: null, num1: 0, num2: 0, userAnswer: '', wrongAttempt: false });
+      // 正解 - API呼び出しで削除実行
+      try {
+        const res = await fetch(`/api/images/${deleteModal.targetId}`, { method: 'DELETE' });
+        if (res.ok) {
+          const newGallery = gallery.filter(item => item.id !== deleteModal.targetId);
+          setGallery(newGallery);
+          setDeleteModal({ showing: false, targetId: null, num1: 0, num2: 0, userAnswer: '', wrongAttempt: false });
+          // 詳細モーダルも閉じる
+          if (detailModal.item?.id === deleteModal.targetId) {
+            closeDetailModal();
+          }
+        } else {
+          const data = await res.json();
+          if (data.code === 'FAVORITE_PROTECTED') {
+            setError('⭐ おきにいりの えは けせないよ！');
+            setTimeout(() => setError(null), 3000);
+          }
+          setDeleteModal({ showing: false, targetId: null, num1: 0, num2: 0, userAnswer: '', wrongAttempt: false });
+        }
+      } catch (e) {
+        console.error('Failed to delete:', e);
+        setDeleteModal({ showing: false, targetId: null, num1: 0, num2: 0, userAnswer: '', wrongAttempt: false });
+      }
     } else {
       // 不正解
       setDeleteModal(prev => ({ ...prev, userAnswer: '', wrongAttempt: true }));
@@ -172,11 +278,36 @@ const App = () => {
   };
 
   const Card = ({ children, onClick, className = "" }: any) => (
-    <div 
+    <div
       onClick={onClick}
       className={`bg-white rounded-3xl shadow-sm border border-stone-100 p-6 cursor-pointer active:scale-95 transition-all transform hover:shadow-md ${className}`}
     >
       {children}
+    </div>
+  );
+
+  // 統一ImageCardコンポーネント - すべてのビューで使用
+  const ImageCard = ({ item, showCategory = false, compact = false }: { item: GalleryItem; showCategory?: boolean; compact?: boolean }) => (
+    <div
+      onClick={() => openDetailModal(item)}
+      className={`bg-white rounded-3xl overflow-hidden border border-stone-100 shadow-sm relative group hover:shadow-lg transition-all cursor-pointer ${compact ? '' : ''}`}
+    >
+      <div className={`relative ${compact ? 'aspect-square' : 'aspect-square'}`}>
+        <img src={item.imageUrl} alt={item.prompt} className="w-full h-full object-cover" />
+        {item.isFavorite && (
+          <div className="absolute top-2 right-2 bg-yellow-400 p-1.5 rounded-full shadow-md">
+            <Star size={14} className="text-white fill-white" />
+          </div>
+        )}
+      </div>
+      <div className={`${compact ? 'p-2' : 'p-4'} bg-white relative z-10`}>
+        <p className={`font-bold ${compact ? 'text-xs text-center' : 'text-lg'} text-stone-800 truncate`}>{item.prompt}</p>
+        {showCategory && !compact && (
+          <span className="inline-block bg-stone-100 text-stone-500 text-xs px-2 py-1 rounded-full mt-1">
+            {categories.find(c => c.id === item.categoryId)?.name || item.category || 'その他'}
+          </span>
+        )}
+      </div>
     </div>
   );
 
@@ -277,8 +408,7 @@ const App = () => {
                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
                     {gallery.slice(0, 5).map(item => (
                         <div key={item.id} className="min-w-[120px] md:min-w-[160px] snap-start">
-                            <img src={item.imageUrl} className="w-full h-32 md:h-40 object-cover rounded-2xl border border-stone-100" />
-                            <p className="text-xs font-bold mt-2 text-center text-stone-600 truncate">{item.prompt}</p>
+                            <ImageCard item={item} compact={true} />
                         </div>
                     ))}
                     {gallery.length === 0 && <p className="text-sm text-stone-400 italic">まだ ないよ</p>}
@@ -403,18 +533,11 @@ const App = () => {
                     <button onClick={() => setView('create')} className="mt-4 text-stone-600 underline font-bold">つくってみる？</button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {gallery
                     .filter(item => item.categoryId === selectedCategory.id || (item.category === selectedCategory.name))
                     .map(item => (
-                        <div key={item.id} className="bg-white rounded-3xl overflow-hidden border border-stone-100 shadow-sm hover:shadow-md transition-shadow group">
-                            <div className="relative aspect-square">
-                                <img src={item.imageUrl} alt={item.prompt} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="p-4">
-                                <p className="font-bold text-lg text-stone-700">{item.prompt}</p>
-                            </div>
-                        </div>
+                        <ImageCard key={item.id} item={item} />
                     ))}
                 </div>
             )}
@@ -433,29 +556,9 @@ const App = () => {
                 <button onClick={() => setView('create')} className="mt-4 bg-stone-800 text-white px-6 py-2 rounded-full font-bold hover:bg-stone-700">はじめよう！</button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {gallery.map(item => (
-                  <div key={item.id} className="bg-white rounded-3xl overflow-hidden border border-stone-100 shadow-sm relative group hover:shadow-lg transition-all">
-                    <div className="relative aspect-square">
-                        <img src={item.imageUrl} alt={item.prompt} className="w-full h-full object-cover" />
-                    </div>
-                    <div className="p-4 bg-white relative z-10">
-                      <div className="flex justify-between items-start">
-                        <div>
-                            <p className="font-bold text-lg text-stone-800">{item.prompt}</p>
-                            <span className="inline-block bg-stone-100 text-stone-500 text-xs px-2 py-1 rounded-full mt-1">
-                                {categories.find(c => c.id === item.categoryId)?.name || item.category || 'その他'}
-                            </span>
-                        </div>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); handleDeleteClick(item.id); }}
-                            className="p-2 text-stone-300 hover:text-red-500 transition-colors bg-stone-50 rounded-full"
-                        >
-                            <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <ImageCard key={item.id} item={item} showCategory={true} />
                 ))}
               </div>
             )}
@@ -472,7 +575,7 @@ const App = () => {
 
       {/* 削除確認モーダル (かけ算) */}
       {deleteModal.showing && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in duration-200">
             <h3 className="text-xl font-bold text-stone-800 text-center mb-2">🧮 もんだい</h3>
             <p className="text-stone-500 text-center text-sm mb-6">けすには けいさん してね</p>
@@ -522,6 +625,80 @@ const App = () => {
               >
                 けす
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 詳細モーダル (フルスクリーン) */}
+      {detailModal.showing && detailModal.item && (
+        <div className="fixed inset-0 bg-black/90 flex flex-col z-50 animate-in fade-in duration-200">
+          {/* ヘッダー */}
+          <div className="flex justify-between items-center p-4 bg-gradient-to-b from-black/50 to-transparent">
+            <button
+              onClick={closeDetailModal}
+              className="p-2 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-white/30 transition-colors"
+            >
+              <X size={24} />
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => toggleFavorite(detailModal.item!.id)}
+                className={`p-2 rounded-full transition-colors ${
+                  detailModal.item.isFavorite
+                    ? 'bg-yellow-400 text-white'
+                    : 'bg-white/20 backdrop-blur-sm text-white hover:bg-white/30'
+                }`}
+              >
+                <Star size={24} className={detailModal.item.isFavorite ? 'fill-white' : ''} />
+              </button>
+              <button
+                onClick={() => handleDeleteClick(detailModal.item!.id)}
+                className="p-2 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-red-500/80 transition-colors"
+              >
+                <Trash2 size={24} />
+              </button>
+            </div>
+          </div>
+
+          {/* 画像 */}
+          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+            <img
+              src={detailModal.item.imageUrl}
+              alt={detailModal.item.prompt}
+              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+            />
+          </div>
+
+          {/* フッター */}
+          <div className="p-6 bg-gradient-to-t from-black/70 to-transparent">
+            <h3 className="text-2xl font-bold text-white mb-2">{detailModal.item.prompt}</h3>
+            <div className="relative inline-block">
+              <button
+                onClick={() => setShowCategoryPicker(!showCategoryPicker)}
+                className="flex items-center gap-1 bg-white/20 text-white text-sm px-3 py-1 rounded-full backdrop-blur-sm hover:bg-white/30 transition-colors"
+              >
+                <span>{categories.find(c => c.id === detailModal.item?.categoryId)?.name || detailModal.item.category || 'その他'}</span>
+                <ChevronDown size={14} className={`transition-transform ${showCategoryPicker ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* カテゴリーピッカー */}
+              {showCategoryPicker && (
+                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-lg overflow-hidden min-w-[160px] animate-in slide-in-from-bottom-2 duration-200">
+                  {categories.map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => updateCategory(detailModal.item!.id, cat.id)}
+                      className={`w-full px-4 py-2 text-left text-sm hover:bg-stone-100 transition-colors flex items-center gap-2 ${
+                        cat.id === detailModal.item?.categoryId ? 'bg-stone-100 font-bold' : ''
+                      }`}
+                    >
+                      <span>{cat.icon}</span>
+                      <span>{cat.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
