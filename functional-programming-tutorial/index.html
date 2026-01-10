@@ -562,13 +562,13 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: var(--bg-paper);
+            background: var(--code-bg);
             min-width: 0;
         }
 
         .output-label {
-            background: var(--bg-warm);
-            color: var(--text-muted);
+            background: var(--code-bg-alt);
+            color: var(--code-comment);
             padding: 0.5rem 1rem;
             font-size: 0.75rem;
             font-weight: 500;
@@ -580,13 +580,14 @@
         .output-content {
             flex: 1;
             padding: 1rem;
-            color: var(--text-primary);
+            color: var(--code-string);
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.88rem;
             line-height: 1.7;
             white-space: pre-wrap;
             margin: 0;
             overflow: auto;
+            background: var(--code-bg);
         }
 
         .output-error {
