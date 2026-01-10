@@ -36,9 +36,44 @@
         .animate-button-press {
             animation: buttonPress 0.3s ease-in-out;
         }
+
+        .portal-home {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            width: 44px;
+            height: 44px;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .portal-home:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        .portal-home svg {
+            width: 22px;
+            height: 22px;
+            fill: #6b7280;
+        }
+        .portal-home:hover svg {
+            fill: #8b5cf6;
+        }
     </style>
 </head>
 <body class="font-sans">
+    <a href="https://kazuph.github.io/vibe-coding-apps/" class="portal-home" title="ポータルホームへ戻る">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+        </svg>
+    </a>
     <div id="app"></div>
 
     <script>

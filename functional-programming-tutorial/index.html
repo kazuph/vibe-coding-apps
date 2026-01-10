@@ -864,6 +864,41 @@
         .haskell-guide { border-top: 3px solid var(--haskell); }
         .elixir-guide { border-top: 3px solid var(--elixir); }
         .typescript-guide { border-top: 3px solid var(--typescript); }
+
+        /* Portal Home Button */
+        .portal-home {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            width: 44px;
+            height: 44px;
+            background: white;
+            border: 1px solid var(--border-medium);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            box-shadow: var(--shadow-md);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .portal-home:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .portal-home svg {
+            width: 22px;
+            height: 22px;
+            fill: var(--text-secondary);
+            transition: fill 0.2s;
+        }
+
+        .portal-home:hover svg {
+            fill: var(--accent-teal);
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
@@ -1022,6 +1057,13 @@
     </script>
 </head>
 <body>
+    <!-- Portal Home Button -->
+    <a href="https://kazuph.github.io/vibe-coding-apps/" class="portal-home" title="ポータルホームへ戻る">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+        </svg>
+    </a>
+
     <header>
         <h1>関数型プログラミング完全ガイド</h1>
         <p class="subtitle">MoonBit・Haskell・Elixir・TypeScript/Effect で学ぶ<br>カリー化からモナドまで</p>
