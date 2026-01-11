@@ -1025,6 +1025,28 @@ export const kanjiReadings: Record<string, KanjiReading> = {
   '臨': { onyomi: ['リン'], kunyomi: ['のぞむ'], meanings: ['臨む'], examples: [{ word: '臨時', reading: 'りんじ' }] },
   '朗': { onyomi: ['ロウ'], kunyomi: ['ほがらか'], meanings: ['朗らか'], examples: [{ word: '朗読', reading: 'ろうどく' }] },
   '論': { onyomi: ['ロン'], kunyomi: [], meanings: ['論'], examples: [{ word: '議論', reading: 'ぎろん' }] },
+
+  // === 4年生 追加分（都道府県用など） ===
+  '茨': { onyomi: ['シ'], kunyomi: ['いばら'], meanings: ['茨城'], examples: [{ word: '茨城県', reading: 'いばらきけん' }] },
+  '媛': { onyomi: ['エン'], kunyomi: ['ひめ'], meanings: ['愛媛'], examples: [{ word: '愛媛県', reading: 'えひめけん' }] },
+  '岡': { onyomi: ['コウ'], kunyomi: ['おか'], meanings: ['岡'], examples: [{ word: '岡山県', reading: 'おかやまけん' }] },
+  '潟': { onyomi: ['セキ'], kunyomi: ['かた'], meanings: ['干潟'], examples: [{ word: '新潟県', reading: 'にいがたけん' }] },
+  '岐': { onyomi: ['キ'], kunyomi: [], meanings: ['岐阜'], examples: [{ word: '岐阜県', reading: 'ぎふけん' }] },
+  '熊': { onyomi: ['ユウ'], kunyomi: ['くま'], meanings: ['熊'], examples: [{ word: '熊本県', reading: 'くまもとけん' }] },
+  '香': { onyomi: ['コウ', 'キョウ'], kunyomi: ['か', 'かおり'], meanings: ['香り'], examples: [{ word: '香川県', reading: 'かがわけん' }] },
+  '佐': { onyomi: ['サ'], kunyomi: [], meanings: ['佐賀'], examples: [{ word: '佐賀県', reading: 'さがけん' }] },
+  '埼': { onyomi: ['キ'], kunyomi: ['さき'], meanings: ['埼玉'], examples: [{ word: '埼玉県', reading: 'さいたまけん' }] },
+  '崎': { onyomi: ['キ'], kunyomi: ['さき'], meanings: ['岬'], examples: [{ word: '宮崎県', reading: 'みやざきけん' }] },
+  '滋': { onyomi: ['ジ'], kunyomi: [], meanings: ['滋賀'], examples: [{ word: '滋賀県', reading: 'しがけん' }] },
+  '鹿': { onyomi: ['ロク'], kunyomi: ['しか'], meanings: ['鹿'], examples: [{ word: '鹿児島県', reading: 'かごしまけん' }] },
+  '栃': { onyomi: [], kunyomi: ['とち'], meanings: ['栃木'], examples: [{ word: '栃木県', reading: 'とちぎけん' }] },
+  '奈': { onyomi: ['ナ'], kunyomi: [], meanings: ['奈良'], examples: [{ word: '奈良県', reading: 'ならけん' }] },
+  '梨': { onyomi: ['リ'], kunyomi: ['なし'], meanings: ['梨'], examples: [{ word: '山梨県', reading: 'やまなしけん' }] },
+  '阪': { onyomi: ['ハン'], kunyomi: ['さか'], meanings: ['大阪'], examples: [{ word: '大阪府', reading: 'おおさかふ' }] },
+  '阜': { onyomi: ['フ'], kunyomi: [], meanings: ['岐阜'], examples: [{ word: '岐阜県', reading: 'ぎふけん' }] },
+  '井': { onyomi: ['セイ', 'ショウ'], kunyomi: ['い'], meanings: ['井戸'], examples: [{ word: '福井県', reading: 'ふくいけん' }] },
+  '沖': { onyomi: ['チュウ'], kunyomi: ['おき'], meanings: ['沖'], examples: [{ word: '沖縄県', reading: 'おきなわけん' }] },
+  '縄': { onyomi: ['ジョウ'], kunyomi: ['なわ'], meanings: ['縄'], examples: [{ word: '沖縄県', reading: 'おきなわけん' }] },
 };
 
 // デフォルトの読みデータを取得（データがない場合）
