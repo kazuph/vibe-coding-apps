@@ -1,0 +1,12 @@
+{
+  "supported-targets": ["js"],
+  "import": [
+    { "path": "mizchi/js/core", "alias": "js" }
+  ],
+  "link": {
+    "js": {
+      "exports": ["start"],
+      "format": "esm"
+    }
+  }
+}

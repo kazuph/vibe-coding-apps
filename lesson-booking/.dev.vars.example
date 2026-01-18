@@ -1,0 +1,14 @@
+# Google OAuth Configuration
+# Get from Google Cloud Console: https://console.cloud.google.com/apis/credentials
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8787/auth/callback
+
+# Session Secret (generate a random string)
+SESSION_SECRET=your-random-session-secret-at-least-32-characters
+
+# OAuth Scopes (for reference, configured in worker.ts)
+# - openid
+# - profile
+# - email
+# - https://www.googleapis.com/auth/calendar.events

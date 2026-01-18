@@ -1,0 +1,40 @@
+{
+  "name": "lesson-booking",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "check": "moon check",
+    "fmt": "moon fmt",
+    "generate": "sol generate && node scripts/patch-types.js",
+    "build:moon": "$HOME/.moon/bin/moon build --target js",
+    "build:patch": "node scripts/patch-for-cloudflare.js target/js/release/build/__gen__/server/server.js",
+    "build:client": "node scripts/bundle-client.js",
+    "build": "npm run generate && npm run build:moon && npm run build:patch && npm run build:client",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "db:create": "wrangler d1 create lesson-booking-db",
+    "db:init": "wrangler d1 execute lesson-booking-db --local --file=migrations/0001_initial.sql",
+    "db:migrate": "wrangler d1 migrations apply lesson-booking-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply lesson-booking-db",
+    "clean": "rm -rf target .mooncakes",
+    "moon:install": "moon install",
+    "test": "moon test",
+    "test:e2e": "npx playwright test --config=e2e/playwright.config.ts",
+    "test:e2e:public": "npx playwright test --config=e2e/playwright.config.ts --project=public",
+    "test:e2e:setup": "npx playwright test --config=e2e/playwright.config.ts --project=setup --headed",
+    "test:e2e:ui": "npx playwright test --config=e2e/playwright.config.ts --ui",
+    "test:e2e:headed": "npx playwright test --config=e2e/playwright.config.ts --headed"
+  },
+  "dependencies": {
+    "hono": "^4.11.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260103.0",
+    "@luna_ui/sol": "^0.4.0",
+    "@playwright/test": "^1.50.0",
+    "esbuild": "^0.27.2",
+    "wrangler": "^3.114.16"
+  },
+  "author": "kazuph",
+  "license": "MIT"
+}

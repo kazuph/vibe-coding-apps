@@ -1,0 +1,25 @@
+{
+  "islands": ["app/client"],
+  "routes": "app/server",
+  "runtime": "cloudflare",
+  "output": "app/__gen__",
+  "client_auto_exports": true,
+  "ssg": {
+    "enabled": true,
+    "metaFiles": {
+      "sitemap": true,
+      "feed": true,
+      "llmsTxt": true
+    },
+    "cssUtilities": {
+      "enabled": true,
+      "split": true,
+      "inlineThreshold": 4096
+    }
+  },
+  "site": {
+    "title": "Blog Admin - MoonBit + Luna UI",
+    "description": "ブログ管理ツール - MoonBit & Luna UI評価プロジェクト",
+    "url": "https://moonbit-lunaui-eval.kazuph.workers.dev"
+  }
+}

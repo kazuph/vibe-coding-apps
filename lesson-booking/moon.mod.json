@@ -1,0 +1,21 @@
+{
+  "name": "kazuph/lesson_booking",
+  "version": "0.1.0",
+  "deps": {
+    "mizchi/luna": "0.4.1",
+    "mizchi/js": "0.10.8",
+    "mizchi/cloudflare": "0.1.1"
+  },
+  "readme": "README.md",
+  "repository": "",
+  "license": "MIT",
+  "keywords": [
+    "lesson-booking",
+    "luna-ui",
+    "cloudflare-workers",
+    "sol-framework"
+  ],
+  "description": "Lesson booking system built with MoonBit, Luna UI and Sol Framework on Cloudflare Workers",
+  "source": "app",
+  "preferred-target": "js"
+}

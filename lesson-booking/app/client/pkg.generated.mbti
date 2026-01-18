@@ -1,0 +1,40 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "kazuph/blog_admin/client"
+
+import(
+  "mizchi/js/core"
+  "mizchi/luna/luna/dom/element"
+  "moonbitlang/core/json"
+)
+
+// Values
+pub fn clear_loaded() -> Unit
+
+pub fn hydrate(@core.Any) -> Unit
+
+pub fn markdown_editor(MarkdownEditorProps) -> @element.DomNode
+
+pub fn scan() -> Unit
+
+pub fn start() -> Unit
+
+pub fn unload(String) -> Unit
+
+// Errors
+
+// Types and methods
+pub(all) struct MarkdownEditorProps {
+  initial_content : String
+  action_url : String
+  post_id : String
+  initial_title : String
+  initial_slug : String
+  initial_status : String
+}
+pub impl ToJson for MarkdownEditorProps
+pub impl @json.FromJson for MarkdownEditorProps
+
+// Type aliases
+
+// Traits
+
