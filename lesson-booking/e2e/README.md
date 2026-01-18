@@ -10,6 +10,8 @@ Playwright を使用したEnd-to-End テスト。
 | `instructor.spec.ts` | 講師ページ（コース管理、空き時間登録） | 講師 |
 | `student.spec.ts` | 生徒ページ（検索、予約リクエスト） | 生徒 |
 | `booking-flow.spec.ts` | 予約フロー全体（作成→リクエスト→承認） | 両方 |
+| `booking-cancellation.spec.ts` | キャンセル・却下機能 | 両方 |
+| `booking-validation.spec.ts` | バリデーションとエッジケース | 講師 |
 
 ## 前提条件
 

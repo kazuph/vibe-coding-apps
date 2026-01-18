@@ -71,6 +71,25 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'] },
     },
+
+    // Booking cancellation and rejection tests
+    {
+      name: 'booking-cancellation',
+      testMatch: /booking-cancellation\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+
+    // Validation and edge cases tests
+    {
+      name: 'booking-validation',
+      testMatch: /booking-validation\.spec\.ts/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: '.auth/instructor.json',
+      },
+    },
   ],
 
   // Run local dev server before starting tests
