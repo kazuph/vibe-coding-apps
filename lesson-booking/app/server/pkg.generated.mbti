@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "kazuph/lesson_booking/server"
+package "kazuph/blog_admin/server"
 
 import(
   "mizchi/cloudflare"
@@ -18,79 +18,25 @@ pub fn array_len(@core.Any) -> Int
 
 pub fn config() -> @router.RouterConfig
 
-pub async fn db_add_booking_participant(String, String, String, String) -> @core.Any
+pub async fn db_create_post(String, String, String, String, String, String) -> @core.Any
 
-pub async fn db_cleanup_sessions() -> @cloudflare.D1Result
+pub async fn db_delete_post(String) -> @cloudflare.D1Result
 
-pub async fn db_create_availability(String, String, String, String, String, Int) -> @core.Any
+pub async fn db_get_all_posts() -> @core.Any
 
-pub async fn db_create_booking(String, String, String, String, String, String, Int) -> @core.Any
+pub async fn db_get_post_by_id(String) -> @core.Any
 
-pub async fn db_create_booking_request(String, String, String, Int, String) -> @core.Any
+pub async fn db_get_post_by_slug(String) -> @core.Any
 
-pub async fn db_create_course(String, String, String, Int, Int, String) -> @core.Any
+pub async fn db_get_published_posts() -> @core.Any
 
-pub async fn db_create_session(String, String, String) -> @core.Any
-
-pub async fn db_delete_availability(String) -> @cloudflare.D1Result
-
-pub async fn db_delete_session(String) -> @cloudflare.D1Result
-
-pub async fn db_get_active_courses() -> @core.Any
-
-pub async fn db_get_availability_by_id(String) -> @core.Any
-
-pub async fn db_get_availability_by_instructor(String) -> @core.Any
-
-pub async fn db_get_booking_by_id(String) -> @core.Any
-
-pub async fn db_get_booking_request_by_id(String) -> @core.Any
-
-pub async fn db_get_bookings_by_instructor(String) -> @core.Any
-
-pub async fn db_get_bookings_by_student(String) -> @core.Any
-
-pub async fn db_get_course_by_id(String) -> @core.Any
-
-pub async fn db_get_courses_by_instructor(String) -> @core.Any
-
-pub async fn db_get_future_availability() -> @core.Any
-
-pub async fn db_get_instructors() -> @core.Any
-
-pub async fn db_get_pending_requests_for_instructor(String) -> @core.Any
-
-pub async fn db_get_requests_by_student(String) -> @core.Any
-
-pub async fn db_get_requests_for_availability(String) -> @core.Any
-
-pub async fn db_get_session_with_user(String) -> @core.Any
-
-pub async fn db_get_user_by_email(String) -> @core.Any
-
-pub async fn db_get_user_by_google_id(String) -> @core.Any
-
-pub async fn db_get_user_by_id(String) -> @core.Any
-
-pub async fn db_is_booking_participant(String, String) -> Bool
-
-pub async fn db_update_booking_status(String, String) -> @core.Any
-
-pub async fn db_update_course(String, String, String, Int, Int, Int) -> @core.Any
-
-pub async fn db_update_request_status(String, String, String) -> @core.Any
-
-pub async fn db_update_user_role(String, String) -> @core.Any
-
-pub async fn db_upsert_user(String, String, String, String, String, String, String, String, Int) -> @core.Any
+pub async fn db_update_post(String, String, String, String, String, String, String) -> @core.Any
 
 pub fn error_to_message(ValidationError) -> String
 
 pub fn errors_to_json(Array[ValidationError]) -> String
 
 pub fn errors_to_messages(Array[ValidationError]) -> Array[String]
-
-pub fn generate_uuid() -> String
 
 pub fn get_int(@core.Any, String) -> Int
 
@@ -101,6 +47,8 @@ pub fn get_timestamp() -> String
 pub fn is_null(@core.Any) -> Bool
 
 pub fn option(value? : String, selected? : Bool, id? : String, class? : String, style? : String, attrs? : Array[(String, @luna.Attr[Unit])], Array[@luna.Node[Unit]]) -> @luna.Node[Unit]
+
+pub fn post_from_js(@core.Any) -> Post
 
 pub fn routes() -> Array[@router.SolRoutes]
 
@@ -137,6 +85,19 @@ pub fn validate_update_post(String, String, String, String) -> Result[Unit, Arra
 // Errors
 
 // Types and methods
+pub struct Post {
+  id : String
+  title : String
+  slug : String
+  content : String
+  content_html : String
+  excerpt : String
+  status : String
+  published_at : String
+  created_at : String
+  updated_at : String
+}
+
 pub(all) enum ValidationError {
   Required(String)
   TooShort(String, Int)

@@ -316,4 +316,10 @@ extern "js" fn calculate_end_time(start : String, duration_minutes : Int) -> Str
   #|   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
   #| }
 
-// reload_page and set_timeout are in _common.mbt
+///| Reload page
+extern "js" fn reload_page() -> Unit =
+  #| () => { window.location.reload(); }
+
+///| Set timeout
+extern "js" fn set_timeout(callback : () -> Unit, ms : Int) -> Unit =
+  #| (callback, ms) => { setTimeout(callback, ms); }

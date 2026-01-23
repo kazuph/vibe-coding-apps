@@ -77,7 +77,16 @@ pub async fn db_upsert_user(
   let db = get_db()
   let row = db
     .prepare(
-      "INSERT INTO users (id, google_id, email, name, avatar_url, role, google_access_token, google_refresh_token, google_token_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(google_id) DO UPDATE SET email = excluded.email, name = excluded.name, avatar_url = excluded.avatar_url, google_access_token = excluded.google_access_token, google_refresh_token = excluded.google_refresh_token, google_token_expires_at = excluded.google_token_expires_at RETURNING *"
+      "INSERT INTO users (id, google_id, email, name, avatar_url, role, google_access_token, google_refresh_token, google_token_expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(google_id) DO UPDATE SET
+         email = excluded.email,
+         name = excluded.name,
+         avatar_url = excluded.avatar_url,
+         google_access_token = excluded.google_access_token,
+         google_refresh_token = excluded.google_refresh_token,
+         google_token_expires_at = excluded.google_token_expires_at
+       RETURNING *"
     )
     .bind([
       @core.any(id),
@@ -148,7 +157,10 @@ pub async fn db_get_session_with_user(session_id : String) -> @core.Any {
   let db = get_db()
   let row = db
     .prepare(
-      "SELECT s.*, u.id as user_id, u.google_id, u.email, u.name, u.avatar_url, u.role FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.id = ? AND datetime(s.expires_at) > datetime('now')"
+      "SELECT s.*, u.id as user_id, u.google_id, u.email, u.name, u.avatar_url, u.role
+       FROM sessions s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.id = ? AND datetime(s.expires_at) > datetime('now')"
     )
     .bind1(@core.any(session_id))
     .first()
@@ -179,7 +191,11 @@ pub async fn db_get_active_courses() -> @core.Any {
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT c.*, u.name as instructor_name FROM courses c JOIN users u ON c.instructor_id = u.id WHERE c.is_active = 1 ORDER BY c.name"
+      "SELECT c.*, u.name as instructor_name
+       FROM courses c
+       JOIN users u ON c.instructor_id = u.id
+       WHERE c.is_active = 1
+       ORDER BY c.name"
     )
     .all()
   result.results_raw()
@@ -220,7 +236,8 @@ pub async fn db_create_course(
   let db = get_db()
   let row = db
     .prepare(
-      "INSERT INTO courses (id, name, description, duration_minutes, max_participants, instructor_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING *"
+      "INSERT INTO courses (id, name, description, duration_minutes, max_participants, instructor_id)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING *"
     )
     .bind([
       @core.any(id),
@@ -249,7 +266,8 @@ pub async fn db_update_course(
   let db = get_db()
   let row = db
     .prepare(
-      "UPDATE courses SET name = ?, description = ?, duration_minutes = ?, max_participants = ?, is_active = ? WHERE id = ? RETURNING *"
+      "UPDATE courses SET name = ?, description = ?, duration_minutes = ?, max_participants = ?, is_active = ?
+       WHERE id = ? RETURNING *"
     )
     .bind([
       @core.any(name),
@@ -275,7 +293,11 @@ pub async fn db_get_availability_by_instructor(instructor_id : String) -> @core.
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT a.*, c.name as course_name FROM availability a LEFT JOIN courses c ON a.course_id = c.id WHERE a.instructor_id = ? AND datetime(a.start_time) >= datetime('now') ORDER BY a.start_time"
+      "SELECT a.*, c.name as course_name
+       FROM availability a
+       LEFT JOIN courses c ON a.course_id = c.id
+       WHERE a.instructor_id = ? AND datetime(a.start_time) >= datetime('now')
+       ORDER BY a.start_time"
     )
     .bind1(@core.any(instructor_id))
     .all()
@@ -287,7 +309,12 @@ pub async fn db_get_future_availability() -> @core.Any {
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT a.*, u.name as instructor_name, c.name as course_name, c.duration_minutes FROM availability a JOIN users u ON a.instructor_id = u.id LEFT JOIN courses c ON a.course_id = c.id WHERE datetime(a.start_time) >= datetime('now') ORDER BY a.start_time"
+      "SELECT a.*, u.name as instructor_name, c.name as course_name, c.duration_minutes
+       FROM availability a
+       JOIN users u ON a.instructor_id = u.id
+       LEFT JOIN courses c ON a.course_id = c.id
+       WHERE datetime(a.start_time) >= datetime('now')
+       ORDER BY a.start_time"
     )
     .all()
   result.results_raw()
@@ -298,7 +325,11 @@ pub async fn db_get_availability_by_id(id : String) -> @core.Any {
   let db = get_db()
   let row = db
     .prepare(
-      "SELECT a.*, u.name as instructor_name, c.name as course_name FROM availability a JOIN users u ON a.instructor_id = u.id LEFT JOIN courses c ON a.course_id = c.id WHERE a.id = ?"
+      "SELECT a.*, u.name as instructor_name, c.name as course_name
+       FROM availability a
+       JOIN users u ON a.instructor_id = u.id
+       LEFT JOIN courses c ON a.course_id = c.id
+       WHERE a.id = ?"
     )
     .bind1(@core.any(id))
     .first()
@@ -325,7 +356,8 @@ pub async fn db_create_availability(
   }
   let row = db
     .prepare(
-      "INSERT INTO availability (id, instructor_id, course_id, start_time, end_time, max_participants) VALUES (?, ?, ?, ?, ?, ?) RETURNING *"
+      "INSERT INTO availability (id, instructor_id, course_id, start_time, end_time, max_participants)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING *"
     )
     .bind([
       @core.any(id),
@@ -357,7 +389,11 @@ pub async fn db_get_requests_for_availability(availability_id : String) -> @core
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT br.*, u.name as student_name, u.email as student_email FROM booking_requests br JOIN users u ON br.student_id = u.id WHERE br.availability_id = ? ORDER BY br.preference_order, br.created_at"
+      "SELECT br.*, u.name as student_name, u.email as student_email
+       FROM booking_requests br
+       JOIN users u ON br.student_id = u.id
+       WHERE br.availability_id = ?
+       ORDER BY br.preference_order, br.created_at"
     )
     .bind1(@core.any(availability_id))
     .all()
@@ -369,7 +405,13 @@ pub async fn db_get_requests_by_student(student_id : String) -> @core.Any {
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT br.*, a.start_time, a.end_time, u.name as instructor_name, c.name as course_name FROM booking_requests br JOIN availability a ON br.availability_id = a.id JOIN users u ON a.instructor_id = u.id LEFT JOIN courses c ON a.course_id = c.id WHERE br.student_id = ? ORDER BY a.start_time"
+      "SELECT br.*, a.start_time, a.end_time, u.name as instructor_name, c.name as course_name
+       FROM booking_requests br
+       JOIN availability a ON br.availability_id = a.id
+       JOIN users u ON a.instructor_id = u.id
+       LEFT JOIN courses c ON a.course_id = c.id
+       WHERE br.student_id = ?
+       ORDER BY a.start_time"
     )
     .bind1(@core.any(student_id))
     .all()
@@ -381,7 +423,13 @@ pub async fn db_get_pending_requests_for_instructor(instructor_id : String) -> @
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT br.*, a.start_time, a.end_time, a.max_participants, u.name as student_name, u.email as student_email, c.name as course_name FROM booking_requests br JOIN availability a ON br.availability_id = a.id JOIN users u ON br.student_id = u.id LEFT JOIN courses c ON a.course_id = c.id WHERE a.instructor_id = ? AND br.status = 'requested' ORDER BY a.start_time, br.preference_order"
+      "SELECT br.*, a.start_time, a.end_time, a.max_participants, u.name as student_name, u.email as student_email, c.name as course_name
+       FROM booking_requests br
+       JOIN availability a ON br.availability_id = a.id
+       JOIN users u ON br.student_id = u.id
+       LEFT JOIN courses c ON a.course_id = c.id
+       WHERE a.instructor_id = ? AND br.status = 'requested'
+       ORDER BY a.start_time, br.preference_order"
     )
     .bind1(@core.any(instructor_id))
     .all()
@@ -399,7 +447,8 @@ pub async fn db_create_booking_request(
   let db = get_db()
   let row = db
     .prepare(
-      "INSERT INTO booking_requests (id, availability_id, student_id, preference_order, message) VALUES (?, ?, ?, ?, ?) RETURNING *"
+      "INSERT INTO booking_requests (id, availability_id, student_id, preference_order, message)
+       VALUES (?, ?, ?, ?, ?) RETURNING *"
     )
     .bind([
       @core.any(id),
@@ -429,7 +478,8 @@ pub async fn db_update_request_status(
   }
   let row = db
     .prepare(
-      "UPDATE booking_requests SET status = ?, calendar_event_id = ?, updated_at = datetime('now') WHERE id = ? RETURNING *"
+      "UPDATE booking_requests SET status = ?, calendar_event_id = ?, updated_at = datetime('now')
+       WHERE id = ? RETURNING *"
     )
     .bind([
       @core.any(status),
@@ -460,7 +510,8 @@ pub async fn db_create_booking(
   let db = get_db()
   let row = db
     .prepare(
-      "INSERT INTO bookings (id, availability_id, course_id, instructor_id, scheduled_start, scheduled_end, is_group_lesson) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *"
+      "INSERT INTO bookings (id, availability_id, course_id, instructor_id, scheduled_start, scheduled_end, is_group_lesson)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *"
     )
     .bind([
       @core.any(id),
@@ -493,7 +544,8 @@ pub async fn db_add_booking_participant(
   }
   let row = db
     .prepare(
-      "INSERT INTO booking_participants (id, booking_id, student_id, calendar_event_id) VALUES (?, ?, ?, ?) RETURNING *"
+      "INSERT INTO booking_participants (id, booking_id, student_id, calendar_event_id)
+       VALUES (?, ?, ?, ?) RETURNING *"
     )
     .bind([
       @core.any(id),
@@ -513,7 +565,15 @@ pub async fn db_get_bookings_by_instructor(instructor_id : String) -> @core.Any 
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT b.*, c.name as course_name, GROUP_CONCAT(u.name, ', ') as participant_names FROM bookings b LEFT JOIN courses c ON b.course_id = c.id LEFT JOIN booking_participants bp ON b.id = bp.booking_id LEFT JOIN users u ON bp.student_id = u.id WHERE b.instructor_id = ? GROUP BY b.id ORDER BY b.scheduled_start"
+      "SELECT b.*, c.name as course_name,
+       GROUP_CONCAT(u.name, ', ') as participant_names
+       FROM bookings b
+       LEFT JOIN courses c ON b.course_id = c.id
+       LEFT JOIN booking_participants bp ON b.id = bp.booking_id
+       LEFT JOIN users u ON bp.student_id = u.id
+       WHERE b.instructor_id = ?
+       GROUP BY b.id
+       ORDER BY b.scheduled_start"
     )
     .bind1(@core.any(instructor_id))
     .all()
@@ -525,69 +585,17 @@ pub async fn db_get_bookings_by_student(student_id : String) -> @core.Any {
   let db = get_db()
   let result = db
     .prepare(
-      "SELECT b.*, c.name as course_name, u.name as instructor_name FROM bookings b JOIN booking_participants bp ON b.id = bp.booking_id LEFT JOIN courses c ON b.course_id = c.id JOIN users u ON b.instructor_id = u.id WHERE bp.student_id = ? ORDER BY b.scheduled_start"
+      "SELECT b.*, c.name as course_name, u.name as instructor_name
+       FROM bookings b
+       JOIN booking_participants bp ON b.id = bp.booking_id
+       LEFT JOIN courses c ON b.course_id = c.id
+       JOIN users u ON b.instructor_id = u.id
+       WHERE bp.student_id = ?
+       ORDER BY b.scheduled_start"
     )
     .bind1(@core.any(student_id))
     .all()
   result.results_raw()
-}
-
-///| Get booking request by ID
-pub async fn db_get_booking_request_by_id(id : String) -> @core.Any {
-  let db = get_db()
-  let row = db
-    .prepare("SELECT * FROM booking_requests WHERE id = ?")
-    .bind1(@core.any(id))
-    .first()
-  match row {
-    Some(r) => r
-    None => @core.null()
-  }
-}
-
-///| Get booking by ID
-pub async fn db_get_booking_by_id(id : String) -> @core.Any {
-  let db = get_db()
-  let row = db
-    .prepare("SELECT * FROM bookings WHERE id = ?")
-    .bind1(@core.any(id))
-    .first()
-  match row {
-    Some(r) => r
-    None => @core.null()
-  }
-}
-
-///| Check if user is a participant in a booking
-pub async fn db_is_booking_participant(booking_id : String, student_id : String) -> Bool {
-  let db = get_db()
-  let row = db
-    .prepare("SELECT 1 FROM booking_participants WHERE booking_id = ? AND student_id = ?")
-    .bind([
-      @core.any(booking_id),
-      @core.any(student_id),
-    ])
-    .first()
-  match row {
-    Some(_) => true
-    None => false
-  }
-}
-
-///| Update booking status
-pub async fn db_update_booking_status(id : String, status : String) -> @core.Any {
-  let db = get_db()
-  let row = db
-    .prepare("UPDATE bookings SET status = ? WHERE id = ? RETURNING *")
-    .bind([
-      @core.any(status),
-      @core.any(id),
-    ])
-    .first()
-  match row {
-    Some(r) => r
-    None => @core.null()
-  }
 }
 
 // =============================================================================

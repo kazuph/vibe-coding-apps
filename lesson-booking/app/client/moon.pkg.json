@@ -9,7 +9,7 @@
   ],
   "link": {
     "js": {
-      "exports": ["booking_form", "course_form", "availability_calendar", "approval_ui", "cancel_button", "start", "scan", "hydrate", "unload", "clear_loaded", "reload_page", "set_timeout", "redirect_to", "get_current_user_id", "confirm_dialog"],
+      "exports": ["booking_form", "course_form", "availability_calendar", "approval_ui", "start", "scan", "hydrate", "unload", "clear_loaded"],
       "format": "esm"
     }
   }

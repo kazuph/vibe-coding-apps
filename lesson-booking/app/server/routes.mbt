@@ -155,7 +155,7 @@ fn student_layout(
             a(href="/auth/logout", class="logout-link", [text("ログアウト")]),
           ]),
         ]),
-        html_main(class="main-content", [inner]),
+        main(class="main-content", [inner]),
       ]),
     ])
   })
@@ -188,7 +188,7 @@ fn instructor_layout(
             a(href="/auth/logout", class="logout-link", [text("ログアウト")]),
           ]),
         ]),
-        html_main(class="main-content", [inner]),
+        main(class="main-content", [inner]),
       ]),
     ])
   })
@@ -534,7 +534,7 @@ async fn instructor_availability(_props : @router.PageProps) -> @server_dom.Serv
             p([text("最大" + max_participants.to_string() + "名")]),
           ]),
           form(http_method="POST", action="/_action/delete-availability", [
-            input_hidden("id", slot_id),
+            input_hidden(name="id", value=slot_id),
             button(attrs=[("type", @luna.attr_static("submit")), ("class", @luna.attr_static("btn btn-danger btn-small"))], [text("削除")]),
           ]),
         ])
@@ -726,8 +726,8 @@ fn input_hidden(name : String, value : String) -> @luna.Node[Unit] {
   ], [])
 }
 
-///| Create main element (named html_main to avoid conflict with MoonBit's main)
-fn html_main(class? : String, children : Array[@luna.Node[Unit]]) -> @luna.Node[Unit] {
+///| Create main element
+fn main(class? : String, children : Array[@luna.Node[Unit]]) -> @luna.Node[Unit] {
   let props : Array[(String, @luna.Attr[Unit])] = []
   if class is Some(v) {
     props.push(("class", @luna.attr_static(v)))
@@ -1180,80 +1180,6 @@ let reject_request_action : @action.ActionHandler = @action.ActionHandler(async 
   )
 })
 
-///| Cancel booking request action (student cancels their own request)
-let cancel_booking_request_action : @action.ActionHandler = @action.ActionHandler(async fn(ctx) {
-  let content_type = ctx.get_header("Content-Type").unwrap_or("")
-  let data = parse_request_body(content_type, ctx.body)
-  let request_id = get_str(data, "request_id")
-  let student_id = get_str(data, "student_id")
-
-  if request_id == "" {
-    return @action.ActionResult::bad_request("リクエストIDは必須です")
-  }
-
-  // Verify the request belongs to this student (security check)
-  let request = db_get_booking_request_by_id(request_id)
-  if is_null(request) {
-    return @action.ActionResult::bad_request("リクエストが見つかりません")
-  }
-
-  let request_student_id = get_str(request, "student_id")
-  if request_student_id != student_id {
-    return @action.ActionResult::bad_request("このリクエストをキャンセルする権限がありません")
-  }
-
-  let status = get_str(request, "status")
-  if status != "requested" {
-    return @action.ActionResult::bad_request("このリクエストはキャンセルできません（ステータス: " + status + "）")
-  }
-
-  let _result = db_update_request_status(request_id, "cancelled", "")
-
-  @action.ActionResult::ok(
-    action_json_response(true, "リクエストをキャンセルしました", "")
-  )
-})
-
-///| Cancel confirmed booking action
-let cancel_booking_action : @action.ActionHandler = @action.ActionHandler(async fn(ctx) {
-  let content_type = ctx.get_header("Content-Type").unwrap_or("")
-  let data = parse_request_body(content_type, ctx.body)
-  let booking_id = get_str(data, "booking_id")
-  let user_id = get_str(data, "user_id")
-
-  if booking_id == "" {
-    return @action.ActionResult::bad_request("予約IDは必須です")
-  }
-
-  // Get booking and verify user is participant or instructor
-  let booking = db_get_booking_by_id(booking_id)
-  if is_null(booking) {
-    return @action.ActionResult::bad_request("予約が見つかりません")
-  }
-
-  let instructor_id = get_str(booking, "instructor_id")
-  let is_instructor = instructor_id == user_id
-  let is_participant = db_is_booking_participant(booking_id, user_id)
-
-  if not(is_instructor) && not(is_participant) {
-    return @action.ActionResult::bad_request("この予約をキャンセルする権限がありません")
-  }
-
-  let status = get_str(booking, "status")
-  if status != "confirmed" {
-    return @action.ActionResult::bad_request("この予約はキャンセルできません（ステータス: " + status + "）")
-  }
-
-  // Cancel the booking
-  let _result = db_update_booking_status(booking_id, "cancelled")
-
-  // TODO: Delete calendar events via API call from client side
-
-  @action.ActionResult::ok(
-    action_json_response(true, "予約をキャンセルしました", "")
-  )
-})
-
 ///| Create JSON response for action
 fn action_json_response(success : Bool, message : String, slug : String) -> @core.Any {
   @core.from_entries([
@@ -1385,6 +1311,4 @@ pub fn action_registry() -> @action.ActionRegistry {
   .register(@action.ActionDef::new("create-booking-request", create_booking_request_action).with_require_json(false))
   .register(@action.ActionDef::new("approve-requests", approve_requests_action).with_require_json(false))
   .register(@action.ActionDef::new("reject-request", reject_request_action).with_require_json(false))
-  .register(@action.ActionDef::new("cancel-booking-request", cancel_booking_request_action).with_require_json(false))
-  .register(@action.ActionDef::new("cancel-booking", cancel_booking_action).with_require_json(false))
 }

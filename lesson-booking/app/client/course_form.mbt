@@ -173,4 +173,10 @@ pub fn course_form(props : CourseFormProps) -> DomNode {
   ])
 }
 
-// reload_page and set_timeout are in _common.mbt
+///| Reload page
+extern "js" fn reload_page() -> Unit =
+  #| () => { window.location.reload(); }
+
+///| Set timeout
+extern "js" fn set_timeout(callback : () -> Unit, ms : Int) -> Unit =
+  #| (callback, ms) => { setTimeout(callback, ms); }

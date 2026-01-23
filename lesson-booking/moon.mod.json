@@ -4,8 +4,7 @@
   "deps": {
     "mizchi/luna": "0.4.1",
     "mizchi/js": "0.10.8",
-    "mizchi/cloudflare": "0.1.1",
-    "mizchi/markdown": "0.3.3"
+    "mizchi/cloudflare": "0.1.1"
   },
   "readme": "README.md",
   "repository": "",

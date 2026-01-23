@@ -78,24 +78,11 @@ export async function navigateToStudentRequests(page: Page): Promise<void> {
 
 /**
  * Wait for Island Component to hydrate
- *
- * Instead of fixed timeout, we wait for:
- * 1. Element to be visible
- * 2. Element to be stable (no layout shifts)
- * 3. Interactive elements within to be enabled
  */
 export async function waitForIslandHydration(page: Page, selector: string): Promise<void> {
-  const island = page.locator(selector);
-  await expect(island).toBeVisible({ timeout: 15000 });
-
-  // Wait for any form elements within to be enabled (indicates hydration complete)
-  const interactiveElement = island.locator('button, input, select, textarea').first();
-  if (await interactiveElement.count() > 0) {
-    await expect(interactiveElement).toBeEnabled({ timeout: 5000 });
-  }
-
-  // Wait for network to settle (async data fetching)
-  await page.waitForLoadState('networkidle');
+  await expect(page.locator(selector)).toBeVisible({ timeout: 15000 });
+  // Wait a bit more for hydration to complete
+  await page.waitForTimeout(500);
 }
 
 /**
@@ -202,33 +189,4 @@ export async function expectErrorMessage(page: Page, text?: string): Promise<voi
   if (text) {
     await expect(errorElement.first()).toContainText(text);
   }
-}
-
-/**
- * Click cancel button for a booking request
- */
-export async function clickCancelButton(page: Page): Promise<void> {
-  await waitForIslandHydration(page, '.cancel-button-island');
-  const cancelButton = page.locator('.cancel-button-island button.btn-danger, .cancel-button-island button:has-text("キャンセル")');
-  await expect(cancelButton.first()).toBeVisible({ timeout: 10000 });
-  await cancelButton.first().click();
-}
-
-/**
- * Confirm cancel dialog
- */
-export async function confirmCancelDialog(page: Page): Promise<void> {
-  // Wait for confirmation dialog and accept it
-  page.on('dialog', async (dialog) => {
-    await dialog.accept();
-  });
-}
-
-/**
- * Expect cancel success message
- */
-export async function expectCancelSuccessMessage(page: Page): Promise<void> {
-  const successElement = page.locator('.cancel-result.success, .cancel-button-island .success');
-  await expect(successElement.first()).toBeVisible({ timeout: 10000 });
-  await expect(successElement.first()).toContainText('キャンセル');
 }

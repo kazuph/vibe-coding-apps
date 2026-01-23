@@ -6,9 +6,6 @@ import {
   fillBookingRequestForm,
   submitBookingRequestForm,
   expectSuccessMessage,
-  clickCancelButton,
-  confirmCancelDialog,
-  expectCancelSuccessMessage,
 } from './helpers/navigation';
 
 /**
@@ -171,120 +168,6 @@ test.describe('My Requests', () => {
       }
     } else {
       test.info().annotations.push({ type: 'skip-reason', description: 'No requests to check status' });
-    }
-  });
-});
-
-test.describe('Cancel Booking Request', () => {
-  /**
-   * Note: Direct navigation via goto is used here because:
-   * 1. These tests require authentication state (saved session)
-   * 2. Starting from '/' and navigating via UI for each test would:
-   *    - Make tests significantly slower
-   *    - Create coupling between auth flow and cancel feature tests
-   * 3. The auth.setup.ts handles login flow separately
-   */
-  test.beforeEach(async ({ page }) => {
-    // Navigate to student dashboard first, then to requests via UI
-    await page.goto('/student');
-    await page.waitForLoadState('networkidle');
-    await navigateToStudentRequests(page);
-  });
-
-  test('displays cancel button for pending requests', async ({ page }) => {
-    // Look for pending request items that should have cancel button
-    const pendingRequests = page.locator('.request-card:has-text("リクエスト中"), .request-item:has-text("リクエスト中"), tr:has-text("リクエスト中")');
-    const pendingCount = await pendingRequests.count();
-
-    if (pendingCount > 0) {
-      // Should have cancel button for pending requests
-      const cancelButton = pendingRequests.first().locator('.cancel-button-island button, button:has-text("キャンセル")');
-      await expect(cancelButton.first()).toBeVisible();
-    } else {
-      test.info().annotations.push({ type: 'skip-reason', description: 'No pending requests to test cancel button' });
-    }
-  });
-
-  test('cancel button shows confirmation dialog', async ({ page }) => {
-    const pendingRequests = page.locator('.request-card:has-text("リクエスト中"), .request-item:has-text("リクエスト中"), tr:has-text("リクエスト中")');
-    const pendingCount = await pendingRequests.count();
-
-    if (pendingCount > 0) {
-      // Setup dialog handler with promise to properly wait for dialog
-      const dialogPromise = page.waitForEvent('dialog');
-
-      // Click cancel button
-      const cancelButton = pendingRequests.first().locator('.cancel-button-island button, button:has-text("キャンセル")');
-      await cancelButton.first().click();
-
-      // Wait for dialog event instead of fixed timeout
-      const dialog = await dialogPromise;
-      expect(dialog.message()).toContain('キャンセル');
-      await dialog.dismiss(); // Dismiss to not actually cancel
-    } else {
-      test.info().annotations.push({ type: 'skip-reason', description: 'No pending requests to test cancel dialog' });
-    }
-  });
-
-  test('can cancel a pending request and verify record change', async ({ page }) => {
-    const pendingRequestsSelector = '.request-card:has-text("リクエスト中"), .request-item:has-text("リクエスト中"), tr:has-text("リクエスト中")';
-    const pendingRequests = page.locator(pendingRequestsSelector);
-    const initialCount = await pendingRequests.count();
-
-    if (initialCount > 0) {
-      // Setup dialog handler to accept
-      page.on('dialog', async (dialog) => {
-        await dialog.accept();
-      });
-
-      // Click cancel button
-      const cancelButton = pendingRequests.first().locator('.cancel-button-island button, button:has-text("キャンセル")');
-      await cancelButton.first().click();
-
-      // Wait for success message
-      await expectCancelSuccessMessage(page);
-
-      // Verify record change: pending count should decrease or status should change
-      // Wait for UI to update after successful cancel
-      await page.waitForLoadState('networkidle');
-
-      // Check that either:
-      // 1. The pending count decreased, OR
-      // 2. A "cancelled" status appears, OR
-      // 3. The success message is visible (which confirms the action completed)
-      const finalCount = await pendingRequests.count();
-      const hasCancelledStatus = await page.locator('text=キャンセル済み, text=取り消し').count() > 0;
-      const hasSuccessMessage = await page.locator('.cancel-result.success, .cancel-button-island .success').count() > 0;
-
-      expect(finalCount < initialCount || hasCancelledStatus || hasSuccessMessage).toBe(true);
-    } else {
-      test.info().annotations.push({ type: 'skip-reason', description: 'No pending requests to test cancel' });
-    }
-  });
-
-  test('cancel button is not shown for approved requests', async ({ page }) => {
-    const approvedRequests = page.locator('.request-card:has-text("承認済み"), .request-item:has-text("承認済み"), tr:has-text("承認済み")');
-    const approvedCount = await approvedRequests.count();
-
-    if (approvedCount > 0) {
-      // Should NOT have cancel button for approved requests
-      const cancelButton = approvedRequests.first().locator('.cancel-button-island button, button:has-text("キャンセル")');
-      await expect(cancelButton).toHaveCount(0);
-    } else {
-      test.info().annotations.push({ type: 'skip-reason', description: 'No approved requests to test' });
-    }
-  });
-
-  test('cancel button is not shown for rejected requests', async ({ page }) => {
-    const rejectedRequests = page.locator('.request-card:has-text("却下"), .request-item:has-text("却下"), tr:has-text("却下")');
-    const rejectedCount = await rejectedRequests.count();
-
-    if (rejectedCount > 0) {
-      // Should NOT have cancel button for rejected requests
-      const cancelButton = rejectedRequests.first().locator('.cancel-button-island button, button:has-text("キャンセル")');
-      await expect(cancelButton).toHaveCount(0);
-    } else {
-      test.info().annotations.push({ type: 'skip-reason', description: 'No rejected requests to test' });
     }
   });
 });
