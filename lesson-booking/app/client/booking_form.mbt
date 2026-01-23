@@ -157,12 +157,7 @@ pub fn booking_form(props : BookingFormProps) -> DomNode {
   ])
 }
 
-///| Get current user ID from globalThis
-extern "js" fn get_current_user_id() -> String =
-  #| () => {
-  #|   const user = globalThis.__CURRENT_USER;
-  #|   return user ? user.id : '';
-  #| }
+// get_current_user_id and redirect_to are in _common.mbt
 
 ///| Get message from response
 fn get_message(data : @js.Any) -> String {
@@ -173,7 +168,3 @@ fn get_message(data : @js.Any) -> String {
     val.to_string()
   }
 }
-
-///| Redirect to URL
-extern "js" fn redirect_to(url : String) -> Unit =
-  #| (url) => { window.location.href = url; }

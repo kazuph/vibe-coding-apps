@@ -53,14 +53,14 @@ pub fn approval_ui(props : ApprovalUiProps) -> DomNode {
 
     if found {
       // Was selected, now deselected
-      selected_ids.set(join_string(new_ids, ','))
+      selected_ids.set(join_string(new_ids, ","))
       if new_ids.length() == 0 {
         current_availability_id.set("")
       }
     } else {
       // Add to selection
       new_ids.push(request_id)
-      selected_ids.set(join_string(new_ids, ','))
+      selected_ids.set(join_string(new_ids, ","))
     }
   }
 
@@ -350,10 +350,4 @@ fn join_string(arr : Array[String], sep : String) -> String {
   result.to_string()
 }
 
-///| Reload page
-extern "js" fn reload_page() -> Unit =
-  #| () => { window.location.reload(); }
-
-///| Set timeout
-extern "js" fn set_timeout(callback : () -> Unit, ms : Int) -> Unit =
-  #| (callback, ms) => { setTimeout(callback, ms); }
+// reload_page and set_timeout are in _common.mbt

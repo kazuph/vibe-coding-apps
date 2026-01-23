@@ -41,6 +41,25 @@ if (existsSync(solClientDir)) {
     for (const entry of entryPoints) {
       const outputFile = join(outputDir, basename(entry));
 
+      // Island components that we expect to bundle (Props-based components)
+      const islandComponents = [
+        'approval_ui', 'availability_calendar', 'booking_form',
+        'cancel_button', 'course_form', 'loader', 'start'
+      ];
+      const name = basename(entry, '.js');
+
+      // Skip utility functions that aren't island components
+      const utilityFunctions = [
+        'reload_page', 'set_timeout', 'redirect_to',
+        'get_current_user_id', 'confirm_dialog',
+        'scan', 'hydrate', 'unload', 'clear_loaded'
+      ];
+
+      if (utilityFunctions.includes(name)) {
+        console.log(`  Skipped: ${basename(entry)} (utility function, not island)`);
+        continue;
+      }
+
       try {
         await build({
           entryPoints: [entry],
@@ -58,6 +77,11 @@ if (existsSync(solClientDir)) {
         console.log(`  Bundled: ${basename(entry)}`);
       } catch (error) {
         console.error(`  Failed to bundle ${basename(entry)}:`, error.message);
+        // Skip utility functions that can't be bundled (FFI functions)
+        if (!islandComponents.includes(name)) {
+          console.log(`  Skipping non-island component: ${name}`);
+          continue;
+        }
         process.exit(1);
       }
     }

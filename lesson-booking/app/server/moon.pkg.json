@@ -9,7 +9,7 @@
     { "path": "mizchi/luna/luna/static_dom/element", "alias": "element" },
     { "path": "mizchi/js/core", "alias": "core" },
     { "path": "mizchi/cloudflare", "alias": "cloudflare" },
-    { "path": "kazuph/blog_admin/__gen__/types", "alias": "types" },
+    { "path": "kazuph/lesson_booking/__gen__/types", "alias": "types" },
     { "path": "mizchi/markdown", "alias": "markdown" }
   ],
   "warn-list": "-35"

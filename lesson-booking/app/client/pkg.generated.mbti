@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "kazuph/blog_admin/client"
+package "kazuph/lesson_booking/client"
 
 import(
   "mizchi/js/core"
@@ -8,13 +8,31 @@ import(
 )
 
 // Values
+pub fn approval_ui(ApprovalUiProps) -> @element.DomNode
+
+pub fn availability_calendar(AvailabilityCalendarProps) -> @element.DomNode
+
+pub fn booking_form(BookingFormProps) -> @element.DomNode
+
+pub fn cancel_button(CancelButtonProps) -> @element.DomNode
+
 pub fn clear_loaded() -> Unit
+
+pub fn confirm_dialog(String) -> Bool
+
+pub fn course_form(CourseFormProps) -> @element.DomNode
+
+pub fn get_current_user_id() -> String
 
 pub fn hydrate(@core.Any) -> Unit
 
-pub fn markdown_editor(MarkdownEditorProps) -> @element.DomNode
+pub fn redirect_to(String) -> Unit
+
+pub fn reload_page() -> Unit
 
 pub fn scan() -> Unit
+
+pub fn set_timeout(() -> Unit, Int) -> Unit
 
 pub fn start() -> Unit
 
@@ -23,16 +41,43 @@ pub fn unload(String) -> Unit
 // Errors
 
 // Types and methods
-pub(all) struct MarkdownEditorProps {
-  initial_content : String
-  action_url : String
-  post_id : String
-  initial_title : String
-  initial_slug : String
-  initial_status : String
+pub(all) struct ApprovalUiProps {
+  requests : String
+  instructor_id : String
 }
-pub impl ToJson for MarkdownEditorProps
-pub impl @json.FromJson for MarkdownEditorProps
+pub impl ToJson for ApprovalUiProps
+pub impl @json.FromJson for ApprovalUiProps
+
+pub(all) struct AvailabilityCalendarProps {
+  instructor_id : String
+  courses : String
+}
+pub impl ToJson for AvailabilityCalendarProps
+pub impl @json.FromJson for AvailabilityCalendarProps
+
+pub(all) struct BookingFormProps {
+  availability_id : String
+  instructor_name : String
+  course_name : String
+  start_time : String
+  end_time : String
+}
+pub impl ToJson for BookingFormProps
+pub impl @json.FromJson for BookingFormProps
+
+pub(all) struct CancelButtonProps {
+  request_id : String
+  student_id : String
+  status : String
+}
+pub impl ToJson for CancelButtonProps
+pub impl @json.FromJson for CancelButtonProps
+
+pub(all) struct CourseFormProps {
+  instructor_id : String
+}
+pub impl ToJson for CourseFormProps
+pub impl @json.FromJson for CourseFormProps
 
 // Type aliases
 

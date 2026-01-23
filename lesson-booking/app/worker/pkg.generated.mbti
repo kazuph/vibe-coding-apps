@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "kazuph/blog_admin/worker"
+package "kazuph/lesson_booking/worker"
 
 // Values
 pub fn start() -> Unit

@@ -13,4 +13,7 @@ using @element {
   events,
   input,
   create_element,
+  h3,
+  h4,
+  p,
 }
