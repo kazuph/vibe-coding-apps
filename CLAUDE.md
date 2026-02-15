@@ -10,6 +10,7 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 2. **Fitness Bike Controllers** - BLE control systems for fitness bikes with both Node.js/TUI and React/WebBluetooth implementations
 3. **Chrome Extensions** - Browser extensions for technical book previews and Tinder-style swiping interfaces
 4. **Kids Learning App** - Educational application with hiragana, katakana, alphabet, and number puzzles
+5. **AtomS3R Tamagotchi** - ESP32/FreeRTOS demo running on M5Stack AtomS3R with local HTTP control, button actions, animations, and TTS integration
 
 ## Monorepo Structure
 
@@ -22,6 +23,7 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | `fitness-bike-node-ble-tui/` | None | Node.js TUI version (Bluetooth control) |
 | `techbook-*-extension/` | None | Chrome Extensions |
 | None | `docs/kids-learning/` | Standalone learning app |
+| `atom-s3r-tamagotchi/` | None | M5Stack Atom S3R FreeRTOS firmware demo |
 
 ### GitHub Pages Integration
 
@@ -56,6 +58,16 @@ cd face-crop-app/
 pnpm run dev          # Development server
 pnpm run build        # Build for production
 pnpm run deploy       # Build and deploy to Cloudflare Workers
+```
+
+### AtomS3R Tamagotchi
+```bash
+cd atom-s3r-tamagotchi
+pio run                                  # Build
+ls /dev/cu.usbmodem* /dev/tty.usbmodem*  # Find connected serial port
+pio run -t upload --upload-port /dev/cu.usbmodemXXX   # Write firmware
+pio device monitor -b 115200 -p /dev/cu.usbmodemXXX  # Check boot log + IP
+python3 tools/log_relay_server.py --host 0.0.0.0 --port 8081  # Optional relay server
 ```
 
 ### Fitness Bike React App

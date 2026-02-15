@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PORT_DEFAULT="/dev/cu.usbmodem11301"
-PORT="${1:-$PORT_DEFAULT}"
+PORT_DEFAULT=""
+if [[ $# -gt 0 ]]; then
+  PORT_DEFAULT="$1"
+else
+  shopt -s nullglob
+  ports=(/dev/cu.usbmodem* /dev/tty.usbmodem*)
+  if (( ${#ports[@]} > 0 )); then
+    PORT_DEFAULT="${ports[0]}"
+  fi
+fi
+
+PORT="${PORT_DEFAULT:?no serial port found. connect USB and/or specify /dev/.../tty path explicitly}"
 
 cd "$(dirname "$0")/.."
 
