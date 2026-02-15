@@ -18,7 +18,7 @@ using Tick = TickType_t;
 constexpr int kScreenW = 128;
 constexpr int kScreenH = 128;
 constexpr int kFramePeriodMs = 55;   // ~18 FPS
-constexpr int kPooIntervalMs = 18000;
+constexpr int kPooIntervalMs = 60000;
 constexpr int kEmotionTimeMs = 1100;
 constexpr int kCleaningTimeMs = 900;
 constexpr int kBlinkInterval = 420;
@@ -72,11 +72,6 @@ constexpr const char* kVoiceUrls[2][2] = {
     {kVoiceDefaultUrlPrimary, kVoiceDefaultUrlFallback},
     {kVoiceBeep2UrlPrimary, kVoiceBeep2UrlFallback},
 };
-constexpr const char* kMiottsPhraseDefault = "おはよう！";
-constexpr const char* kMiottsPhraseBoot = "おはよう、起動したよ！";
-constexpr const char* kMiottsPhraseHappy = "わーい！";
-constexpr const char* kMiottsPhraseSad = "ごめんね！";
-constexpr const char* kMiottsPhraseClean = "きれいにした！";
 constexpr const char* kMiottsPhraseBeep2 = "ピーッ";
 // Default target for MioTTS API server on the same LAN (FastAPI: /health, /v1/tts).
 // If you run miotts elsewhere, override via /miotts?host=...&port=... or change this constant.
@@ -147,6 +142,11 @@ struct ButtonEvent {
   EventType type;
 };
 
+struct VoiceRequest {
+  uint8_t char_idx;
+  uint8_t request_type;  // 0=happy, 1=sad, 2=clean, 3=boot/intro
+};
+
 enum Emotion : uint8_t {
   Neutral = 0,
   Happy = 1,
@@ -159,6 +159,10 @@ struct CharacterStyle {
   uint16_t body;
   uint16_t accent;
   uint16_t eye;
+  const char* phrase_boot;
+  const char* phrase_happy;
+  const char* phrase_sad;
+  const char* phrase_clean;
 };
 
 struct AppState {
@@ -203,12 +207,14 @@ struct WavStreamInfo {
 };
 
 CharacterStyle kCharacters[] = {
-    {"もこ", 0xF1C0, 0xE6A0, 0xFD20, TFT_BLACK},
-    {"まる", 0x5AEB, 0x7BA0, 0xED7F, TFT_BLACK},
-    {"つむ", 0x5EF4, 0xD6BB, 0xFD20, TFT_BLACK},
+    {"もこ", 0xFCF0, 0xFDF0, 0xF8B2, TFT_BLACK, "もこだよ、よろしくね！", "うれしいな！", "えーん", "ぴかぴか！"},
+    {"まる", 0xFD20, 0xFEA0, 0xFD00, TFT_BLACK, "まるだよ、おなかすいた！", "やったー！", "うぅ", "すっきり！"},
+    {"つむ", 0x5DDF, 0x867F, 0x4C7F, TFT_BLACK, "つむ。よろしく", "まあまあね", "べつに", "当然でしょ"},
 };
 
+volatile uint8_t g_current_character_index = 0;
 QueueHandle_t g_events = nullptr;
+QueueHandle_t g_voice_queue = nullptr;
 bool g_speaker_ready = false;
 uint8_t g_speaker_volume_index = 3;
 int16_t g_cry_wave[kCrySamples];
@@ -274,6 +280,7 @@ bool playStreamingVoiceByUrl(VoiceTone type, const char* url);
 bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode = false);
 bool playStreamingVoiceWithPhrase(VoiceTone tone, const char* phrase, bool quick_mode = false);
 bool playStreamingVoice(VoiceTone type);
+void playCharacterIntro(uint8_t char_idx);
 bool connectToWiFi();
 void setVoiceStateMessage(size_t idx, const char* msg);
 void postDiagnosticsToRelay();
@@ -407,15 +414,8 @@ void processBootAnnouncement() {
   }
   g_boot_announcement_due_ms = 0;
   g_boot_announcement_done = true;
-  const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, kMiottsPhraseBoot, true);
-  if (!ok) {
-    logDiag("boot announcement stream fail; fallback");
-    if (!playAltVoiceSound()) {
-      logDiag("boot announcement fallback failed");
-    }
-  } else {
-    logDiag("boot announcement stream ok");
-  }
+  playCharacterIntro(g_current_character_index);
+  logDiag("boot announcement queued");
 }
 
 bool findQueryValue(const char* query, const char* key, String& value) {
@@ -1284,7 +1284,7 @@ bool playStreamingVoiceByUrl(VoiceTone type, const char* url) {
 }
 
 bool playStreamingVoice(VoiceTone type) {
-  return playStreamingVoiceWithPhrase(type, (type == kVoiceBeep2) ? kMiottsPhraseBeep2 : kMiottsPhraseDefault);
+  return playStreamingVoiceWithPhrase(type, (type == kVoiceBeep2) ? kMiottsPhraseBeep2 : kCharacters[g_current_character_index].phrase_happy);
 }
 
 bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
@@ -1293,7 +1293,7 @@ bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
     return false;
   }
   if (!text || !text[0]) {
-    text = kMiottsPhraseDefault;
+    text = kCharacters[g_current_character_index].phrase_happy;
   }
   if (!connectToWiFi()) {
     setVoiceStateMessage(idx, "NOWIFI");
@@ -2346,7 +2346,7 @@ void handleDebugHttpRequest() {
   }
 
   if (path == "/voice") {
-    const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, kMiottsPhraseDefault);
+    const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, kCharacters[g_current_character_index].phrase_happy);
     send_text("text/plain; charset=utf-8", ok ? "voice:ok" : "voice:fail");
     return;
   }
@@ -2459,92 +2459,82 @@ bool playAltVoiceSound() {
 void drawCharacterBody(uint16_t x, uint16_t y, const CharacterStyle& style,
                        bool happy, bool sad, int bounce, uint16_t frame) {
   M5Canvas& gfx = g_frame_canvas;
-  const uint16_t head = style.head;
-  const uint16_t body = style.body;
-  const uint16_t accent = style.accent;
   const int base_y = y + bounce;
-  const int body_x1 = x - 22;
-  const int body_y1 = base_y - 2;
 
-  gfx.fillRoundRect(body_x1, body_y1, 44, 32, 18, body);
-  gfx.fillCircle(x, base_y - 29, 22, head);
-  gfx.fillCircle(x, base_y - 29, 16, style.accent);
-  gfx.drawFastHLine(x - 18, base_y - 41, 36, style.accent);
+  // Round body
+  gfx.fillCircle(x, base_y, 20, style.body);
+  // Slightly lighter belly
+  gfx.fillCircle(x, base_y + 4, 12, style.head);
 
+  // Eyes
   const bool blink = (frame % kBlinkInterval) >= (kBlinkInterval - kBlinkHoldFrames);
-  const int eye_y = base_y - 36;
+  const int eye_y = base_y - 6;
   if (blink) {
-    gfx.drawFastHLine(x - 10, eye_y, 8, style.eye);
-    gfx.drawFastHLine(x + 2, eye_y, 8, style.eye);
+    gfx.drawFastHLine(x - 8, eye_y, 5, style.eye);
+    gfx.drawFastHLine(x + 3, eye_y, 5, style.eye);
   } else {
-    gfx.fillCircle(x - 8, eye_y, 3, style.eye);
-    gfx.fillCircle(x + 8, eye_y, 3, style.eye);
-    gfx.fillCircle(x - 7, eye_y + 1, 1, TFT_WHITE);
-    gfx.fillCircle(x + 9, eye_y + 1, 1, TFT_WHITE);
+    gfx.fillCircle(x - 6, eye_y, 2, style.eye);
+    gfx.fillCircle(x + 6, eye_y, 2, style.eye);
+    gfx.fillCircle(x - 5, eye_y - 1, 1, TFT_WHITE);
+    gfx.fillCircle(x + 7, eye_y - 1, 1, TFT_WHITE);
   }
 
-  const int mouth_y = base_y - 9;
-  const uint16_t mouth = sad ? TFT_BLACK : (happy ? style.eye : body);
+  // Mouth
+  const int mouth_y = base_y + 4;
   if (happy) {
-    for (int i = -10; i <= 10; i += 2) {
-      const int yy = mouth_y + 10 - (i * i) / 10;
-      gfx.drawPixel(x + i, yy, mouth);
+    // Smile arc
+    for (int i = -5; i <= 5; i++) {
+      const int yy = mouth_y + (i * i) / 8;
+      gfx.drawPixel(x + i, yy, style.eye);
     }
   } else if (sad) {
-    for (int i = -10; i <= 10; i += 2) {
-      const int yy = mouth_y + 4 + (i * i) / 12;
-      gfx.drawPixel(x + i, yy, mouth);
+    // Frown arc
+    for (int i = -5; i <= 5; i++) {
+      const int yy = mouth_y + 3 - (i * i) / 8;
+      gfx.drawPixel(x + i, yy, style.eye);
     }
   } else {
-    gfx.drawLine(x - 12, mouth_y + 8, x + 12, mouth_y + 8, TFT_DARKGREY);
+    // Neutral dot
+    gfx.fillCircle(x, mouth_y + 1, 1, style.eye);
   }
 
-  gfx.fillCircle(x - 9, base_y - 17, 4, TFT_WHITE);
-  gfx.fillCircle(x + 9, base_y - 17, 4, TFT_WHITE);
-  gfx.fillCircle(x - 4, base_y - 12, 2, accent);
-  gfx.fillCircle(x + 4, base_y - 12, 2, accent);
-
-  gfx.fillCircle(x - 4, base_y + 18, 6, accent);
-  gfx.fillCircle(x + 4, base_y + 18, 6, accent);
-  switch ((frame / 8) % 3) {
-    case 0:
-      gfx.fillCircle(x, base_y - 14, 4, TFT_WHITE);
-      break;
-    case 1:
-      gfx.fillRoundRect(x - 12, base_y - 2, 8, 7, 4, TFT_WHITE);
-      gfx.fillRoundRect(x + 4, base_y - 2, 8, 7, 4, TFT_WHITE);
-      break;
-    default:
-      gfx.fillRoundRect(x - 10, base_y, 20, 7, 4, style.accent);
-      break;
-  }
+  // Tiny circle feet
+  gfx.fillCircle(x - 8, base_y + 20, 4, style.accent);
+  gfx.fillCircle(x + 8, base_y + 20, 4, style.accent);
 }
 
 void drawCharacterVariant(int idx, uint16_t x, uint16_t y, const CharacterStyle& style, bool happy,
                          bool sad, int bounce, uint16_t frame) {
   M5Canvas& gfx = g_frame_canvas;
-  drawCharacterBody(x, y, style, happy, sad, bounce, frame);
+  const int base_y = y + bounce;
 
   switch (idx) {
     case 0:
-      gfx.fillCircle(x - 12, y - 53, 4, 0xFD00);
-      gfx.fillCircle(x + 12, y - 53, 4, 0xFD00);
-      gfx.fillCircle(x - 1, y - 56, 5, 0xFD00);
+      // もこ: Two long rabbit ears on top
+      gfx.fillRoundRect(x - 10, base_y - 42, 7, 22, 3, style.accent);
+      gfx.fillRoundRect(x + 3, base_y - 42, 7, 22, 3, style.accent);
+      // Inner ear pink
+      gfx.fillRoundRect(x - 8, base_y - 38, 3, 14, 2, 0xFDB8);
+      gfx.fillRoundRect(x + 5, base_y - 38, 3, 14, 2, 0xFDB8);
       break;
     case 1:
-      gfx.fillCircle(x, y - 52, 5, 0xF800);
-      gfx.fillCircle(x - 16, y - 48, 4, 0xF800);
-      gfx.fillCircle(x + 16, y - 48, 4, 0xF800);
+      // まる: Small round ears + rosy cheeks
+      gfx.fillCircle(x - 16, base_y - 14, 6, style.accent);
+      gfx.fillCircle(x + 16, base_y - 14, 6, style.accent);
+      // Rosy cheeks
+      gfx.fillCircle(x - 12, base_y + 1, 3, 0xFB2C);
+      gfx.fillCircle(x + 12, base_y + 1, 3, 0xFB2C);
       break;
     case 2:
-      gfx.fillCircle(x - 14, y - 47, 5, TFT_BLACK);
-      gfx.fillCircle(x + 14, y - 47, 5, TFT_BLACK);
-      gfx.fillCircle(x, y - 52, 4, 0xFFFF);
-      gfx.fillRoundRect(x - 6, y - 50, 12, 7, 6, 0xFFFF);
+      // つむ: Small pointed horns/ears, slightly narrower eyes
+      gfx.fillTriangle(x - 12, base_y - 18, x - 8, base_y - 30, x - 4, base_y - 18, style.accent);
+      gfx.fillTriangle(x + 4, base_y - 18, x + 8, base_y - 30, x + 12, base_y - 18, style.accent);
       break;
     default:
       break;
   }
+
+  drawCharacterBody(x, y, style, happy, sad, bounce, frame);
 }
 
 void drawPoo(int base_x, int base_y, Tick now, const AppState& state) {
@@ -2563,108 +2553,18 @@ void drawPoo(int base_x, int base_y, Tick now, const AppState& state) {
   }
 
   const int y = base_y - lift;
-  const int wobble = (state.frame % 12) - 6;
-
-  gfx.fillCircle(base_x, y, 11, kPooBrown);
-  gfx.fillCircle(base_x - 12 + wobble, y - 3, 8, kPooBrown);
-  gfx.fillCircle(base_x + 10 - wobble, y - 6, 9, kPooBrown);
-  gfx.fillCircle(base_x - 1, y - 16, 7, kPooBrown);
-  gfx.fillRoundRect(base_x - 16, y + 6, 32, 8, 4, kPooBrown);
-
-  if (state.cleaning) {
-    gfx.setCursor(52, 6);
-    gfx.setTextSize(1);
-    gfx.setTextColor(TFT_WHITE, TFT_BLACK);
-    gfx.print("BAM!");
-  }
+  // Small cute poop: 3 stacked circles (~10-12px tall)
+  gfx.fillCircle(base_x, y, 4, kPooBrown);
+  gfx.fillCircle(base_x - 1, y - 5, 3, kPooBrown);
+  gfx.fillCircle(base_x, y - 9, 2, kPooBrown);
 }
 
 void renderStatus(int character_index, Emotion emotion, Tick now, const AppState& state) {
-  M5Canvas& gfx = g_frame_canvas;
-  const uint8_t wifi_status = g_wifi_status;
-  const uint8_t voice_state = g_voice_state[static_cast<size_t>(kVoiceDefault)];
-
-  const char* wifi_text = "NO";
-  switch (static_cast<WifiStatus>(wifi_status)) {
-    case WifiStatus::kConnecting:
-      wifi_text = "CONNECT";
-      break;
-    case WifiStatus::kConnected:
-      wifi_text = "OK";
-      break;
-    case WifiStatus::kFailed:
-      wifi_text = "FAIL";
-      break;
-    case WifiStatus::kUnknown:
-    default:
-      wifi_text = "WAIT";
-      break;
-  }
-
-  const char* voice_text = "V:?";
-  switch (static_cast<VoiceState>(voice_state)) {
-    case VoiceState::kDownloading:
-      voice_text = "V:DL";
-      break;
-    case VoiceState::kDownloaded:
-      voice_text = "V:OK";
-      break;
-    case VoiceState::kFailed:
-      voice_text = "V:ERR";
-      break;
-    case VoiceState::kPending:
-    default:
-      voice_text = "V:P";
-      break;
-  }
-
-  gfx.setTextSize(1);
-  gfx.setTextColor(TFT_WHITE, TFT_BLACK);
-  gfx.setCursor(4, 4);
-  gfx.print(kCharacters[character_index].name);
-
-  gfx.setCursor(92, 4);
-  switch (emotion) {
-    case Happy:
-      gfx.print(":-)");
-      break;
-    case Sad:
-      gfx.print(":-(");
-      break;
-    case Neutral:
-    default:
-      gfx.print("...");
-      break;
-  }
-
-  gfx.fillRect(0, 14, 128, 24, TFT_BLACK);
-  gfx.setCursor(4, 14);
-  gfx.print("WiFi:");
-  gfx.print(wifi_text);
-  gfx.print(" SPK:");
-  gfx.print(g_speaker_ready ? "ON" : "OFF");
-  gfx.print(" P:");
-  gfx.print(static_cast<unsigned>(g_psram_size / 1024));
-  gfx.setCursor(4, 22);
-  gfx.print(voice_text);
-  gfx.print(" ");
-  gfx.print(g_voice_state_msg[static_cast<size_t>(kVoiceDefault)]);
-
-  if (state.has_poop || state.cleaning) {
-    gfx.setCursor(4, 116);
-    gfx.print("need clean!");
-    gfx.fillCircle(78, 111, 7, kPooBrown);
-    gfx.fillCircle(94, 111, 6, kPooBrown);
-    gfx.fillRoundRect(71, 118, 26, 6, 3, kPooBrown);
-  } else if ((now - state.last_poop_tick) > pdMS_TO_TICKS(kPooIntervalMs)) {
-    gfx.setCursor(20, 116);
-    gfx.print("feel happy!");
-  }
-
-  gfx.setCursor(92, 116);
-  gfx.print("A:");
-  gfx.print(kSpeakerVolumePercent[g_speaker_volume_index]);
-  gfx.print("%");
+  // No text overlay - keep the display clean
+  (void)character_index;
+  (void)emotion;
+  (void)now;
+  (void)state;
 }
 
 void renderBackground() {
@@ -2694,40 +2594,70 @@ void drawFrame(AppState& state) {
   gfx.pushSprite(0, 0);
 }
 
-void playEventSound(bool clean, bool happy) {
-  if (!g_speaker_ready) {
-    return;
-  }
+void voiceTask(void*) {
+  for (;;) {
+    VoiceRequest req{};
+    if (xQueueReceive(g_voice_queue, &req, portMAX_DELAY) == pdPASS) {
+      if (!g_speaker_ready) continue;
+      setSpeakerVolume();
 
-  setSpeakerVolume();
+      const char* phrase = nullptr;
+      bool is_clean = false;
+      bool is_happy = false;
 
-  if (clean) {
-    const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, kMiottsPhraseClean);
-    if (!ok) {
-      const uint16_t tones[] = {880, 1040, 1240};
-      const uint16_t durs[] = {80, 90, 90};
-      for (size_t i = 0; i < 3; ++i) {
-        playTestTone(tones[i], durs[i]);
-        delay(durs[i]);
+      switch (req.request_type) {
+        case 0: phrase = kCharacters[req.char_idx].phrase_happy; is_happy = true; break;
+        case 1: phrase = kCharacters[req.char_idx].phrase_sad; break;
+        case 2: phrase = kCharacters[req.char_idx].phrase_clean; is_clean = true; break;
+        case 3: phrase = kCharacters[req.char_idx].phrase_boot; is_happy = true; break;
+        default: continue;
       }
-    }
-    return;
-  }
 
-  const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, happy ? kMiottsPhraseHappy : kMiottsPhraseSad);
-  if (!ok) {
-    if (happy) {
-      if (!playAltVoiceSound()) {
-        if (!playCrySound()) {
-          playTestTone(900, 110);
+      const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, phrase);
+      if (!ok) {
+        if (is_clean) {
+          const uint16_t tones[] = {880, 1040, 1240};
+          const uint16_t durs[] = {80, 90, 90};
+          for (size_t i = 0; i < 3; ++i) {
+            playTestTone(tones[i], durs[i]);
+            delay(durs[i]);
+          }
+        } else if (is_happy) {
+          if (!playAltVoiceSound()) {
+            if (!playCrySound()) {
+              playTestTone(900, 110);
+            }
+          }
+        } else {
+          if (!playCrySound()) {
+            playTestTone(900, 110);
+          }
         }
       }
-      return;
-    }
-    if (!playCrySound()) {
-      playTestTone(900, 110);
     }
   }
+}
+
+void playEventSound(bool clean, bool happy, uint8_t char_idx) {
+  if (!g_speaker_ready || !g_voice_queue) return;
+  VoiceRequest req{};
+  req.char_idx = char_idx;
+  if (clean) {
+    req.request_type = 2;
+  } else if (happy) {
+    req.request_type = 0;
+  } else {
+    req.request_type = 1;
+  }
+  xQueueSend(g_voice_queue, &req, 0);
+}
+
+void playCharacterIntro(uint8_t char_idx) {
+  if (!g_speaker_ready || !g_voice_queue) return;
+  VoiceRequest req{};
+  req.char_idx = char_idx;
+  req.request_type = 3;  // boot/intro
+  xQueueSend(g_voice_queue, &req, 0);
 }
 
 void handleEvent(const ButtonEvent& e, AppState& state) {
@@ -2748,7 +2678,8 @@ void handleEvent(const ButtonEvent& e, AppState& state) {
     state.emotion = Neutral;
     state.emotion_until = now;
     state.cleaning = false;
-    playEventSound(false, true);
+    g_current_character_index = state.character_index;
+    playCharacterIntro(state.character_index);
     return;
   }
 
@@ -2759,13 +2690,13 @@ void handleEvent(const ButtonEvent& e, AppState& state) {
     state.emotion = Happy;
     state.emotion_until = now + pdMS_TO_TICKS(kCleaningTimeMs);
     state.last_poop_tick = now;
-    playEventSound(true, true);
+    playEventSound(true, true, state.character_index);
     return;
   }
 
   state.emotion = (state.emotion == Happy) ? Sad : Happy;
   state.emotion_until = now + pdMS_TO_TICKS(kEmotionTimeMs);
-  playEventSound(false, state.emotion == Happy);
+  playEventSound(false, state.emotion == Happy, state.character_index);
 }
 
 void inputTask(void*) {
@@ -2791,6 +2722,7 @@ void inputTask(void*) {
 void gameTask(void*) {
   AppState state{};
   state.last_poop_tick = xTaskGetTickCount();
+  g_current_character_index = state.character_index;
   randomSeed(esp_random());
 
   M5.Display.setRotation(0);
@@ -2814,7 +2746,7 @@ void gameTask(void*) {
     }
 
     if (!state.has_poop && !state.cleaning && now - state.last_poop_tick > pdMS_TO_TICKS(kPooIntervalMs)) {
-      if (random(100) < 35) {
+      if (random(100) < 20) {
         state.has_poop = true;
       }
       state.last_poop_tick = now;
@@ -2865,6 +2797,11 @@ void setup() {
     while (1) {
       delay(1000);
     }
+  }
+
+  g_voice_queue = xQueueCreate(4, sizeof(VoiceRequest));
+  if (g_voice_queue) {
+    xTaskCreatePinnedToCore(voiceTask, "voiceTask", 12288, nullptr, 1, nullptr, 0);
   }
 
   xTaskCreatePinnedToCore(inputTask, "inputTask", 3072, nullptr, 2, nullptr, 0);
