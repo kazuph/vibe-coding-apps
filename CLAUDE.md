@@ -195,3 +195,15 @@ Projects use strict TypeScript with:
 - Static assets placed in `dist/` for Workers deployment
 - Images and media files referenced relatively
 - Build processes handle asset optimization and copying
+
+## Integration Testing Policy (AtomS3R / IoT Projects)
+
+**サーバーサイド（stt_server.py等）の変更時は、必ず自分のレイヤーで結合テストを実行してからユーザーに確認を求めること。**
+
+- HTTP APIの応答はcurlやPythonスクリプトで検証可能
+- `ask_gemini()` 等の関数は直接importしてテスト可能
+- ユーザーに実機テストを依頼する前に、以下を確認すること:
+  1. 正常系（通常会話）: 空でない日本語テキストが返ること
+  2. 検索系（時事問題）: Google検索が発動し最新情報で回答すること
+  3. エッジケース: 絵文字除去、文字数制限が正しく動作すること
+- 「ユーザーに確認させないでください」= 自分で検証できる範囲は必ず自分で検証する

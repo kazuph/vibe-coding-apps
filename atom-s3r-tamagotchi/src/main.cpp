@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <M5Unified.h>
+#include "robot_voice_effects.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -117,8 +118,8 @@ struct MiottsEndpoint {
   MiottsMethod method;
 };
 constexpr MiottsEndpoint kMiottsEndpoints[] = {
-  {"/tts", MiottsMethod::kPost},
   {"/v1/tts", MiottsMethod::kPost},
+  {"/tts", MiottsMethod::kPost},
   {"/audio/speech", MiottsMethod::kPost},
   {"/v1/audio/speech", MiottsMethod::kPost},
   {"/v1/speech", MiottsMethod::kPost},
@@ -132,10 +133,19 @@ constexpr MiottsEndpoint kMiottsEndpoints[] = {
   {"/speak", MiottsMethod::kGet},
 };
 
+// STT (Speech-to-Text) constants
+constexpr uint16_t kSttSampleRate = 16000;
+constexpr size_t kSttMaxSecondsPsram = 5;
+constexpr size_t kSttMaxSecondsInternal = 2;  // Fallback for no-PSRAM boards
+size_t g_stt_max_samples = 0;  // Set at runtime based on available memory
+constexpr uint16_t kSttPort = 8002;
+constexpr const char* kSttEndpointPath = "/v1/stt";
+
 enum class EventType : uint8_t {
   kTap = 0,
   kHold = 1,
   kDoubleTap = 2,
+  kHoldRelease = 3,
 };
 
 struct ButtonEvent {
@@ -144,7 +154,7 @@ struct ButtonEvent {
 
 struct VoiceRequest {
   uint8_t char_idx;
-  uint8_t request_type;  // 0=happy, 1=sad, 2=clean, 3=boot/intro
+  uint8_t request_type;  // 0=happy, 1=sad, 2=clean, 3=boot/intro, 4=STT process+TTS
 };
 
 enum Emotion : uint8_t {
@@ -207,9 +217,32 @@ struct WavStreamInfo {
 };
 
 CharacterStyle kCharacters[] = {
-    {"もこ", 0xFCF0, 0xFDF0, 0xF8B2, TFT_BLACK, "もこだよ、よろしくね！", "うれしいな！", "えーん", "ぴかぴか！"},
-    {"まる", 0xFD20, 0xFEA0, 0xFD00, TFT_BLACK, "まるだよ、おなかすいた！", "やったー！", "うぅ", "すっきり！"},
-    {"つむ", 0x5DDF, 0x867F, 0x4C7F, TFT_BLACK, "つむ。よろしく", "まあまあね", "べつに", "当然でしょ"},
+    {"アンパンボーヤ", 0xFEE0, 0xFE60, 0xF800, TFT_BLACK, "ぼく、アンパンボーヤ！", "げんきをだして！", "かなしいなあ", "きれいにしたよ！"},
+    {"はやぶさ", 0x07FF, 0x07E0, 0x07FF, TFT_BLACK, "はやぶさ、しゅっぱつ！", "やったー！", "うぅ", "ぴかぴか！"},
+    {"もこ", 0xFCF0, 0xFDF0, 0xF8B2, TFT_BLACK, "もこだよ、よろしくね！", "うれしいな！", "えーん", "おそうじできた！"},
+};
+
+// --- セリフバリエーション（ランダムで選ばれる） ---
+constexpr size_t kPhraseVariants = 4;
+const char* kPhrasesHappy[][kPhraseVariants] = {
+    {"げんきをだして！", "きみはひとりじゃない！", "えがおがいちばん！", "ぼくがまもるよ！"},          // アンパンボーヤ
+    {"やったー！", "はしるのだいすき！", "しゅっぱつしんこう！", "かぜになるぞ！"},                // はやぶさ
+    {"うれしいな！", "ふわふわ〜", "おはなばたけいきたい", "だいすきだよ〜"},                     // もこ
+};
+const char* kPhrasesSad[][kPhraseVariants] = {
+    {"かなしいなあ", "おなかがすいたよ", "たすけてほしいな", "ちからがでない"},                    // アンパンボーヤ
+    {"うぅ", "おくれちゃうよ", "とまりたくない", "しんごうがあかだ"},                            // はやぶさ
+    {"えーん", "さびしいよう", "おみみがつめたい", "ぴえん"},                                    // もこ
+};
+const char* kPhrasesClean[][kPhraseVariants] = {
+    {"きれいにしたよ！", "ぴかぴかだね！", "おそうじだいすき！", "せいけつがいちばん！"},          // アンパンボーヤ
+    {"ぴかぴか！", "そうじかんりょう！", "しゃたいせいび！", "つるつるだね！"},                    // はやぶさ
+    {"おそうじできた！", "きれいきれい〜", "ふわぁすっきり", "もこもこになった！"},                // もこ
+};
+const char* kPhrasesBoot[][kPhraseVariants] = {
+    {"ぼくアンパンボーヤ！みんなのことまもるからね、いっしょにあそぼう！", "やあ、げんきかな？ぼくアンパンボーヤだよ、こまったことがあったらいつでもよんでね！", "こんにちは！きょうもいいてんきだね、なにしてあそぶ？", "あたらしいかおになったよ！ちからもりもりだ！"},  // アンパンボーヤ
+    {"はやぶさ、しゅっぱつしんこう！きょうもいっしょにはしろうね！", "みんなおまたせ！E5けいはやぶさだよ、のってくれるかな？", "いくよー！つぎのえきまでぜんそくぜんしんだ！", "はやぶさけんざん！きょうもかぜみたいにはしるぞー！"},  // はやぶさ
+    {"もこだよ、よろしくね！きょうもふわふわいいきもち！", "おはよう！もこはきょうもげんきだよ、いっしょにあそぼ！", "もこもこ〜、おみみであたたかいね、きょうもなかよくしよう！", "あそぼう！もこといっしょにおさんぽしよ！"},  // もこ
 };
 
 volatile uint8_t g_current_character_index = 0;
@@ -257,6 +290,20 @@ uint32_t g_http_request_seq = 0;
 uint32_t g_http_last_request_ms = 0;
 uint32_t g_simple_http_request_seq = 0;
 uint32_t g_simple_http_last_request_ms = 0;
+// STT state
+int16_t* g_stt_buffer = nullptr;  // Allocated in PSRAM
+volatile bool g_stt_recording = false;
+volatile size_t g_stt_samples_recorded = 0;
+char g_stt_result[256] = "";
+volatile bool g_stt_has_result = false;
+// セリフ表示用
+char g_display_phrase[64] = "";
+volatile uint32_t g_display_phrase_until_ms = 0;
+// Forward declarations for STT
+void startSttRecording();
+void stopSttRecording();
+void sttRecordChunk();
+bool sendSttRequest();
 void voiceDownloadTask(void*);
 void debugHttpServerTask(void*);
 void simpleHttpServerTask(void*);
@@ -271,14 +318,14 @@ bool readFromStreamWithTimeout(
     WiFiClient* stream, HTTPClient& http, uint8_t* dst, const size_t need, size_t& got, const bool fixed_size);
 bool skipStreamBytes(WiFiClient* stream, HTTPClient& http, size_t bytes);
 bool parseWavHeaderFromStream(WiFiClient* stream, HTTPClient& http, WavStreamInfo& info, size_t idx);
-bool playDecodedWavFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg);
+bool playDecodedWavFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg, float rate_scale = 1.0f);
 String escapeJsonText(const char* text);
 String encodeUriComponent(const char* text);
 bool extractJsonStringValue(const String& json, const char* key, String& value);
-bool playStreamingAudioFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg);
+bool playStreamingAudioFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg, float rate_scale = 1.0f);
 bool playStreamingVoiceByUrl(VoiceTone type, const char* url);
-bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode = false);
-bool playStreamingVoiceWithPhrase(VoiceTone tone, const char* phrase, bool quick_mode = false);
+bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode = false, float rate_scale = 1.0f);
+bool playStreamingVoiceWithPhrase(VoiceTone tone, const char* phrase, bool quick_mode = false, float rate_scale = 1.0f);
 bool playStreamingVoice(VoiceTone type);
 void playCharacterIntro(uint8_t char_idx);
 bool connectToWiFi();
@@ -306,7 +353,10 @@ void startSimpleHttpServer();
 void stopSimpleHttpServer();
 void markBootAnnouncementIfReady();
 void processBootAnnouncement();
-alignas(2) uint8_t g_voice_stream_buf[kVoiceStreamChunkBytes];
+alignas(4) uint8_t g_voice_stream_buf[kVoiceStreamChunkBytes];
+// トリプルバッファ: playRawはポインタのみキューするためDMA読み出し中の上書きを防ぐ
+constexpr size_t kStreamBufferCount = 3;
+alignas(4) uint8_t g_voice_stream_buffers[kStreamBufferCount][kVoiceStreamChunkBytes];
 uint8_t* g_voice_data[static_cast<size_t>(kVoiceCount)] = {};
 size_t g_voice_data_len[static_cast<size_t>(kVoiceCount)] = {};
 bool g_voice_loaded[static_cast<size_t>(kVoiceCount)] = {};
@@ -1084,7 +1134,107 @@ bool parseWavHeaderFromStream(WiFiClient* stream, HTTPClient& http, WavStreamInf
   }
 }
 
-bool playDecodedWavFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg) {
+// ストリーミング再生用カスタムStream: writeToStream()に渡してchunked encoding対応
+// トリプルバッファでplayRawに送り出す（メモリ制約なし）
+class PlaybackWriteStream : public Stream {
+private:
+  uint8_t header_buf_[44];
+  size_t header_pos_ = 0;
+  bool header_parsed_ = false;
+  uint32_t play_rate_ = 24000;
+  bool stereo_ = false;
+  int buf_idx_ = 0;
+  size_t write_pos_ = 0;
+  bool play_ok_ = true;
+  float rate_scale_;
+  size_t total_pcm_ = 0;
+
+  void parseHeader() {
+    uint32_t sr = header_buf_[24] | (header_buf_[25] << 8) | (header_buf_[26] << 16) | (header_buf_[27] << 24);
+    uint16_t ch = header_buf_[22] | (header_buf_[23] << 8);
+    play_rate_ = (uint32_t)(sr * rate_scale_);
+    stereo_ = ch > 1;
+    logDiag("StreamPlay: %uHz -> %uHz, %uch", (unsigned)sr, (unsigned)play_rate_, (unsigned)ch);
+  }
+
+  void flushBuffer() {
+    if (write_pos_ == 0) return;
+    write_pos_ -= write_pos_ % 2;  // 16bit align
+    if (write_pos_ == 0) return;
+
+    size_t sample_len = write_pos_ / 2;
+    // キューが空くまで待つ（DMAが前のバッファを読み終えるまで）
+    uint32_t wait_start = millis();
+    while (M5.Speaker.isPlaying(0) >= 2 && (millis() - wait_start) < 3000) {
+      vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    play_ok_ = M5.Speaker.playRaw(
+        reinterpret_cast<const int16_t*>(g_voice_stream_buffers[buf_idx_]),
+        sample_len, play_rate_, stereo_, 1, 0, false);
+    total_pcm_ += write_pos_;
+    buf_idx_ = (buf_idx_ + 1) % kStreamBufferCount;
+    write_pos_ = 0;
+  }
+
+public:
+  PlaybackWriteStream(float rate_scale) : rate_scale_(rate_scale) {}
+
+  size_t write(uint8_t b) override { return write(&b, 1); }
+
+  size_t write(const uint8_t* buf, size_t len) override {
+    if (!play_ok_) return 0;
+    size_t consumed = 0;
+
+    // WAVヘッダー蓄積フェーズ（最初の44バイト）
+    if (!header_parsed_) {
+      while (consumed < len && header_pos_ < 44) {
+        header_buf_[header_pos_++] = buf[consumed++];
+      }
+      if (header_pos_ >= 44) {
+        parseHeader();
+        header_parsed_ = true;
+      }
+      if (consumed >= len) return len;
+    }
+
+    // PCMデータをトリプルバッファに蓄積 → 一杯になったらplayRaw
+    while (consumed < len && play_ok_) {
+      size_t space = kVoiceStreamChunkBytes - write_pos_;
+      size_t to_copy = len - consumed;
+      if (to_copy > space) to_copy = space;
+      memcpy(g_voice_stream_buffers[buf_idx_] + write_pos_, buf + consumed, to_copy);
+      write_pos_ += to_copy;
+      consumed += to_copy;
+
+      if (write_pos_ >= kVoiceStreamChunkBytes) {
+        flushBuffer();
+      }
+    }
+    return len;
+  }
+
+  void finish() {
+    if (write_pos_ > 0 && play_ok_) {
+      flushBuffer();
+    }
+    // 全データ再生完了まで待つ
+    uint32_t wait_start = millis();
+    while (M5.Speaker.isPlaying(0) > 0 && (millis() - wait_start) < 15000) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    logDiag("StreamPlay: done, %u bytes PCM played", (unsigned)total_pcm_);
+  }
+
+  bool isOk() const { return play_ok_ && header_parsed_; }
+
+  // Stream interface (read系は不使用)
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+};
+
+bool playDecodedWavFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg, float rate_scale) {
   const size_t idx = static_cast<size_t>(type);
   if (idx >= static_cast<size_t>(kVoiceCount)) {
     return false;
@@ -1097,65 +1247,33 @@ bool playDecodedWavFromHttp(VoiceTone type, HTTPClient& http, const char* succes
   }
 
   setVoiceStateMessage(idx, "DECODE");
-  size_t cap = kMiottsMaxWavBytes;
-  const uint32_t max_psram = ESP.getMaxAllocPsram();
-  if (max_psram > 0 && static_cast<size_t>(max_psram) < cap) {
-    cap = static_cast<size_t>(max_psram);
-  }
-  uint8_t* buffer = static_cast<uint8_t*>(heap_caps_malloc(cap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!buffer) {
-    const uint32_t max_heap = ESP.getMaxAllocHeap();
-    if (max_heap > 0 && static_cast<size_t>(max_heap) < cap) {
-      cap = static_cast<size_t>(max_heap);
-    }
-    buffer = static_cast<uint8_t*>(heap_caps_malloc(cap, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  }
-  if (!buffer) {
-    setVoiceStateMessage(idx, "ALLOC");
-    g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kFailed);
-    return false;
-  }
-
-  BufferWriteStream sink(buffer, cap);
-  const int written = http.writeToStream(&sink);  // handles chunked transfer encoding
-  const size_t wav_len = sink.length();
-  if (written < 0 || sink.getWriteError()) {
-    logDiag("miotts writeToStream fail written=%d len=%u err=%d", written, (unsigned)wav_len, (int)sink.getWriteError());
-    setVoiceStateMessage(idx, "W_FAIL");
-    g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kFailed);
-    heap_caps_free(buffer);
-    return false;
-  }
-  if (wav_len < 12 || !isWavHeader(buffer, wav_len)) {
-    logDiag("miotts decoded body is not WAV len=%u", (unsigned)wav_len);
-    setVoiceStateMessage(idx, "BAD_WAV");
-    g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kFailed);
-    heap_caps_free(buffer);
-    return false;
-  }
-
   setSpeakerVolume();
   M5.Speaker.stop();
-  const bool ok = M5.Speaker.playWav(buffer, wav_len, 1, 0, true);
-  if (!ok) {
+
+  // ストリーミング再生: writeToStream()でchunked encoding対応 + トリプルバッファでplayRaw
+  PlaybackWriteStream sink(rate_scale);
+  const int written = http.writeToStream(&sink);
+  sink.finish();
+
+  if (written < 0 || !sink.isOk()) {
+    logDiag("miotts streaming play failed written=%d ok=%d", written, (int)sink.isOk());
     setVoiceStateMessage(idx, "PLAY_FAIL");
     g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kFailed);
-    heap_caps_free(buffer);
     return false;
   }
 
-  const uint32_t start_ms = millis();
-  while (M5.Speaker.getPlayingChannels() > 0 && (millis() - start_ms) < 15000) {
-    vTaskDelay(pdMS_TO_TICKS(20));
+  if (g_voice_data[idx]) {
+    heap_caps_free(g_voice_data[idx]);
+    g_voice_data[idx] = nullptr;
   }
-  heap_caps_free(buffer);
-
+  g_voice_data_len[idx] = 0;
+  g_voice_loaded[idx] = false;
   g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kDownloaded);
   setVoiceStateMessage(idx, success_msg && success_msg[0] ? success_msg : "MIOTTS");
   return true;
 }
 
-bool playStreamingAudioFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg) {
+bool playStreamingAudioFromHttp(VoiceTone type, HTTPClient& http, const char* success_msg, float rate_scale) {
   const size_t idx = static_cast<size_t>(type);
   if (idx >= static_cast<size_t>(kVoiceCount)) {
     return false;
@@ -1183,9 +1301,17 @@ bool playStreamingAudioFromHttp(VoiceTone type, HTTPClient& http, const char* su
   setSpeakerVolume();
   M5.Speaker.stop();
 
+  // トリプルバッファリング: playRawはポインタのみキューするため
+  // DMAが読み出し中のバッファを上書きしないようローテーションする
+  const int channel = 0;
+  int buf_idx = 0;
   const size_t frame_bytes = static_cast<size_t>(info.block_size);
   const size_t sample_bytes = static_cast<size_t>(info.bits_per_sample / 8u);
+  const uint32_t play_rate = (uint32_t)(info.sample_rate * rate_scale);
   uint32_t data_left = info.data_bytes;
+
+  logDiag("streaming: %u bytes, %uHz -> %uHz, %uch", (unsigned)data_left, (unsigned)info.sample_rate, (unsigned)play_rate, (unsigned)info.channels);
+
   while (data_left > 0) {
     size_t want = data_left < kVoiceStreamChunkBytes ? static_cast<size_t>(data_left) : kVoiceStreamChunkBytes;
     want -= want % frame_bytes;
@@ -1199,31 +1325,39 @@ bool playStreamingAudioFromHttp(VoiceTone type, HTTPClient& http, const char* su
       break;
     }
 
+    // 現在のバッファにデータ読み込み
     size_t got = 0;
-    if (!readFromStreamWithTimeout(stream, http, g_voice_stream_buf, want, got, true) || got != want) {
+    if (!readFromStreamWithTimeout(stream, http, g_voice_stream_buffers[buf_idx], want, got, true) || got != want) {
       setVoiceStateMessage(idx, "READ_ERR");
       g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kFailed);
       return false;
     }
     data_left -= static_cast<uint32_t>(got);
 
+    // 再生開始（ポインタをキューに入れる、stop_current_sound=false）
     const size_t sample_len = got / sample_bytes;
     const bool ok = (info.bits_per_sample == 16)
-                        ? M5.Speaker.playRaw(reinterpret_cast<const int16_t*>(g_voice_stream_buf), sample_len, info.sample_rate,
-                                            info.channels > 1, 1, 0)
-                        : M5.Speaker.playRaw(g_voice_stream_buf, got, info.sample_rate, info.channels > 1, 1, 0);
+                        ? M5.Speaker.playRaw(reinterpret_cast<const int16_t*>(g_voice_stream_buffers[buf_idx]), sample_len, play_rate,
+                                            info.channels > 1, 1, channel, false)
+                        : M5.Speaker.playRaw(g_voice_stream_buffers[buf_idx], got, play_rate, info.channels > 1, 1, channel, false);
     if (!ok) {
       setVoiceStateMessage(idx, "PLAY_FAIL");
       g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kFailed);
       return false;
     }
-    vTaskDelay(pdMS_TO_TICKS(2));
+
+    // 次のバッファへローテーション
+    buf_idx = (buf_idx + 1) % kStreamBufferCount;
+
+    // キューが満杯（2つ以上キュー中）なら待つ
+    while (M5.Speaker.isPlaying(channel) >= 2) {
+      vTaskDelay(pdMS_TO_TICKS(5));
+    }
   }
 
-  if (data_left != 0) {
-    setVoiceStateMessage(idx, "INCOMPLETE");
-    g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kFailed);
-    return false;
+  // 全データ再生完了まで待つ
+  while (M5.Speaker.isPlaying(channel) > 0) {
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 
   if (g_voice_data[idx]) {
@@ -1287,7 +1421,7 @@ bool playStreamingVoice(VoiceTone type) {
   return playStreamingVoiceWithPhrase(type, (type == kVoiceBeep2) ? kMiottsPhraseBeep2 : kCharacters[g_current_character_index].phrase_happy);
 }
 
-bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
+bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode, float rate_scale) {
   const size_t idx = static_cast<size_t>(tone);
   if (idx >= static_cast<size_t>(kVoiceCount)) {
     return false;
@@ -1326,7 +1460,7 @@ bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
         base += ":" + String(port);
       }
       const size_t total_endpoints = sizeof(kMiottsEndpoints) / sizeof(kMiottsEndpoints[0]);
-      const size_t endpoint_start = quick_mode ? 1 : 0;  // prefer /v1/tts in quick mode
+      const size_t endpoint_start = 0;  // /v1/tts is now first
       const size_t endpoint_count = quick_mode ? 1 : total_endpoints;
       for (size_t e = endpoint_start; e < endpoint_start + endpoint_count; ++e) {
         const auto& endpoint = kMiottsEndpoints[e];
@@ -1355,6 +1489,7 @@ bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
             }
           }
 
+          client.setTimeout(kMiottsHttpTimeoutMs / 1000);  // WiFiClient timeout in seconds
           const bool begin_ok = http.begin(client, req_url);
           if (!begin_ok) {
             logDiag("miotts begin failed: %s", req_url.c_str());
@@ -1365,7 +1500,6 @@ bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
           }
           http.addHeader("User-Agent", "M5AtomS3R/1.0");
           http.addHeader("Accept", "audio/wav, audio/x-wav, audio/wave, application/json, text/plain, */*");
-          // TTS generation can take seconds; do not use the quick probe timeout here.
           http.setTimeout(kMiottsHttpTimeoutMs);
           if (is_post) {
             http.addHeader("Content-Type", "application/json");
@@ -1388,7 +1522,8 @@ bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
           const bool looks_wav = content_type.indexOf("audio/wav") >= 0 || content_type.indexOf("audio/x-wav") >= 0 ||
                                  content_type.indexOf("audio/wave") >= 0;
           if (looks_wav || content_type.length() == 0 || content_type == "application/octet-stream") {
-            if (playDecodedWavFromHttp(tone, http, "MIOTTS")) {
+            // PlaybackWriteStream: writeToStream()でchunked encoding対応 + トリプルバッファ
+            if (playDecodedWavFromHttp(tone, http, "MIOTTS", rate_scale)) {
               logDiag("miotts hit: %s", req_url.c_str());
               g_voice_state[idx] = static_cast<uint8_t>(VoiceState::kDownloaded);
               setVoiceStateMessage(idx, "MI_OK");
@@ -1450,8 +1585,8 @@ bool playMiottsSpeechByText(const char* text, VoiceTone tone, bool quick_mode) {
   return false;
 }
 
-bool playStreamingVoiceWithPhrase(VoiceTone type, const char* phrase, const bool quick_mode) {
-  if (playMiottsSpeechByText(phrase, type, quick_mode)) {
+bool playStreamingVoiceWithPhrase(VoiceTone type, const char* phrase, const bool quick_mode, float rate_scale) {
+  if (playMiottsSpeechByText(phrase, type, quick_mode, rate_scale)) {
     return true;
   }
   const size_t idx = static_cast<size_t>(type);
@@ -1843,7 +1978,7 @@ bool forceAtomicEchoSpeakerPins() {
   cfg.pin_ws = GPIO_NUM_6;
   cfg.pin_mck = I2S_PIN_NO_CHANGE;
   cfg.i2s_port = I2S_NUM_1;
-  cfg.sample_rate = 48000;
+  cfg.sample_rate = 16000;  // Atomic Echo Base公式推奨レート
   cfg.magnification = 1;
   cfg.stereo = false;
   cfg.buzzer = false;
@@ -2503,37 +2638,196 @@ void drawCharacterBody(uint16_t x, uint16_t y, const CharacterStyle& style,
   gfx.fillCircle(x + 8, base_y + 20, 4, style.accent);
 }
 
+// ── アンパンボーヤ専用描画 ──
+void drawAnpanman(uint16_t x, uint16_t y, bool happy, bool sad, int bounce, uint16_t frame) {
+  M5Canvas& gfx = g_frame_canvas;
+  const int by = y + bounce;
+
+  // --- マント (behind body) ---
+  gfx.fillTriangle(x - 22, by + 6, x - 10, by - 8, x - 6, by + 18, 0xF800);  // 左マント
+  gfx.fillTriangle(x + 22, by + 6, x + 10, by - 8, x + 6, by + 18, 0xF800);  // 右マント
+
+  // --- 丸い顔 (肌色) ---
+  gfx.fillCircle(x, by, 22, 0xFE60);  // パン色の顔
+  gfx.drawCircle(x, by, 22, 0xC440);  // 輪郭線
+
+  // --- ほっぺた (大きく赤い) ---
+  gfx.fillCircle(x - 14, by + 2, 6, 0xF800);   // 左ほっぺ
+  gfx.fillCircle(x + 14, by + 2, 6, 0xF800);   // 右ほっぺ
+  gfx.fillCircle(x - 13, by + 1, 2, 0xFB2C);   // ほっぺハイライト
+  gfx.fillCircle(x + 13, by + 1, 2, 0xFB2C);
+
+  // --- 鼻 (大きく赤い丸) ---
+  gfx.fillCircle(x, by + 2, 7, 0xF800);         // 赤い鼻
+  gfx.fillCircle(x - 2, by, 2, 0xFBE0);          // 鼻ハイライト
+
+  // --- 眉毛 (太くてしっかり) ---
+  gfx.fillRoundRect(x - 12, by - 14, 8, 3, 1, 0x6200);  // 左眉
+  gfx.fillRoundRect(x + 4, by - 14, 8, 3, 1, 0x6200);   // 右眉
+
+  // --- 目 ---
+  const bool blink = (frame % kBlinkInterval) >= (kBlinkInterval - kBlinkHoldFrames);
+  if (blink) {
+    gfx.drawFastHLine(x - 10, by - 8, 6, TFT_BLACK);
+    gfx.drawFastHLine(x + 4, by - 8, 6, TFT_BLACK);
+  } else {
+    // 白目 + 黒目（大きめ）
+    gfx.fillCircle(x - 7, by - 8, 4, TFT_WHITE);
+    gfx.fillCircle(x + 7, by - 8, 4, TFT_WHITE);
+    gfx.fillCircle(x - 6, by - 7, 2, TFT_BLACK);
+    gfx.fillCircle(x + 6, by - 7, 2, TFT_BLACK);
+    gfx.fillCircle(x - 6, by - 8, 1, TFT_WHITE);  // ハイライト
+    gfx.fillCircle(x + 6, by - 8, 1, TFT_WHITE);
+  }
+
+  // --- 口 ---
+  if (happy) {
+    // 大きなニッコリ口
+    for (int i = -8; i <= 8; i++) {
+      gfx.drawPixel(x + i, by + 12 + (i * i) / 16, TFT_BLACK);
+      gfx.drawPixel(x + i, by + 13 + (i * i) / 16, TFT_BLACK);
+    }
+  } else if (sad) {
+    for (int i = -6; i <= 6; i++) {
+      gfx.drawPixel(x + i, by + 15 - (i * i) / 12, TFT_BLACK);
+    }
+  } else {
+    gfx.drawFastHLine(x - 4, by + 12, 8, TFT_BLACK);
+  }
+
+  // --- 小さい手足 ---
+  gfx.fillCircle(x - 10, by + 24, 4, 0xFE60);
+  gfx.fillCircle(x + 10, by + 24, 4, 0xFE60);
+}
+
+// ── はやぶさ E5系 専用描画（斜め前方からの視点） ──
+void drawHayabusa(uint16_t x, uint16_t y, bool happy, bool sad, int bounce, uint16_t frame) {
+  M5Canvas& gfx = g_frame_canvas;
+  const int by = y + bounce;
+
+  // E5系カラー定義
+  const uint16_t kGreen  = 0x0600;   // E5系ダークグリーン
+  const uint16_t kGreenL = 0x2EC4;   // 明るめグリーン（ハイライト面）
+  const uint16_t kWhite  = 0xFFFF;
+  const uint16_t kPink   = 0xF81F;   // E5系ピンクライン
+  const uint16_t kGray   = 0x7BEF;
+  const uint16_t kDkGray = 0x4208;
+  const uint16_t kNavy   = 0x0013;   // 窓の紺色
+  const uint16_t kSky    = 0x4A7F;   // 窓の反射
+
+  // === 斜め45度ビュー（右を向いた姿、左手前に車体側面） ===
+
+  // --- 車体側面（左手前、白い面） ---
+  // 台形で奥行き感を出す（左が広く、右に向かって狭まる）
+  gfx.fillTriangle(x - 20, by - 8,  x - 20, by + 16,  x + 4, by + 10, kWhite);
+  gfx.fillTriangle(x - 20, by - 8,  x + 4, by - 14,   x + 4, by + 10, kWhite);
+  // 側面の輪郭
+  gfx.drawLine(x - 20, by - 8,  x + 4, by - 14, kGray);
+  gfx.drawLine(x - 20, by + 16, x + 4, by + 10, kGray);
+  gfx.drawLine(x - 20, by - 8,  x - 20, by + 16, kGray);
+
+  // --- 車体上面（屋根、グリーン） ---
+  // パースのかかった平行四辺形
+  gfx.fillTriangle(x - 20, by - 8,  x + 4, by - 14,  x + 18, by - 18, kGreen);
+  gfx.fillTriangle(x - 20, by - 8,  x + 18, by - 18, x - 6, by - 12, kGreen);
+  // 手前側を少し明るいグリーンでハイライト
+  gfx.fillTriangle(x - 20, by - 8,  x - 6, by - 12,  x - 18, by - 10, kGreenL);
+
+  // --- ノーズ（右奥に伸びる流線型の先端） ---
+  // 先端は右上方向に鋭く伸びる
+  gfx.fillTriangle(x + 4, by - 14,  x + 4, by + 10,  x + 24, by - 4, kWhite);
+  // ノーズ上面（グリーン）
+  gfx.fillTriangle(x + 4, by - 14,  x + 18, by - 18, x + 24, by - 4, kGreen);
+  // ノーズ先端のキャップ
+  gfx.fillTriangle(x + 24, by - 4,  x + 18, by - 18, x + 26, by - 8, kGreenL);
+  // ノーズ輪郭
+  gfx.drawLine(x + 4, by + 10,  x + 24, by - 4, kGray);
+  gfx.drawLine(x + 18, by - 18, x + 26, by - 8, kGray);
+  gfx.drawLine(x + 24, by - 4,  x + 26, by - 8, kDkGray);
+
+  // --- ピンクのアクセントライン（E5系の象徴！車体側面を横断） ---
+  gfx.drawLine(x - 20, by + 2,  x + 4, by - 3, kPink);
+  gfx.drawLine(x - 20, by + 3,  x + 4, by - 2, kPink);
+  gfx.drawLine(x + 4, by - 3,   x + 24, by - 4, kPink);
+  gfx.drawLine(x + 4, by - 2,   x + 24, by - 3, kPink);
+
+  // --- 側面の窓（3つ並び、パースで右ほど小さく） ---
+  gfx.fillRect(x - 17, by - 5, 5, 5, kNavy);
+  gfx.fillRect(x - 10, by - 6, 4, 4, kNavy);
+  gfx.fillRect(x - 4, by - 7, 3, 4, kNavy);
+  // 窓の反射
+  gfx.drawPixel(x - 16, by - 4, kSky);
+  gfx.drawPixel(x - 9, by - 5, kSky);
+  gfx.drawPixel(x - 3, by - 6, kSky);
+
+  // --- フロントウィンドウ（ノーズ上の大きな窓） ---
+  gfx.fillTriangle(x + 8, by - 12, x + 6, by - 2, x + 20, by - 8, kNavy);
+  // 窓の反射ハイライト
+  gfx.drawLine(x + 10, by - 10, x + 16, by - 8, kSky);
+
+  // --- ヘッドライト（ノーズ先端付近） ---
+  gfx.fillCircle(x + 22, by - 2, 2, 0xFFE0);  // 黄色ライト
+  gfx.fillCircle(x + 22, by - 2, 1, kWhite);   // ライト中心
+
+  // --- かわいい目（フロントウィンドウの中に） ---
+  const bool blink = (frame % kBlinkInterval) >= (kBlinkInterval - kBlinkHoldFrames);
+  if (blink) {
+    gfx.drawFastHLine(x + 9, by - 8, 4, kWhite);
+    gfx.drawFastHLine(x + 15, by - 9, 3, kWhite);
+  } else {
+    // 左目（手前、大きめ）
+    gfx.fillCircle(x + 10, by - 8, 3, kWhite);
+    gfx.fillCircle(x + 11, by - 7, 1, TFT_BLACK);
+    // 右目（奥、パースで小さめ）
+    gfx.fillCircle(x + 17, by - 9, 2, kWhite);
+    gfx.fillCircle(x + 17, by - 8, 1, TFT_BLACK);
+    // ハイライト
+    gfx.drawPixel(x + 9, by - 9, kWhite);
+    gfx.drawPixel(x + 16, by - 10, kWhite);
+  }
+
+  // --- 口（ノーズ下部） ---
+  if (happy) {
+    for (int i = 0; i < 6; i++) {
+      gfx.drawPixel(x + 14 + i, by - 1 + (i > 2 ? (i - 2) : (2 - i)), kDkGray);
+    }
+  } else if (sad) {
+    for (int i = 0; i < 5; i++) {
+      gfx.drawPixel(x + 14 + i, by + 1 - (i > 2 ? (i - 2) : (2 - i)), kDkGray);
+    }
+  } else {
+    gfx.drawFastHLine(x + 14, by, 5, kDkGray);
+  }
+
+  // --- 車輪（パース付き、手前が大きく奥が小さい） ---
+  gfx.fillCircle(x - 14, by + 18, 3, kDkGray);  // 手前の車輪（大）
+  gfx.fillCircle(x - 6, by + 16, 3, kDkGray);
+  gfx.fillCircle(x + 2, by + 13, 2, kDkGray);   // 奥の車輪（小）
+  // 車輪のハブ
+  gfx.fillCircle(x - 14, by + 18, 1, kGray);
+  gfx.fillCircle(x - 6, by + 16, 1, kGray);
+  gfx.fillCircle(x + 2, by + 13, 1, kGray);
+}
+
 void drawCharacterVariant(int idx, uint16_t x, uint16_t y, const CharacterStyle& style, bool happy,
                          bool sad, int bounce, uint16_t frame) {
   M5Canvas& gfx = g_frame_canvas;
   const int base_y = y + bounce;
 
-  switch (idx) {
-    case 0:
-      // もこ: Two long rabbit ears on top
-      gfx.fillRoundRect(x - 10, base_y - 42, 7, 22, 3, style.accent);
-      gfx.fillRoundRect(x + 3, base_y - 42, 7, 22, 3, style.accent);
-      // Inner ear pink
-      gfx.fillRoundRect(x - 8, base_y - 38, 3, 14, 2, 0xFDB8);
-      gfx.fillRoundRect(x + 5, base_y - 38, 3, 14, 2, 0xFDB8);
-      break;
-    case 1:
-      // まる: Small round ears + rosy cheeks
-      gfx.fillCircle(x - 16, base_y - 14, 6, style.accent);
-      gfx.fillCircle(x + 16, base_y - 14, 6, style.accent);
-      // Rosy cheeks
-      gfx.fillCircle(x - 12, base_y + 1, 3, 0xFB2C);
-      gfx.fillCircle(x + 12, base_y + 1, 3, 0xFB2C);
-      break;
-    case 2:
-      // つむ: Small pointed horns/ears, slightly narrower eyes
-      gfx.fillTriangle(x - 12, base_y - 18, x - 8, base_y - 30, x - 4, base_y - 18, style.accent);
-      gfx.fillTriangle(x + 4, base_y - 18, x + 8, base_y - 30, x + 12, base_y - 18, style.accent);
-      break;
-    default:
-      break;
+  // アンパンボーヤ・はやぶさは完全専用描画
+  if (idx == 0) { drawAnpanman(x, y, happy, sad, bounce, frame); return; }
+  if (idx == 1) { drawHayabusa(x, y, happy, sad, bounce, frame); return; }
+
+  // Pre-body decorations (things that go BEHIND the body)
+  if (idx == 2) {
+    // もこ: Two long rabbit ears on top (behind body)
+    gfx.fillRoundRect(x - 10, base_y - 42, 7, 22, 3, style.accent);
+    gfx.fillRoundRect(x + 3, base_y - 42, 7, 22, 3, style.accent);
+    gfx.fillRoundRect(x - 8, base_y - 38, 3, 14, 2, 0xFDB8);
+    gfx.fillRoundRect(x + 5, base_y - 38, 3, 14, 2, 0xFDB8);
   }
 
+  // Draw the main body
   drawCharacterBody(x, y, style, happy, sad, bounce, frame);
 }
 
@@ -2560,19 +2854,76 @@ void drawPoo(int base_x, int base_y, Tick now, const AppState& state) {
 }
 
 void renderStatus(int character_index, Emotion emotion, Tick now, const AppState& state) {
-  // No text overlay - keep the display clean
   (void)character_index;
   (void)emotion;
-  (void)now;
-  (void)state;
+  M5Canvas& gfx = g_frame_canvas;
+
+  // Show IP address for first 10 seconds after boot
+  if (state.frame < (10000 / kFramePeriodMs) && WiFi.status() == WL_CONNECTED) {
+    gfx.setTextSize(1);
+    gfx.setTextColor(TFT_WHITE);
+    gfx.setCursor(4, 4);
+    gfx.print(WiFi.localIP().toString().c_str());
+  } else if (state.frame < (10000 / kFramePeriodMs) && WiFi.status() != WL_CONNECTED) {
+    gfx.setTextSize(1);
+    gfx.setTextColor(TFT_YELLOW);
+    gfx.setCursor(4, 4);
+    gfx.print("WiFi...");
+  }
+
+  // STT recording indicator
+  if (g_stt_recording) {
+    gfx.fillCircle(120, 8, 5, TFT_RED);
+    gfx.setTextSize(1);
+    gfx.setTextColor(TFT_WHITE);
+    gfx.setCursor(108, 16);
+    gfx.print("REC");
+  }
 }
 
 void renderBackground() {
   M5Canvas& gfx = g_frame_canvas;
-  for (int y = 0; y < kScreenH; ++y) {
-    const uint16_t row = gfx.color565(8 + ((y * 6) / 16), 8 + ((y * 18) / 16), 20 + ((y * 8) / 16));
-    gfx.drawFastHLine(0, y, kScreenW, row);
+  // === ゴッチ風のお部屋 ===
+  // 壁（上2/3）: クリーム色のやさしい壁紙
+  const uint16_t kWall = 0xF71C;       // 薄いクリーム
+  const uint16_t kWallLine = 0xEF1B;   // 壁紙の模様
+  for (int y = 0; y < 85; ++y) {
+    gfx.drawFastHLine(0, y, kScreenW, kWall);
   }
+  // 壁紙にドット柄（レトロゲーム風）
+  for (int dy = 8; dy < 85; dy += 12) {
+    for (int dx = 6; dx < kScreenW; dx += 12) {
+      gfx.drawPixel(dx, dy, kWallLine);
+    }
+  }
+
+  // 床（下1/3）: 木目フローリング風
+  const uint16_t kFloor = 0xCC60;      // 明るい茶色
+  const uint16_t kFloorLine = 0xBB40;  // 床の線
+  gfx.fillRect(0, 85, kScreenW, kScreenH - 85, kFloor);
+  // 床の境界線
+  gfx.drawFastHLine(0, 85, kScreenW, 0xA520);
+  gfx.drawFastHLine(0, 86, kScreenW, 0xB560);
+  // 木目の横線
+  for (int y = 92; y < kScreenH; y += 8) {
+    gfx.drawFastHLine(0, y, kScreenW, kFloorLine);
+  }
+
+  // 窓（左上）: 小さなまる窓
+  gfx.fillRoundRect(8, 8, 24, 24, 4, 0x9E1F);   // 水色の空
+  gfx.drawRoundRect(8, 8, 24, 24, 4, 0xA520);   // 窓枠
+  gfx.drawFastHLine(8, 20, 24, 0xA520);          // 窓の十字
+  gfx.drawFastVLine(20, 8, 24, 0xA520);
+  // 窓の中に雲
+  gfx.fillCircle(16, 14, 3, TFT_WHITE);
+  gfx.fillCircle(20, 13, 2, TFT_WHITE);
+
+  // 時計（右上）: 小さな丸時計
+  gfx.fillCircle(112, 18, 9, TFT_WHITE);
+  gfx.drawCircle(112, 18, 9, 0xA520);
+  gfx.drawLine(112, 18, 112, 12, TFT_BLACK);     // 長針
+  gfx.drawLine(112, 18, 116, 18, TFT_BLACK);     // 短針
+  gfx.fillCircle(112, 18, 1, TFT_RED);           // 中心
 }
 
 void drawFrame(AppState& state) {
@@ -2587,12 +2938,222 @@ void drawFrame(AppState& state) {
   renderStatus(state.character_index, state.emotion, now, state);
 
   const int bounce = ((state.frame % 14) < 7) ? ((state.frame % 14) - 3) : (16 - (state.frame % 14) - 3);
-  drawCharacterVariant(state.character_index, 64, 64, style, happy, sad, bounce, state.frame);
-  drawPoo(64, 108, now, state);
+  // キャラを上方に配置（y=50）、大きく表示
+  drawCharacterVariant(state.character_index, 64, 50, style, happy, sad, bounce, state.frame);
 
-  gfx.drawCircle(64, 64, 61, TFT_DARKGREY);
+  // うんちをランダム位置に表示（位置はlast_poop_tickをシードに固定）
+  if (state.has_poop || state.cleaning) {
+    const uint32_t seed = state.last_poop_tick;
+    const int poo_x = 20 + (seed * 7 + 13) % 88;       // 20〜107の範囲
+    const int poo_y = 90 + (seed * 11 + 37) % 28;      // 90〜117の範囲
+    drawPoo(poo_x, poo_y, now, state);
+  }
+
+  // セリフ表示（画面下部、ひらがな・日本語フォント）
+  if (g_display_phrase[0] && millis() < g_display_phrase_until_ms) {
+    gfx.setFont(&fonts::efontJA_10);
+    gfx.setTextSize(1);
+    gfx.setTextColor(TFT_WHITE);
+    // テキスト幅を計測
+    int tw = gfx.textWidth(g_display_phrase);
+    if (tw > 120) tw = 120;
+    const int bx = 64 - tw / 2 - 4;
+    const int bw = tw + 8;
+    gfx.fillRoundRect(bx, 108, bw, 16, 3, 0x2104);  // 暗めの背景
+    gfx.drawRoundRect(bx, 108, bw, 16, 3, 0x4A69);  // 枠線
+    gfx.setCursor(bx + 4, 110);
+    gfx.print(g_display_phrase);
+    // デフォルトフォントに戻す
+    gfx.setFont(nullptr);
+  }
+
   gfx.pushSprite(0, 0);
 }
+
+// ─── STT (Speech-to-Text) functions ───
+
+void startSttRecording() {
+  // Dynamically allocate STT buffer (freed after use to avoid TTS memory conflict)
+  if (!g_stt_buffer) {
+    // Try PSRAM first, then internal
+    size_t psram_samples = kSttSampleRate * kSttMaxSecondsPsram;
+    g_stt_buffer = (int16_t*)heap_caps_malloc(psram_samples * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+    if (g_stt_buffer) {
+      g_stt_max_samples = psram_samples;
+    } else {
+      size_t internal_samples = kSttSampleRate * kSttMaxSecondsInternal;
+      g_stt_buffer = (int16_t*)malloc(internal_samples * sizeof(int16_t));
+      if (g_stt_buffer) {
+        g_stt_max_samples = internal_samples;
+      }
+    }
+  }
+  if (!g_stt_buffer || g_stt_max_samples == 0) {
+    logDiag("STT: buffer alloc failed");
+    return;
+  }
+  M5.Speaker.end();  // Mic and speaker can't work simultaneously
+  M5.Mic.begin();
+  g_stt_samples_recorded = 0;
+  g_stt_recording = true;
+  logDiag("STT: recording started (max %u samples, %u bytes)", (unsigned)g_stt_max_samples, (unsigned)(g_stt_max_samples * 2));
+}
+
+void stopSttRecording() {
+  g_stt_recording = false;
+  M5.Mic.end();
+  M5.Speaker.begin();
+  logDiag("STT: recording stopped, samples=%u", (unsigned)g_stt_samples_recorded);
+}
+
+void sttRecordChunk() {
+  if (!g_stt_recording || !g_stt_buffer) return;
+  if (g_stt_samples_recorded >= g_stt_max_samples) {
+    // Buffer full - auto-stop and send
+    stopSttRecording();
+    if (g_voice_queue) {
+      VoiceRequest req{};
+      req.char_idx = g_current_character_index;
+      req.request_type = 4;
+      xQueueSend(g_voice_queue, &req, 0);
+    }
+    return;
+  }
+  const size_t remaining = g_stt_max_samples - g_stt_samples_recorded;
+  const size_t chunk = min((size_t)1600, remaining);  // 100ms worth at 16kHz
+  if (M5.Mic.record(&g_stt_buffer[g_stt_samples_recorded], chunk, kSttSampleRate)) {
+    g_stt_samples_recorded += chunk;
+  }
+}
+
+void writeWavHeader(uint8_t* header, uint32_t data_size, uint16_t sample_rate) {
+  uint32_t file_size = data_size + 36;
+  memcpy(header, "RIFF", 4);
+  memcpy(header + 4, &file_size, 4);
+  memcpy(header + 8, "WAVE", 4);
+  memcpy(header + 12, "fmt ", 4);
+  uint32_t fmt_size = 16;
+  memcpy(header + 16, &fmt_size, 4);
+  uint16_t audio_format = 1;  // PCM
+  memcpy(header + 20, &audio_format, 2);
+  uint16_t num_channels = 1;  // Mono
+  memcpy(header + 22, &num_channels, 2);
+  uint32_t sr32 = sample_rate;
+  memcpy(header + 24, &sr32, 4);
+  uint32_t byte_rate = sr32 * 2;  // 16-bit mono
+  memcpy(header + 28, &byte_rate, 4);
+  uint16_t block_align = 2;
+  memcpy(header + 32, &block_align, 2);
+  uint16_t bits = 16;
+  memcpy(header + 34, &bits, 2);
+  memcpy(header + 36, "data", 4);
+  memcpy(header + 40, &data_size, 4);
+}
+
+bool sendSttRequest() {
+  if (g_stt_samples_recorded < 1600) {  // At least 100ms
+    logDiag("STT: too short, skipping");
+    return false;
+  }
+
+  // Build URL – use /v1/stt-raw endpoint (accepts raw WAV body, no multipart)
+  char url[128];
+  const char* host = g_miotts_last_host[0] ? g_miotts_last_host : "192.168.11.12";
+  snprintf(url, sizeof(url), "http://%s:%u/v1/stt-raw", host, (unsigned)kSttPort);
+
+  uint32_t data_size = g_stt_samples_recorded * 2;  // 16-bit = 2 bytes per sample
+
+  // Write WAV header directly into the start of stt_buffer memory
+  // We reserved space by shifting recording start by 22 samples (44 bytes)
+  // Actually, we can send WAV header + PCM data using WiFiClient streaming
+  uint8_t wav_header[44];
+  writeWavHeader(wav_header, data_size, kSttSampleRate);
+
+  WiFiClient client;
+  client.setTimeout(15);
+  HTTPClient http;
+  http.begin(client, url);
+  http.setTimeout(15000);
+  http.addHeader("Content-Type", "audio/wav");
+
+  size_t total_size = 44 + data_size;
+  logDiag("STT: POST %s (%u bytes)", url, (unsigned)total_size);
+
+  // Use chunked streaming: send header + data without extra buffer
+  http.addHeader("Content-Length", String(total_size));
+
+  // Get raw WiFi client to write header + data separately
+  if (!client.connect(host, kSttPort)) {
+    logDiag("STT: connect failed");
+    http.end();
+    return false;
+  }
+
+  // Send HTTP request manually to avoid extra buffer
+  client.printf("POST /v1/stt-raw HTTP/1.1\r\n");
+  client.printf("Host: %s:%u\r\n", host, (unsigned)kSttPort);
+  client.printf("Content-Type: audio/wav\r\n");
+  client.printf("Content-Length: %u\r\n", (unsigned)total_size);
+  client.printf("X-Character: %s\r\n", kCharacters[g_current_character_index].name);
+  client.printf("Connection: close\r\n\r\n");
+  client.write(wav_header, 44);
+  // Send PCM data in chunks to avoid timeout
+  const uint8_t* pcm = (const uint8_t*)g_stt_buffer;
+  size_t sent = 0;
+  while (sent < data_size) {
+    size_t chunk = min((size_t)4096, data_size - sent);
+    size_t w = client.write(pcm + sent, chunk);
+    if (w == 0) { logDiag("STT: write stall at %u", (unsigned)sent); break; }
+    sent += w;
+  }
+  logDiag("STT: sent %u/%u bytes", (unsigned)(44 + sent), (unsigned)total_size);
+
+  // Read response
+  unsigned long deadline = millis() + 15000;
+  while (client.connected() && !client.available() && millis() < deadline) {
+    delay(10);
+  }
+
+  // Skip HTTP headers
+  int code = 0;
+  while (client.available()) {
+    String line = client.readStringUntil('\n');
+    if (line.startsWith("HTTP/")) {
+      int sp1 = line.indexOf(' ');
+      if (sp1 > 0) code = line.substring(sp1 + 1).toInt();
+    }
+    if (line == "\r" || line.length() == 0) break;
+  }
+
+  if (code == 200) {
+    // Read response body from client
+    String response;
+    while (client.available()) {
+      response += (char)client.read();
+    }
+    client.stop();
+    // Parse simple JSON: {"text": "..."}
+    int text_start = response.indexOf("\"text\"");
+    if (text_start >= 0) {
+      int colon = response.indexOf(":", text_start);
+      int quote1 = response.indexOf("\"", colon + 1);
+      int quote2 = response.indexOf("\"", quote1 + 1);
+      if (quote1 >= 0 && quote2 > quote1) {
+        String text = response.substring(quote1 + 1, quote2);
+        strncpy(g_stt_result, text.c_str(), sizeof(g_stt_result) - 1);
+        g_stt_result[sizeof(g_stt_result) - 1] = '\0';
+        g_stt_has_result = true;
+        logDiag("STT result: %s", g_stt_result);
+        return true;
+      }
+    }
+  }
+  logDiag("STT: HTTP %d", code);
+  client.stop();
+  return false;
+}
+
+// ─── End STT functions ───
 
 void voiceTask(void*) {
   for (;;) {
@@ -2605,15 +3166,45 @@ void voiceTask(void*) {
       bool is_clean = false;
       bool is_happy = false;
 
+      const size_t ci = req.char_idx < (sizeof(kCharacters) / sizeof(kCharacters[0])) ? req.char_idx : 0;
+      const size_t vi = random(kPhraseVariants);  // ランダムバリエーション
       switch (req.request_type) {
-        case 0: phrase = kCharacters[req.char_idx].phrase_happy; is_happy = true; break;
-        case 1: phrase = kCharacters[req.char_idx].phrase_sad; break;
-        case 2: phrase = kCharacters[req.char_idx].phrase_clean; is_clean = true; break;
-        case 3: phrase = kCharacters[req.char_idx].phrase_boot; is_happy = true; break;
+        case 0: phrase = kPhrasesHappy[ci][vi]; is_happy = true; break;
+        case 1: phrase = kPhrasesSad[ci][vi]; break;
+        case 2: phrase = kPhrasesClean[ci][vi]; is_clean = true; break;
+        case 3: phrase = kPhrasesBoot[ci][vi]; is_happy = true; break;
+        case 4: {
+          // STT: send recording to server, then TTS the response
+          logDiag("STT: processing...");
+          bool stt_ok = sendSttRequest() && g_stt_has_result && g_stt_result[0];
+          // Free STT buffer BEFORE TTS to reclaim memory for WAV decode
+          if (g_stt_buffer) { free(g_stt_buffer); g_stt_buffer = nullptr; }
+          g_stt_samples_recorded = 0;
+          g_stt_max_samples = 0;
+          if (stt_ok) {
+            logDiag("STT: speaking result: %s", g_stt_result);
+            strncpy(g_display_phrase, g_stt_result, sizeof(g_display_phrase) - 1);
+            g_display_phrase[sizeof(g_display_phrase) - 1] = '\0';
+            g_display_phrase_until_ms = millis() + 4000;
+            setSpeakerVolume();
+            playStreamingVoiceWithPhrase(kVoiceDefault, g_stt_result, true, 1.25f);  // quick_mode + 1.25x speed
+            g_stt_has_result = false;
+          } else {
+            logDiag("STT: no result");
+            playTestTone(440, 100);  // Error beep
+          }
+          continue;  // Skip normal phrase playback
+        }
         default: continue;
       }
 
-      const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, phrase);
+      // セリフを画面に表示（3秒間）
+      if (phrase) {
+        strncpy(g_display_phrase, phrase, sizeof(g_display_phrase) - 1);
+        g_display_phrase[sizeof(g_display_phrase) - 1] = '\0';
+        g_display_phrase_until_ms = millis() + 3000;
+      }
+      const bool ok = playStreamingVoiceWithPhrase(kVoiceDefault, phrase, true, 1.25f);  // quick_mode + 1.25x speed
       if (!ok) {
         if (is_clean) {
           const uint16_t tones[] = {880, 1040, 1240};
@@ -2663,23 +3254,39 @@ void playCharacterIntro(uint8_t char_idx) {
 void handleEvent(const ButtonEvent& e, AppState& state) {
   const Tick now = xTaskGetTickCount();
 
-    if (e.type == EventType::kDoubleTap) {
-    ++g_speaker_volume_index;
-    if (g_speaker_volume_index >= kSpeakerVolumeCount) {
-      g_speaker_volume_index = 0;
-    }
-    setSpeakerVolume();
-    playTestTone(1400, 65);
-    return;
-  }
-
-  if (e.type == EventType::kHold) {
+  if (e.type == EventType::kDoubleTap) {
+    // Character switch (was volume adjust)
     state.character_index = (state.character_index + 1) % (sizeof(kCharacters) / sizeof(kCharacters[0]));
     state.emotion = Neutral;
     state.emotion_until = now;
     state.cleaning = false;
     g_current_character_index = state.character_index;
     playCharacterIntro(state.character_index);
+    return;
+  }
+
+  if (e.type == EventType::kHold) {
+    // Start push-to-talk recording
+    startSttRecording();
+    state.emotion = Happy;  // Show happy face while recording
+    state.emotion_until = 0;  // Keep until release
+    return;
+  }
+
+  if (e.type == EventType::kHoldRelease) {
+    // Stop recording and send to STT
+    if (g_stt_recording) {
+      stopSttRecording();
+      state.emotion = Neutral;
+      state.emotion_until = 0;
+      // Enqueue STT processing in voice task
+      if (g_voice_queue) {
+        VoiceRequest req{};
+        req.char_idx = g_current_character_index;
+        req.request_type = 4;  // STT process + TTS response
+        xQueueSend(g_voice_queue, &req, 0);
+      }
+    }
     return;
   }
 
@@ -2701,6 +3308,7 @@ void handleEvent(const ButtonEvent& e, AppState& state) {
 
 void inputTask(void*) {
   M5.BtnA.setHoldThresh(700);
+  bool holding = false;
   for (;;) {
     M5.update();
     if (M5.BtnA.wasDoubleClicked()) {
@@ -2712,7 +3320,15 @@ void inputTask(void*) {
       xQueueSend(g_events, &e, 0);
     }
     if (M5.BtnA.wasHold()) {
-      const ButtonEvent e{EventType::kHold};
+      if (!holding) {
+        holding = true;
+        const ButtonEvent e{EventType::kHold};
+        xQueueSend(g_events, &e, 0);
+      }
+    }
+    if (holding && M5.BtnA.wasReleased()) {
+      holding = false;
+      const ButtonEvent e{EventType::kHoldRelease};
       xQueueSend(g_events, &e, 0);
     }
     vTaskDelay(pdMS_TO_TICKS(8));
@@ -2733,6 +3349,11 @@ void gameTask(void*) {
     ButtonEvent e{};
     while (xQueueReceive(g_events, &e, 0) == pdPASS) {
       handleEvent(e, state);
+    }
+
+    // Record STT audio chunks while recording
+    if (g_stt_recording) {
+      sttRecordChunk();
     }
 
     const Tick now = xTaskGetTickCount();
@@ -2763,9 +3384,9 @@ void gameTask(void*) {
 void setup() {
   m5::M5Unified::config_t cfg;
   cfg.fallback_board = m5::board_t::board_M5AtomS3R;
-  cfg.internal_spk = true;
-  cfg.internal_mic = true;
-  cfg.external_speaker.atomic_echo = true;
+  cfg.internal_spk = false;   // AtomS3Rには内蔵スピーカー無し→false
+  cfg.internal_mic = false;    // マイクはEcho Base側→false
+  cfg.external_speaker.atomic_echo = true;  // 公式ルート: Atomic Echo Base
   Serial.begin(115200);
   M5.begin(cfg);
   delay(50);
@@ -2778,6 +3399,8 @@ void setup() {
   psramInit();
   g_psram_size = ESP.getPsramSize();
   logDiag("PSRAM=%u bytes", (unsigned)g_psram_size);
+  // STT buffer allocated on-demand in startSttRecording() to avoid TTS memory conflict
+  logDiag("STT: on-demand alloc (no PSRAM, share internal RAM with TTS)");
   logDiag("M5 board=%d speaker_ready=%d", (int)M5.getBoard(), (int)g_speaker_ready);
   dumpSpeakerConfig();
 
