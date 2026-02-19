@@ -10,7 +10,6 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 2. **Fitness Bike Controllers** - BLE control systems for fitness bikes with both Node.js/TUI and React/WebBluetooth implementations
 3. **Chrome Extensions** - Browser extensions for technical book previews and Tinder-style swiping interfaces
 4. **Kids Learning App** - Educational application with hiragana, katakana, alphabet, and number puzzles
-5. **AtomS3R Tamagotchi** - ESP32/FreeRTOS demo running on M5Stack AtomS3R with local HTTP control, button actions, animations, and TTS integration
 
 ## Monorepo Structure
 
@@ -23,7 +22,6 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | `fitness-bike-node-ble-tui/` | None | Node.js TUI version (Bluetooth control) |
 | `techbook-*-extension/` | None | Chrome Extensions |
 | None | `docs/kids-learning/` | Standalone learning app |
-| `atom-s3r-tamagotchi/` | None | M5Stack Atom S3R FreeRTOS firmware demo |
 
 ### GitHub Pages Integration
 
@@ -196,14 +194,3 @@ Projects use strict TypeScript with:
 - Images and media files referenced relatively
 - Build processes handle asset optimization and copying
 
-## Integration Testing Policy (AtomS3R / IoT Projects)
-
-**サーバーサイド（stt_server.py等）の変更時は、必ず自分のレイヤーで結合テストを実行してからユーザーに確認を求めること。**
-
-- HTTP APIの応答はcurlやPythonスクリプトで検証可能
-- `ask_gemini()` 等の関数は直接importしてテスト可能
-- ユーザーに実機テストを依頼する前に、以下を確認すること:
-  1. 正常系（通常会話）: 空でない日本語テキストが返ること
-  2. 検索系（時事問題）: Google検索が発動し最新情報で回答すること
-  3. エッジケース: 絵文字除去、文字数制限が正しく動作すること
-- 「ユーザーに確認させないでください」= 自分で検証できる範囲は必ず自分で検証する
