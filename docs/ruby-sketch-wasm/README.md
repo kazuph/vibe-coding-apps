@@ -6,7 +6,7 @@
 
 Ruby WASM ロード前の状態。
 
-![Initial Load](01-initial-load.png)
+![Initial Load](browser-use-screenshots/01-initial-load.png)
 
 ## サンプル一覧
 
@@ -14,55 +14,55 @@ Ruby WASM ロード前の状態。
 
 カラフルなボールが弾むアニメーション。
 
-![Circles](02-circles-running.png)
+![Circles](browser-use-screenshots/02-circles-running.png)
 
 ### 2. Rainbow Wave
 
 虹色のサイン波アニメーション。
 
-![Rainbow Wave](03-rainbow-wave.png)
+![Rainbow Wave](browser-use-screenshots/03-rainbow-wave.png)
 
 ### 3. Particles
 
 パーティクル噴水エフェクト。
 
-![Particles](04-particles.png)
+![Particles](browser-use-screenshots/04-particles.png)
 
 ### 4. Fractal Tree
 
 再帰的に描画されるフラクタルツリー。
 
-![Fractal Tree](05-fractal-tree.png)
+![Fractal Tree](browser-use-screenshots/05-fractal-tree.png)
 
 ### 5. Game of Life
 
 コンウェイのライフゲーム（セルオートマトン）。
 
-![Game of Life](06-game-of-life.png)
+![Game of Life](browser-use-screenshots/06-game-of-life.png)
 
 ### 6. Starfield
 
 中心から星が飛び出す3D風アニメーション。
 
-![Starfield](07-starfield.png)
+![Starfield](browser-use-screenshots/07-starfield.png)
 
 ### 7. Interactive Paint
 
 クリック&ドラッグで描画するインタラクティブペイント。
 
-![Interactive Paint](08-interactive-paint.png)
+![Interactive Paint](browser-use-screenshots/08-interactive-paint.png)
 
 ### 8. HSB Clock
 
 HSBカラーモードを使ったアナログ時計。
 
-![HSB Clock](09-hsb-clock.png)
+![HSB Clock](browser-use-screenshots/09-hsb-clock.png)
 
 ### 9. Vector Boids
 
 PVectorを使った群れシミュレーション（Boids）。
 
-![Vector Boids](10-vector-boids.png)
+![Vector Boids](browser-use-screenshots/10-vector-boids.png)
 
 ## テスト方法
 
