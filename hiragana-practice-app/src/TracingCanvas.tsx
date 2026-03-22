@@ -69,14 +69,42 @@ export function TracingCanvas({ char, onComplete }: Props) {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Draw the guide character (large, faint)
+    // Draw the guide character using stroke data with smooth curves
+    const area = size - margin * 2
+    const toX = (nx: number) => nx * area + margin
+    const toY = (ny: number) => ny * area + margin
+
     ctx.save()
     ctx.globalAlpha = GUIDE_OPACITY
-    ctx.font = `${size * 0.82}px "Zen Kurenaido", "Noto Sans JP", "Yu Mincho", serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#5a4a3a'
-    ctx.fillText(char.char, size / 2, size / 2 + size * 0.03)
+    ctx.strokeStyle = '#5a4a3a'
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = PEN_WIDTH * 2.2
+    for (const stroke of char.strokes) {
+      if (stroke.length < 2) continue
+      ctx.beginPath()
+      ctx.moveTo(toX(stroke[0][0]), toY(stroke[0][1]))
+      if (stroke.length === 2) {
+        // Simple line for 2-point strokes
+        ctx.lineTo(toX(stroke[1][0]), toY(stroke[1][1]))
+      } else {
+        // Catmull-Rom spline through control points for smooth curves
+        for (let i = 0; i < stroke.length - 1; i++) {
+          const p0 = i > 0 ? stroke[i - 1] : stroke[i]
+          const p1 = stroke[i]
+          const p2 = stroke[i + 1]
+          const p3 = i + 2 < stroke.length ? stroke[i + 2] : stroke[i + 1]
+
+          // Convert Catmull-Rom to cubic bezier control points
+          const cp1x = toX(p1[0] + (p2[0] - p0[0]) / 6)
+          const cp1y = toY(p1[1] + (p2[1] - p0[1]) / 6)
+          const cp2x = toX(p2[0] - (p3[0] - p1[0]) / 6)
+          const cp2y = toY(p2[1] - (p3[1] - p1[1]) / 6)
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, toX(p2[0]), toY(p2[1]))
+        }
+      }
+      ctx.stroke()
+    }
     ctx.restore()
 
     // Draw stroke order numbers at start of each stroke
@@ -115,7 +143,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
       ctx.restore()
     })
 
-    // Draw stroke guide path for the current stroke
+    // Draw stroke guide path for the current stroke (smooth curve)
     if (currentStroke < char.strokes.length) {
       const stroke = char.strokes[currentStroke]
       if (stroke.length >= 2) {
@@ -126,35 +154,37 @@ export function TracingCanvas({ char, onComplete }: Props) {
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
         ctx.beginPath()
-        const sx = stroke[0][0] * (size - margin * 2) + margin
-        const sy = stroke[0][1] * (size - margin * 2) + margin
-        ctx.moveTo(sx, sy)
-        for (let i = 1; i < stroke.length; i++) {
-          const px = stroke[i][0] * (size - margin * 2) + margin
-          const py = stroke[i][1] * (size - margin * 2) + margin
-          ctx.lineTo(px, py)
+        ctx.moveTo(toX(stroke[0][0]), toY(stroke[0][1]))
+        if (stroke.length === 2) {
+          ctx.lineTo(toX(stroke[1][0]), toY(stroke[1][1]))
+        } else {
+          for (let i = 0; i < stroke.length - 1; i++) {
+            const p0 = i > 0 ? stroke[i - 1] : stroke[i]
+            const p1 = stroke[i]
+            const p2 = stroke[i + 1]
+            const p3 = i + 2 < stroke.length ? stroke[i + 2] : stroke[i + 1]
+            const cp1x = toX(p1[0] + (p2[0] - p0[0]) / 6)
+            const cp1y = toY(p1[1] + (p2[1] - p0[1]) / 6)
+            const cp2x = toX(p2[0] - (p3[0] - p1[0]) / 6)
+            const cp2y = toY(p2[1] - (p3[1] - p1[1]) / 6)
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, toX(p2[0]), toY(p2[1]))
+          }
         }
         ctx.stroke()
         ctx.setLineDash([])
 
         // Draw arrow at end to show direction
-        if (stroke.length >= 2) {
-          const last = stroke[stroke.length - 1]
-          const prev = stroke[stroke.length - 2]
-          const ex = last[0] * (size - margin * 2) + margin
-          const ey = last[1] * (size - margin * 2) + margin
-          const px = prev[0] * (size - margin * 2) + margin
-          const py = prev[1] * (size - margin * 2) + margin
-          const angle = Math.atan2(ey - py, ex - px)
-
-          ctx.fillStyle = 'rgba(232, 93, 58, 0.4)'
-          ctx.beginPath()
-          ctx.moveTo(ex, ey)
-          ctx.lineTo(ex - 14 * Math.cos(angle - 0.5), ey - 14 * Math.sin(angle - 0.5))
-          ctx.lineTo(ex - 14 * Math.cos(angle + 0.5), ey - 14 * Math.sin(angle + 0.5))
-          ctx.closePath()
-          ctx.fill()
-        }
+        const last = stroke[stroke.length - 1]
+        const prev = stroke[stroke.length - 2]
+        const angle = Math.atan2(toY(last[1]) - toY(prev[1]), toX(last[0]) - toX(prev[0]))
+        const ex = toX(last[0]), ey = toY(last[1])
+        ctx.fillStyle = 'rgba(232, 93, 58, 0.4)'
+        ctx.beginPath()
+        ctx.moveTo(ex, ey)
+        ctx.lineTo(ex - 14 * Math.cos(angle - 0.5), ey - 14 * Math.sin(angle - 0.5))
+        ctx.lineTo(ex - 14 * Math.cos(angle + 0.5), ey - 14 * Math.sin(angle + 0.5))
+        ctx.closePath()
+        ctx.fill()
 
         ctx.restore()
       }
@@ -181,7 +211,8 @@ export function TracingCanvas({ char, onComplete }: Props) {
     const drawCtx = draw.getContext('2d')
     if (drawCtx) drawCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES)
 
-    drawGuide()
+    // Wait for fonts to load before drawing guide (ensures correct character rendering)
+    document.fonts.ready.then(() => drawGuide())
   }, [char])
 
   // Redraw guide when stroke changes
