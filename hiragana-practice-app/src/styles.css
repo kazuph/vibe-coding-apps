@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Zen+Kurenaido&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Noto+Sans+JP:wght@400;700;900&family=Zen+Kurenaido&display=swap');
 
 :root {
   --bg-primary: #faf7f2;
@@ -71,6 +71,34 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Mode toggle (hiragana/katakana) */
+.mode-toggle {
+  display: flex;
+  background: #f0ebe4;
+  border-radius: 8px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.mode-btn {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.mode-btn.active {
+  background: white;
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .header-actions {
@@ -204,7 +232,7 @@ body {
   color: var(--text-primary);
   min-width: 60px;
   text-align: center;
-  font-family: "Zen Kurenaido", "Noto Sans JP", serif;
+  font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
 }
 
 .stroke-info {
@@ -334,7 +362,7 @@ body {
   font-size: 24px;
   font-weight: 700;
   line-height: 1;
-  font-family: "Zen Kurenaido", "Noto Sans JP", serif;
+  font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
 }
 
 .gojuon-cell-romaji {
@@ -407,7 +435,7 @@ body {
 
 .success-char {
   font-size: 120px;
-  font-family: "Zen Kurenaido", "Noto Sans JP", serif;
+  font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
   color: var(--success-color);
   line-height: 1;
 }
@@ -440,6 +468,20 @@ body {
 
 .pen-dot:hover {
   opacity: 0.7;
+}
+
+/* License footer */
+.license-footer {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-secondary);
+  padding: 2px 8px 6px;
+  flex-shrink: 0;
+}
+
+.license-footer a {
+  color: var(--text-secondary);
+  text-decoration: underline;
 }
 
 /* Responsive */

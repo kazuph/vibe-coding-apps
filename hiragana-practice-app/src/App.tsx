@@ -1,16 +1,23 @@
-import { useState, useCallback } from 'react'
-import { allChars, gojuonTable, type HiraganaChar } from './hiraganaData'
+import { useState, useCallback, useMemo } from 'react'
+import {
+  allHiragana, allKatakana,
+  gojuonTable, katakanaGojuonTable,
+  type HiraganaChar, type CharMode,
+} from './hiraganaData'
 import { TracingCanvas } from './TracingCanvas'
 import { CharacterSelect } from './CharacterSelect'
 
 export default function App() {
+  const [mode, setMode] = useState<CharMode>('hiragana')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showSelector, setShowSelector] = useState(false)
   const [completedChars, setCompletedChars] = useState<Set<string>>(new Set())
   const [showSuccess, setShowSuccess] = useState(false)
   const [resetKey, setResetKey] = useState(0)
 
-  const currentChar = allChars[currentIndex]
+  const chars = useMemo(() => mode === 'hiragana' ? allHiragana : allKatakana, [mode])
+  const table = useMemo(() => mode === 'hiragana' ? gojuonTable : katakanaGojuonTable, [mode])
+  const currentChar = chars[currentIndex] || chars[0]
 
   const goTo = useCallback((index: number) => {
     setCurrentIndex(index)
@@ -23,27 +30,34 @@ export default function App() {
   }, [currentIndex, goTo])
 
   const goNext = useCallback(() => {
-    if (currentIndex < allChars.length - 1) goTo(currentIndex + 1)
-  }, [currentIndex, goTo])
+    if (currentIndex < chars.length - 1) goTo(currentIndex + 1)
+  }, [currentIndex, chars.length, goTo])
 
   const handleSelectChar = useCallback((char: HiraganaChar) => {
-    const idx = allChars.findIndex(c => c.char === char.char)
+    const idx = chars.findIndex(c => c.char === char.char)
     if (idx >= 0) goTo(idx)
     setShowSelector(false)
-  }, [goTo])
+  }, [chars, goTo])
 
   const handleComplete = useCallback(() => {
     setCompletedChars(prev => new Set(prev).add(currentChar.char))
     setShowSuccess(true)
     setTimeout(() => {
       setShowSuccess(false)
-      if (currentIndex < allChars.length - 1) {
+      if (currentIndex < chars.length - 1) {
         goTo(currentIndex + 1)
       }
     }, 1500)
-  }, [currentChar, currentIndex, goTo])
+  }, [currentChar, currentIndex, chars.length, goTo])
 
   const handleReset = useCallback(() => {
+    setShowSuccess(false)
+    setResetKey(k => k + 1)
+  }, [])
+
+  const toggleMode = useCallback(() => {
+    setMode(m => m === 'hiragana' ? 'katakana' : 'hiragana')
+    setCurrentIndex(0)
     setShowSuccess(false)
     setResetKey(k => k + 1)
   }, [])
@@ -52,7 +66,20 @@ export default function App() {
     <div className="app-container">
       {/* Header */}
       <header className="app-header">
-        <span className="app-title">ひらがな</span>
+        <div className="mode-toggle">
+          <button
+            className={`mode-btn ${mode === 'hiragana' ? 'active' : ''}`}
+            onClick={() => { if (mode !== 'hiragana') toggleMode() }}
+          >
+            ひらがな
+          </button>
+          <button
+            className={`mode-btn ${mode === 'katakana' ? 'active' : ''}`}
+            onClick={() => { if (mode !== 'katakana') toggleMode() }}
+          >
+            カタカナ
+          </button>
+        </div>
         <div className="header-actions">
           <button className="btn btn-secondary" onClick={handleReset}>
             クリア
@@ -66,7 +93,7 @@ export default function App() {
       {/* Practice area */}
       <div className="practice-area">
         <TracingCanvas
-          key={resetKey}
+          key={`${mode}-${resetKey}`}
           char={currentChar}
           onComplete={handleComplete}
         />
@@ -90,15 +117,20 @@ export default function App() {
           <div className="current-char-display">{currentChar.char}</div>
           <div className="stroke-info">{currentChar.romaji} ・ {currentChar.strokeCount}画</div>
         </div>
-        <button className="char-nav-btn" onClick={goNext} disabled={currentIndex === allChars.length - 1}>
+        <button className="char-nav-btn" onClick={goNext} disabled={currentIndex === chars.length - 1}>
           ▶
         </button>
+      </div>
+
+      {/* License attribution */}
+      <div className="license-footer">
+        Stroke data: <a href="https://github.com/parsimonhi/animCJK" target="_blank" rel="noopener noreferrer">animCJK</a> (LGPL-3.0)
       </div>
 
       {/* Character selection */}
       {showSelector && (
         <CharacterSelect
-          rows={gojuonTable}
+          rows={table}
           currentChar={currentChar.char}
           completedChars={completedChars}
           onSelect={handleSelectChar}
