@@ -717,8 +717,8 @@ end`
         rubyVM.eval(code);
 
         // Get canvas size from setup
-        const w = Number(rubyVM.eval('Sketch.width'));
-        const h = Number(rubyVM.eval('Sketch.height'));
+        const w = parseInt(rubyVM.eval('Sketch.width').toString(), 10) || 400;
+        const h = parseInt(rubyVM.eval('Sketch.height').toString(), 10) || 400;
         canvas.width = w;
         canvas.height = h;
 
