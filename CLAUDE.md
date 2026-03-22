@@ -22,6 +22,8 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | `fitness-bike-node-ble-tui/` | None | Node.js TUI version (Bluetooth control) |
 | `techbook-*-extension/` | None | Chrome Extensions |
 | None | `docs/kids-learning/` | Standalone learning app |
+| None | `docs/figure-skating-report/` | Figure skating training guide (docs only) |
+| None | `docs/functional-programming-tutorial/` | FP tutorial (docs only) |
 
 ### GitHub Pages Integration
 
