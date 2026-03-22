@@ -1,89 +1,106 @@
-# browser-use CLI テスト結果
+# Ruby Sketch WASM
 
-[browser-use CLI](https://docs.browser-use.com/open-source/browser-use-cli) を使って Ruby Sketch WASM の全9サンプルを自動操作・スクリーンショット撮影した結果です。
+ブラウザ上で Ruby を使った Processing スタイルのクリエイティブコーディングができる環境です。Ruby 3.3 を WebAssembly にコンパイルし、ビルド不要・インストール不要で動作します。
 
-## 初期表示
+**Live Demo**: https://kazuph.github.io/vibe-coding-apps/ruby-sketch-wasm/
 
-Ruby WASM ロード前の状態。
+## 特徴
 
-![Initial Load](browser-use-screenshots/01-initial-load.png)
+- Ruby 3.3 が WebAssembly でブラウザ内で直接動作
+- Processing / RubySketch 互換の DSL（`setup`, `draw`, `fill`, `stroke`, `circle`, `rect` など）
+- HTML5 Canvas によるリアルタイム描画
+- マウス・キーボードイベント対応
+- PVector クラスによるベクトル演算
+- HSB / RGB カラーモード対応
 
-## サンプル一覧
+## サンプル
 
-### 1. Circles
+9つのビルトインサンプルが用意されています。
+
+### Circles
 
 カラフルなボールが弾むアニメーション。
 
 ![Circles](browser-use-screenshots/02-circles-running.png)
 
-### 2. Rainbow Wave
+### Rainbow Wave
 
 虹色のサイン波アニメーション。
 
 ![Rainbow Wave](browser-use-screenshots/03-rainbow-wave.png)
 
-### 3. Particles
+### Particles
 
 パーティクル噴水エフェクト。
 
 ![Particles](browser-use-screenshots/04-particles.png)
 
-### 4. Fractal Tree
+### Fractal Tree
 
 再帰的に描画されるフラクタルツリー。
 
 ![Fractal Tree](browser-use-screenshots/05-fractal-tree.png)
 
-### 5. Game of Life
+### Game of Life
 
 コンウェイのライフゲーム（セルオートマトン）。
 
 ![Game of Life](browser-use-screenshots/06-game-of-life.png)
 
-### 6. Starfield
+### Starfield
 
-中心から星が飛び出す3D風アニメーション。
+中心から星が飛び出す 3D 風アニメーション。
 
 ![Starfield](browser-use-screenshots/07-starfield.png)
 
-### 7. Interactive Paint
+### Interactive Paint
 
 クリック&ドラッグで描画するインタラクティブペイント。
 
 ![Interactive Paint](browser-use-screenshots/08-interactive-paint.png)
 
-### 8. HSB Clock
+### HSB Clock
 
-HSBカラーモードを使ったアナログ時計。
+HSB カラーモードを使ったアナログ時計。
 
 ![HSB Clock](browser-use-screenshots/09-hsb-clock.png)
 
-### 9. Vector Boids
+### Vector Boids
 
-PVectorを使った群れシミュレーション（Boids）。
+PVector を使った群れシミュレーション（Boids）。
 
 ![Vector Boids](browser-use-screenshots/10-vector-boids.png)
 
-## テスト方法
+## 使い方
+
+1. [Live Demo](https://kazuph.github.io/vibe-coding-apps/ruby-sketch-wasm/) を開く
+2. ドロップダウンからサンプルを選択するか、エディタに Ruby コードを書く
+3. **Run** ボタン（または `Ctrl+Enter`）で実行
+
+```ruby
+# 例: 円がキャンバス内を跳ね回るスケッチ
+setup do
+  size 400, 400
+end
+
+draw do
+  background 0
+  fill 255, 100, 100
+  circle mouseX, mouseY, 50
+end
+```
+
+## テスト
+
+Playwright による E2E テストが用意されています。
 
 ```bash
-# browser-use CLI インストール
-uv pip install --system browser-use
-browser-use install
-
-# CDN リソースをローカルキャッシュ
-mkdir -p /tmp/cdn-cache
-curl -sL -o /tmp/cdn-cache/ruby-umd.js 'https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.6.2/dist/browser.umd.js'
-curl -sL -o /tmp/cdn-cache/ruby-wasm.wasm 'https://cdn.jsdelivr.net/npm/@ruby/3.3-wasm-wasi@2.6.2/dist/ruby+stdlib.wasm'
-
-# テストサーバー起動
-cd docs/ruby-sketch-wasm
-node test-server.cjs
-
-# browser-use CLI で操作
-browser-use open http://localhost:8767/
-browser-use state
-browser-use click <Run button index>
-browser-use screenshot output.png
-browser-use select <select index> "Rainbow Wave"
+node test-server.cjs  # ローカルテストサーバー起動
+npx playwright test docs/ruby-sketch-wasm/test.cjs
 ```
+
+## 技術スタック
+
+- [ruby.wasm](https://github.com/aspect-build/rules_ruby) - Ruby 3.3 WebAssembly ビルド (`@ruby/3.3-wasm-wasi@2.6.2`)
+- HTML5 Canvas - 描画エンジン
+- JavaScript ブリッジ - Ruby VM とキャンバスコンテキストの連携
