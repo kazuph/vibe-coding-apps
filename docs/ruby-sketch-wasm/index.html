@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ruby Sketch WASM - Creative Coding in Ruby</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: #16213e;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #0f3460;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 18px;
+      color: #e94560;
+      font-weight: 700;
+    }
+
+    header h1 span {
+      color: #e0e0e0;
+      font-weight: 400;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 6px 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .btn-run {
+      background: #e94560;
+      color: white;
+    }
+
+    .btn-run:hover { background: #c73a52; }
+
+    .btn-run:disabled {
+      background: #666;
+      cursor: not-allowed;
+    }
+
+    .btn-stop {
+      background: #f59e0b;
+      color: #1a1a2e;
+    }
+
+    .btn-stop:hover { background: #d97706; }
+
+    .btn-example {
+      background: #0f3460;
+      color: #e0e0e0;
+    }
+
+    .btn-example:hover { background: #1a4a8a; }
+
+    .status {
+      font-size: 12px;
+      color: #888;
+    }
+
+    .status.loading { color: #f59e0b; }
+    .status.ready { color: #10b981; }
+    .status.running { color: #e94560; }
+    .status.error { color: #ef4444; }
+
+    .main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .editor-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #0f3460;
+    }
+
+    .canvas-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      background: #16213e;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: #888;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .example-select {
+      background: #0f3460;
+      color: #e0e0e0;
+      border: 1px solid #1a4a8a;
+      border-radius: 3px;
+      padding: 2px 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    textarea {
+      flex: 1;
+      background: #0a0a1a;
+      color: #e0e0e0;
+      border: none;
+      padding: 12px;
+      font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+    }
+
+    textarea::placeholder { color: #444; }
+
+    .canvas-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #111;
+      overflow: auto;
+    }
+
+    canvas {
+      border: 1px solid #333;
+      image-rendering: auto;
+    }
+
+    .console-panel {
+      height: 120px;
+      background: #0a0a1a;
+      border-top: 1px solid #0f3460;
+      overflow-y: auto;
+      padding: 8px 12px;
+      font-family: monospace;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .console-line { margin: 2px 0; }
+    .console-line.info { color: #888; }
+    .console-line.output { color: #10b981; }
+    .console-line.error { color: #ef4444; }
+
+    .fps-counter {
+      font-size: 11px;
+      color: #666;
+    }
+
+    @media (max-width: 768px) {
+      .main-container { flex-direction: column; }
+      .editor-panel, .canvas-panel { width: 100%; height: 50%; }
+      .editor-panel { border-right: none; border-bottom: 1px solid #0f3460; }
+      .console-panel { height: 80px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ruby Sketch <span>WASM</span></h1>
+    <div class="header-actions">
+      <select id="exampleSelect" class="example-select">
+        <option value="">-- Examples --</option>
+        <option value="circles">Circles</option>
+        <option value="rainbow">Rainbow Wave</option>
+        <option value="particles">Particles</option>
+        <option value="fractal_tree">Fractal Tree</option>
+        <option value="game_of_life">Game of Life</option>
+        <option value="starfield">Starfield</option>
+      </select>
+      <button id="runBtn" class="btn btn-run" disabled>Run</button>
+      <button id="stopBtn" class="btn btn-stop" style="display:none;">Stop</button>
+      <span id="status" class="status loading">Loading ruby.wasm...</span>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <div class="editor-panel">
+      <div class="panel-header">
+        <span>editor.rb</span>
+        <span style="font-size:11px;color:#555;">Ctrl+Enter to run</span>
+      </div>
+      <textarea id="editor" spellcheck="false" placeholder="# Write your Ruby sketch here..."></textarea>
+    </div>
+    <div class="canvas-panel">
+      <div class="panel-header">
+        <span>canvas</span>
+        <span id="fpsCounter" class="fps-counter"></span>
+      </div>
+      <div class="canvas-wrapper">
+        <canvas id="sketchCanvas" width="400" height="400"></canvas>
+      </div>
+      <div class="console-panel" id="consolePanel"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // ── State ──
+    let rubyVM = null;
+    let animationId = null;
+    let running = false;
+    let frameCount = 0;
+    let lastFpsTime = 0;
+
+    // ── DOM ──
+    const editor = document.getElementById('editor');
+    const canvas = document.getElementById('sketchCanvas');
+    const ctx = canvas.getContext('2d');
+    const runBtn = document.getElementById('runBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusEl = document.getElementById('status');
+    const consolePanel = document.getElementById('consolePanel');
+    const fpsCounter = document.getElementById('fpsCounter');
+    const exampleSelect = document.getElementById('exampleSelect');
+
+    // ── Examples ──
+    const EXAMPLES = {
+      circles: `# Colorful bouncing circles
+setup 400, 400
+
+@balls = 20.times.map do
+  {
+    x: rand(400), y: rand(400),
+    vx: rand(-3.0..3.0), vy: rand(-3.0..3.0),
+    r: rand(15..40),
+    color: "hsl(\#{rand(360)}, 70%, 60%)"
+  }
+end
+
+draw do |ctx, t|
+  ctx.fillStyle = "rgba(26, 26, 46, 0.15)"
+  ctx.fillRect(0, 0, 400, 400)
+
+  @balls.each do |b|
+    b[:x] += b[:vx]
+    b[:y] += b[:vy]
+    b[:vx] *= -1 if b[:x] < b[:r] || b[:x] > 400 - b[:r]
+    b[:vy] *= -1 if b[:y] < b[:r] || b[:y] > 400 - b[:r]
+
+    ctx.beginPath
+    ctx.arc(b[:x], b[:y], b[:r], 0, Math::PI * 2)
+    ctx.fillStyle = b[:color]
+    ctx.fill
+  end
+end`,
+
+      rainbow: `# Rainbow sine wave
+setup 400, 400
+
+draw do |ctx, t|
+  ctx.fillStyle = "rgba(10, 10, 26, 0.05)"
+  ctx.fillRect(0, 0, 400, 400)
+
+  200.times do |i|
+    x = i * 2
+    hue = (i * 1.8 + t * 60) % 360
+    y = 200 + Math.sin(i * 0.05 + t * 2) * 80 +
+        Math.sin(i * 0.02 + t * 1.5) * 40
+
+    ctx.beginPath
+    ctx.arc(x, y, 3, 0, Math::PI * 2)
+    ctx.fillStyle = "hsl(\#{hue}, 80%, 60%)"
+    ctx.fill
+  end
+end`,
+
+      particles: `# Particle fountain
+setup 400, 400
+
+@particles = []
+
+draw do |ctx, t|
+  ctx.fillStyle = "rgba(10, 10, 26, 0.08)"
+  ctx.fillRect(0, 0, 400, 400)
+
+  # Emit new particles
+  3.times do
+    @particles << {
+      x: 200.0, y: 380.0,
+      vx: rand(-2.0..2.0),
+      vy: rand(-8.0..-3.0),
+      life: 1.0,
+      hue: rand(0..60)
+    }
+  end
+
+  # Update and draw
+  @particles.each do |p|
+    p[:vy] += 0.05
+    p[:x] += p[:vx]
+    p[:y] += p[:vy]
+    p[:life] -= 0.008
+
+    alpha = [p[:life], 0].max
+    size = p[:life] * 4
+    ctx.beginPath
+    ctx.arc(p[:x], p[:y], size, 0, Math::PI * 2)
+    ctx.fillStyle = "hsla(\#{p[:hue]}, 100%, 60%, \#{alpha})"
+    ctx.fill
+  end
+
+  @particles.reject! { |p| p[:life] <= 0 }
+
+  ctx.fillStyle = "#e0e0e0"
+  ctx.font = "12px monospace"
+  ctx.fillText("particles: \#{@particles.size}", 10, 20)
+end`,
+
+      fractal_tree: `# Fractal tree swaying in the wind
+setup 400, 400
+
+def draw_branch(ctx, x, y, angle, length, depth, t)
+  return if depth <= 0
+
+  sway = Math.sin(t * 2 + depth * 0.5) * 0.1
+  end_x = x + Math.cos(angle + sway) * length
+  end_y = y + Math.sin(angle + sway) * length
+
+  hue = 120 - depth * 10
+  lightness = 30 + depth * 5
+
+  ctx.beginPath
+  ctx.moveTo(x, y)
+  ctx.lineTo(end_x, end_y)
+  ctx.strokeStyle = "hsl(\#{hue}, 60%, \#{lightness}%)"
+  ctx.lineWidth = depth * 1.2
+  ctx.stroke
+
+  new_len = length * 0.72
+  draw_branch(ctx, end_x, end_y, angle - 0.5, new_len, depth - 1, t)
+  draw_branch(ctx, end_x, end_y, angle + 0.5, new_len, depth - 1, t)
+end
+
+draw do |ctx, t|
+  ctx.fillStyle = "#1a1a2e"
+  ctx.fillRect(0, 0, 400, 400)
+
+  draw_branch(ctx, 200, 380, -Math::PI / 2, 80, 10, t)
+end`,
+
+      game_of_life: `# Conway's Game of Life
+setup 400, 400
+
+CELL = 8
+COLS = 400 / CELL
+ROWS = 400 / CELL
+
+@grid = Array.new(ROWS) { Array.new(COLS) { rand < 0.3 } }
+@frame = 0
+
+def count_neighbors(grid, r, c)
+  count = 0
+  (-1..1).each do |dr|
+    (-1..1).each do |dc|
+      next if dr == 0 && dc == 0
+      nr = (r + dr) % ROWS
+      nc = (c + dc) % COLS
+      count += 1 if grid[nr][nc]
+    end
+  end
+  count
+end
+
+draw do |ctx, t|
+  @frame += 1
+
+  if @frame % 4 == 0
+    new_grid = Array.new(ROWS) { Array.new(COLS, false) }
+    ROWS.times do |r|
+      COLS.times do |c|
+        n = count_neighbors(@grid, r, c)
+        new_grid[r][c] = @grid[r][c] ? (n == 2 || n == 3) : (n == 3)
+      end
+    end
+    @grid = new_grid
+  end
+
+  ctx.fillStyle = "#0a0a1a"
+  ctx.fillRect(0, 0, 400, 400)
+
+  ROWS.times do |r|
+    COLS.times do |c|
+      if @grid[r][c]
+        hue = (r * 7 + c * 3) % 360
+        ctx.fillStyle = "hsl(\#{hue}, 70%, 55%)"
+        ctx.fillRect(c * CELL, r * CELL, CELL - 1, CELL - 1)
+      end
+    end
+  end
+end`,
+
+      starfield: `# 3D Starfield
+setup 400, 400
+
+@stars = 200.times.map do
+  { x: rand(-200.0..200.0), y: rand(-200.0..200.0), z: rand(1.0..400.0) }
+end
+
+draw do |ctx, t|
+  ctx.fillStyle = "rgba(0, 0, 0, 0.2)"
+  ctx.fillRect(0, 0, 400, 400)
+
+  @stars.each do |s|
+    s[:z] -= 3
+
+    if s[:z] <= 0
+      s[:x] = rand(-200.0..200.0)
+      s[:y] = rand(-200.0..200.0)
+      s[:z] = 400.0
+    end
+
+    sx = (s[:x] / s[:z]) * 200 + 200
+    sy = (s[:y] / s[:z]) * 200 + 200
+    size = (1 - s[:z] / 400.0) * 3
+    brightness = ((1 - s[:z] / 400.0) * 255).to_i
+
+    ctx.beginPath
+    ctx.arc(sx, sy, size, 0, Math::PI * 2)
+    ctx.fillStyle = "rgb(\#{brightness}, \#{brightness}, \#{brightness})"
+    ctx.fill
+  end
+end`
+    };
+
+    // ── Console helpers ──
+    function logConsole(text, type = 'info') {
+      const line = document.createElement('div');
+      line.className = `console-line ${type}`;
+      line.textContent = text;
+      consolePanel.appendChild(line);
+      consolePanel.scrollTop = consolePanel.scrollHeight;
+    }
+
+    function clearConsole() {
+      consolePanel.innerHTML = '';
+    }
+
+    // ── Ruby VM initialization ──
+    async function initRuby() {
+      try {
+        logConsole('Loading ruby.wasm (this may take a moment)...');
+
+        const response = await fetch(
+          'https://cdn.jsdelivr.net/npm/@ruby/3.3-wasm-wasi@2.6.2/dist/ruby+stdlib.wasm'
+        );
+        const module = await WebAssembly.compileStreaming(response);
+
+        const { DefaultRubyVM } = window["ruby-wasm-wasi"];
+        const { vm } = await DefaultRubyVM(module);
+        rubyVM = vm;
+
+        // Set up the sketch DSL in Ruby
+        rubyVM.eval(`
+          require "js"
+
+          module Sketch
+            @@width = 400
+            @@height = 400
+            @@draw_block = nil
+            @@setup_done = false
+
+            def self.width; @@width; end
+            def self.height; @@height; end
+            def self.draw_block; @@draw_block; end
+            def self.setup_done?; @@setup_done; end
+
+            def self.reset!
+              @@draw_block = nil
+              @@setup_done = false
+              @@width = 400
+              @@height = 400
+            end
+          end
+
+          def setup(w = 400, h = 400)
+            Sketch.class_variable_set(:@@width, w)
+            Sketch.class_variable_set(:@@height, h)
+            Sketch.class_variable_set(:@@setup_done, true)
+          end
+
+          def draw(&block)
+            Sketch.class_variable_set(:@@draw_block, block)
+          end
+
+          # Bridge to JS canvas context
+          class CanvasContext
+            def initialize(js_ctx)
+              @ctx = js_ctx
+            end
+
+            def fillStyle=(val)
+              @ctx[:fillStyle] = val
+            end
+
+            def strokeStyle=(val)
+              @ctx[:strokeStyle] = val
+            end
+
+            def lineWidth=(val)
+              @ctx[:lineWidth] = val
+            end
+
+            def font=(val)
+              @ctx[:font] = val
+            end
+
+            def globalAlpha=(val)
+              @ctx[:globalAlpha] = val
+            end
+
+            def lineCap=(val)
+              @ctx[:lineCap] = val
+            end
+
+            def lineJoin=(val)
+              @ctx[:lineJoin] = val
+            end
+
+            def textAlign=(val)
+              @ctx[:textAlign] = val
+            end
+
+            def textBaseline=(val)
+              @ctx[:textBaseline] = val
+            end
+
+            def fillRect(x, y, w, h)
+              @ctx.call(:fillRect, x, y, w, h)
+            end
+
+            def clearRect(x, y, w, h)
+              @ctx.call(:clearRect, x, y, w, h)
+            end
+
+            def strokeRect(x, y, w, h)
+              @ctx.call(:strokeRect, x, y, w, h)
+            end
+
+            def beginPath
+              @ctx.call(:beginPath)
+            end
+
+            def closePath
+              @ctx.call(:closePath)
+            end
+
+            def moveTo(x, y)
+              @ctx.call(:moveTo, x, y)
+            end
+
+            def lineTo(x, y)
+              @ctx.call(:lineTo, x, y)
+            end
+
+            def arc(x, y, r, start_angle, end_angle)
+              @ctx.call(:arc, x, y, r, start_angle, end_angle)
+            end
+
+            def fill
+              @ctx.call(:fill)
+            end
+
+            def stroke
+              @ctx.call(:stroke)
+            end
+
+            def fillText(text, x, y)
+              @ctx.call(:fillText, text.to_s, x, y)
+            end
+
+            def strokeText(text, x, y)
+              @ctx.call(:strokeText, text.to_s, x, y)
+            end
+
+            def save
+              @ctx.call(:save)
+            end
+
+            def restore
+              @ctx.call(:restore)
+            end
+
+            def translate(x, y)
+              @ctx.call(:translate, x, y)
+            end
+
+            def rotate(angle)
+              @ctx.call(:rotate, angle)
+            end
+
+            def scale(x, y)
+              @ctx.call(:scale, x, y)
+            end
+
+            def quadraticCurveTo(cpx, cpy, x, y)
+              @ctx.call(:quadraticCurveTo, cpx, cpy, x, y)
+            end
+
+            def bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+              @ctx.call(:bezierCurveTo, cp1x, cp1y, cp2x, cp2y, x, y)
+            end
+
+            def rect(x, y, w, h)
+              @ctx.call(:rect, x, y, w, h)
+            end
+
+            def clip
+              @ctx.call(:clip)
+            end
+
+            def setLineDash(segments)
+              @ctx.call(:setLineDash, segments)
+            end
+
+            def shadowColor=(val)
+              @ctx[:shadowColor] = val
+            end
+
+            def shadowBlur=(val)
+              @ctx[:shadowBlur] = val
+            end
+
+            def shadowOffsetX=(val)
+              @ctx[:shadowOffsetX] = val
+            end
+
+            def shadowOffsetY=(val)
+              @ctx[:shadowOffsetY] = val
+            end
+          end
+        `);
+
+        statusEl.textContent = 'Ready';
+        statusEl.className = 'status ready';
+        runBtn.disabled = false;
+        logConsole(`Ruby ${rubyVM.eval('RUBY_VERSION')} loaded successfully!`, 'output');
+      } catch (e) {
+        statusEl.textContent = 'Error loading';
+        statusEl.className = 'status error';
+        logConsole(`Failed to load ruby.wasm: ${e.message}`, 'error');
+        console.error(e);
+      }
+    }
+
+    // ── Sketch execution ──
+    function stopSketch() {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+      running = false;
+      stopBtn.style.display = 'none';
+      runBtn.style.display = '';
+      fpsCounter.textContent = '';
+    }
+
+    function runSketch() {
+      stopSketch();
+      clearConsole();
+
+      const code = editor.value;
+      if (!code.trim()) {
+        logConsole('No code to run.', 'error');
+        return;
+      }
+
+      try {
+        // Reset sketch state
+        rubyVM.eval('Sketch.reset!');
+
+        // Clear instance variables from previous runs (best effort)
+        rubyVM.eval(`
+          instance_variables.each do |v|
+            remove_instance_variable(v)
+          end
+        `);
+
+        // Evaluate user code
+        rubyVM.eval(code);
+
+        // Get canvas size from setup
+        const w = Number(rubyVM.eval('Sketch.width'));
+        const h = Number(rubyVM.eval('Sketch.height'));
+        canvas.width = w;
+        canvas.height = h;
+
+        // Check if there's a draw block
+        const hasDrawBlock = rubyVM.eval('!Sketch.draw_block.nil?').toString() === 'true';
+
+        if (!hasDrawBlock) {
+          logConsole('No draw block defined. Use: draw { |ctx, t| ... }', 'info');
+          return;
+        }
+
+        // Set up JS canvas context for Ruby
+        rubyVM.eval(`
+          $__js_ctx = JS.global[:document].call(:getElementById, "sketchCanvas").call(:getContext, "2d")
+          $__canvas_ctx = CanvasContext.new($__js_ctx)
+        `);
+
+        statusEl.textContent = 'Running';
+        statusEl.className = 'status running';
+        running = true;
+        runBtn.style.display = 'none';
+        stopBtn.style.display = '';
+        frameCount = 0;
+        lastFpsTime = performance.now();
+
+        logConsole(`Sketch started (${w}x${h})`, 'output');
+
+        const startTime = performance.now();
+
+        function loop() {
+          if (!running) return;
+
+          try {
+            const t = (performance.now() - startTime) / 1000;
+            rubyVM.eval(`Sketch.draw_block.call($__canvas_ctx, ${t})`);
+
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+              const fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+              fpsCounter.textContent = `${fps} fps`;
+              frameCount = 0;
+              lastFpsTime = now;
+            }
+          } catch (e) {
+            logConsole(`Runtime error: ${e.message}`, 'error');
+            stopSketch();
+            statusEl.textContent = 'Error';
+            statusEl.className = 'status error';
+            return;
+          }
+
+          animationId = requestAnimationFrame(loop);
+        }
+
+        animationId = requestAnimationFrame(loop);
+      } catch (e) {
+        logConsole(`Error: ${e.message}`, 'error');
+        statusEl.textContent = 'Error';
+        statusEl.className = 'status error';
+      }
+    }
+
+    // ── Event handlers ──
+    runBtn.addEventListener('click', runSketch);
+    stopBtn.addEventListener('click', () => {
+      stopSketch();
+      statusEl.textContent = 'Ready';
+      statusEl.className = 'status ready';
+    });
+
+    editor.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        runSketch();
+      }
+      // Tab support
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = editor.selectionStart;
+        const end = editor.selectionEnd;
+        editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
+        editor.selectionStart = editor.selectionEnd = start + 2;
+      }
+    });
+
+    exampleSelect.addEventListener('change', (e) => {
+      const name = e.target.value;
+      if (name && EXAMPLES[name]) {
+        stopSketch();
+        editor.value = EXAMPLES[name];
+        statusEl.textContent = 'Ready';
+        statusEl.className = 'status ready';
+        e.target.value = '';
+      }
+    });
+
+    // ── Load default example ──
+    editor.value = EXAMPLES.circles;
+
+    // ── Load ruby.wasm ──
+    const loaderScript = document.createElement('script');
+    loaderScript.src = 'https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.6.2/dist/browser.umd.js';
+    loaderScript.onload = () => initRuby();
+    loaderScript.onerror = () => {
+      statusEl.textContent = 'Failed to load';
+      statusEl.className = 'status error';
+      logConsole('Failed to load ruby.wasm loader script', 'error');
+    };
+    document.head.appendChild(loaderScript);
+  </script>
+</body>
+</html>
