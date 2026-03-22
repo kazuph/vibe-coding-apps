@@ -230,9 +230,8 @@
     </div>
   </div>
 
-  <script type="module">
-    import { DefaultRubyVM } from "https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.6.2/dist/esm/browser.js";
-
+  <script src="https://cdn.jsdelivr.net/npm/@ruby/wasm-wasi@2.6.2/dist/browser.umd.js"></script>
+  <script>
     // ── State ──
     let rubyVM = null;
     let animationId = null;
@@ -484,6 +483,7 @@ end`
         const buffer = await response.arrayBuffer();
         const module = await WebAssembly.compile(buffer);
 
+        const { DefaultRubyVM } = window["ruby-wasm-wasi"];
         const { vm } = await DefaultRubyVM(module);
         rubyVM = vm;
 
