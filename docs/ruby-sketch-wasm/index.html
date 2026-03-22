@@ -228,6 +228,9 @@
         <option value="fractal_tree">Fractal Tree</option>
         <option value="game_of_life">Game of Life</option>
         <option value="starfield">Starfield</option>
+        <option value="paint">Interactive Paint</option>
+        <option value="hsb_clock">HSB Clock</option>
+        <option value="vectors">Vector Boids</option>
       </select>
     </div>
     <div class="header-actions">
@@ -268,6 +271,8 @@
     let running = false;
     let frameCount = 0;
     let lastFpsTime = 0;
+    let jsMouseX = 0;
+    let jsMouseY = 0;
 
     // ── DOM ──
     const editor = document.getElementById('editor');
@@ -281,6 +286,73 @@
     const exampleSelect = document.getElementById('exampleSelect');
     const currentExampleName = document.getElementById('currentExampleName');
 
+    let jsMousePressed = false;
+    let jsMouseButton = 0;
+    let jsKey = '';
+    let jsKeyCode = 0;
+
+    // Track mouse position on canvas
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      jsMouseX = Math.round(e.clientX - rect.left);
+      jsMouseY = Math.round(e.clientY - rect.top);
+      if (running && rubyVM) {
+        try {
+          if (jsMousePressed) {
+            rubyVM.eval('Sketch.mouse_dragged_block&.call');
+          } else {
+            rubyVM.eval('Sketch.mouse_moved_block&.call');
+          }
+        } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+      }
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      jsMousePressed = true;
+      jsMouseButton = e.button === 0 ? 37 : e.button === 2 ? 39 : 0; // LEFT=37, RIGHT=39
+      if (running && rubyVM) {
+        try {
+          rubyVM.eval(`$__p_mouse_pressed = true; $__p_mouse_button = ${jsMouseButton}; Sketch.mouse_pressed_block&.call`);
+        } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+      }
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      jsMousePressed = false;
+      if (running && rubyVM) {
+        try {
+          rubyVM.eval('$__p_mouse_pressed = false; Sketch.mouse_released_block&.call');
+        } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+      }
+    });
+
+    canvas.addEventListener('click', (e) => {
+      if (running && rubyVM) {
+        try {
+          rubyVM.eval('Sketch.mouse_clicked_block&.call');
+        } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+      }
+    });
+
+    // Keyboard events (on document, forwarded to sketch)
+    document.addEventListener('keydown', (e) => {
+      if (!running || !rubyVM) return;
+      if (e.target === editor) return; // Don't capture when typing in editor
+      try {
+        const k = e.key.length === 1 ? e.key : '';
+        const kc = e.keyCode;
+        rubyVM.eval(`$__p_key = "${k.replace(/"/g, '\\"')}"; $__p_key_code = ${kc}; $__p_key_pressed = true; Sketch.key_pressed_block&.call`);
+      } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (!running || !rubyVM) return;
+      if (e.target === editor) return;
+      try {
+        rubyVM.eval('$__p_key_pressed = false; Sketch.key_released_block&.call');
+      } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+    });
+
     // ── Example display names ──
     const EXAMPLE_NAMES = {
       circles: 'Circles',
@@ -288,216 +360,426 @@
       particles: 'Particles',
       fractal_tree: 'Fractal Tree',
       game_of_life: 'Game of Life',
-      starfield: 'Starfield'
+      starfield: 'Starfield',
+      paint: 'Interactive Paint',
+      hsb_clock: 'HSB Clock',
+      vectors: 'Vector Boids'
     };
 
-    // ── Examples (class-based Processing-like style) ──
+    // ── Examples (Processing/RubySketch compatible DSL) ──
     const EXAMPLES = {
       circles: `# Colorful bouncing circles
-class Circles < SketchBase
-  def setup
-    size 400, 400
-    @balls = 20.times.map do
-      {
-        x: rand(400), y: rand(400),
-        vx: rand(-3.0..3.0), vy: rand(-3.0..3.0),
-        r: rand(15..40),
-        hue: rand(360)
-      }
-    end
+setup do
+  size 400, 400
+  @balls = 20.times.map do
+    {
+      x: rand(400), y: rand(400),
+      vx: rand(-3.0..3.0), vy: rand(-3.0..3.0),
+      d: rand(30..80),
+      hue: rand(360)
+    }
   end
+end
 
-  def draw
-    background "rgba(26, 26, 46, 0.15)"
+draw do
+  background 26, 26, 46, 38
 
-    @balls.each do |b|
-      b[:x] += b[:vx]
-      b[:y] += b[:vy]
-      b[:vx] *= -1 if b[:x] < b[:r] || b[:x] > width - b[:r]
-      b[:vy] *= -1 if b[:y] < b[:r] || b[:y] > height - b[:r]
+  @balls.each do |b|
+    b[:x] += b[:vx]
+    b[:y] += b[:vy]
+    r = b[:d] / 2.0
+    b[:vx] *= -1 if b[:x] < r || b[:x] > width - r
+    b[:vy] *= -1 if b[:y] < r || b[:y] > height - r
 
-      fill "hsl(\#{b[:hue]}, 70%, 60%)"
-      circle b[:x], b[:y], b[:r]
-    end
+    fill "hsl(\#{b[:hue]}, 70%, 60%)"
+    circle b[:x], b[:y], b[:d]
   end
 end`,
 
       rainbow: `# Rainbow sine wave
-class RainbowWave < SketchBase
-  def setup
-    size 400, 400
-  end
+setup do
+  size 400, 400
+end
 
-  def draw
-    background "rgba(10, 10, 26, 0.05)"
-    t = elapsed_time
+draw do
+  background 10, 10, 26, 13
+  t = millis / 1000.0
 
-    200.times do |i|
-      x = i * 2
-      hue = (i * 1.8 + t * 60) % 360
-      y = 200 + Math.sin(i * 0.05 + t * 2) * 80 +
-          Math.sin(i * 0.02 + t * 1.5) * 40
+  200.times do |i|
+    x = i * 2
+    hue = (i * 1.8 + t * 60) % 360
+    y = 200 + Math.sin(i * 0.05 + t * 2) * 80 +
+        Math.sin(i * 0.02 + t * 1.5) * 40
 
-      fill "hsl(\#{hue}, 80%, 60%)"
-      circle x, y, 3
-    end
+    fill "hsl(\#{hue}, 80%, 60%)"
+    circle x, y, 6
   end
 end`,
 
       particles: `# Particle fountain
-class Particles < SketchBase
-  def setup
-    size 400, 400
-    @particles = []
+setup do
+  size 400, 400
+  @particles = []
+end
+
+draw do
+  background 10, 10, 26, 20
+
+  # Emit new particles
+  3.times do
+    @particles << {
+      x: 200.0, y: 380.0,
+      vx: rand(-2.0..2.0),
+      vy: rand(-8.0..-3.0),
+      life: 1.0,
+      hue: rand(0..60)
+    }
   end
 
-  def draw
-    background "rgba(10, 10, 26, 0.08)"
+  # Update and draw
+  @particles.each do |p|
+    p[:vy] += 0.05
+    p[:x] += p[:vx]
+    p[:y] += p[:vy]
+    p[:life] -= 0.008
 
-    # Emit new particles
-    3.times do
-      @particles << {
-        x: 200.0, y: 380.0,
-        vx: rand(-2.0..2.0),
-        vy: rand(-8.0..-3.0),
-        life: 1.0,
-        hue: rand(0..60)
-      }
-    end
+    next if p[:life] <= 0
 
-    # Update and draw
-    @particles.each do |p|
-      p[:vy] += 0.05
-      p[:x] += p[:vx]
-      p[:y] += p[:vy]
-      p[:life] -= 0.008
-
-      next if p[:life] <= 0
-
-      fill "hsla(\#{p[:hue]}, 100%, 60%, \#{p[:life]})"
-      circle p[:x], p[:y], p[:life] * 4
-    end
-
-    @particles.reject! { |p| p[:life] <= 0 }
-
-    fill "#e0e0e0"
-    text_size 12
-    text "particles: \#{@particles.size}", 10, 20
+    fill "hsla(\#{p[:hue]}, 100%, 60%, \#{p[:life]})"
+    circle p[:x], p[:y], p[:life] * 8
   end
+
+  @particles.reject! { |p| p[:life] <= 0 }
+
+  fill 224
+  textSize 12
+  text "particles: \#{@particles.size}", 10, 20
 end`,
 
       fractal_tree: `# Fractal tree swaying in the wind
-class FractalTree < SketchBase
-  def setup
-    size 400, 400
-  end
+def draw_branch(x, y, angle, length, depth)
+  return if depth <= 0
 
-  def draw
-    background "#1a1a2e"
-    draw_branch 200, 380, -Math::PI / 2, 80, 10
-  end
+  t = millis / 1000.0
+  sway = Math.sin(t * 2 + depth * 0.5) * 0.1
+  end_x = x + Math.cos(angle + sway) * length
+  end_y = y + Math.sin(angle + sway) * length
 
-  def draw_branch(x, y, angle, length, depth)
-    return if depth <= 0
+  hue = 120 - depth * 10
+  lightness = 30 + depth * 5
 
-    t = elapsed_time
-    sway = Math.sin(t * 2 + depth * 0.5) * 0.1
-    end_x = x + Math.cos(angle + sway) * length
-    end_y = y + Math.sin(angle + sway) * length
+  stroke "hsl(\#{hue}, 60%, \#{lightness}%)"
+  strokeWeight depth * 1.2
+  line end_x, end_y, x, y
 
-    hue = 120 - depth * 10
-    lightness = 30 + depth * 5
+  new_len = length * 0.72
+  draw_branch(end_x, end_y, angle - 0.5, new_len, depth - 1)
+  draw_branch(end_x, end_y, angle + 0.5, new_len, depth - 1)
+end
 
-    stroke "hsl(\#{hue}, 60%, \#{lightness}%)"
-    stroke_weight depth * 1.2
-    line x, y, end_x, end_y
+setup do
+  size 400, 400
+end
 
-    new_len = length * 0.72
-    draw_branch end_x, end_y, angle - 0.5, new_len, depth - 1
-    draw_branch end_x, end_y, angle + 0.5, new_len, depth - 1
-  end
+draw do
+  background 26, 26, 46
+  noFill
+  draw_branch(200, 380, -Math::PI / 2, 80, 10)
 end`,
 
       game_of_life: `# Conway's Game of Life
-class GameOfLife < SketchBase
-  CELL = 8
-  COLS = 400 / CELL
-  ROWS = 400 / CELL
+CELL = 8
+COLS = 400 / CELL
+ROWS = 400 / CELL
 
-  def setup
-    size 400, 400
-    @grid = Array.new(ROWS) { Array.new(COLS) { rand < 0.3 } }
-  end
-
-  def draw
-    if frame_count % 4 == 0
-      new_grid = Array.new(ROWS) { Array.new(COLS, false) }
-      ROWS.times do |r|
-        COLS.times do |c|
-          n = count_neighbors(r, c)
-          new_grid[r][c] = @grid[r][c] ? (n == 2 || n == 3) : (n == 3)
-        end
-      end
-      @grid = new_grid
+def count_neighbors(grid, r, c)
+  count = 0
+  (-1..1).each do |dr|
+    (-1..1).each do |dc|
+      next if dr == 0 && dc == 0
+      nr = (r + dr) % ROWS
+      nc = (c + dc) % COLS
+      count += 1 if grid[nr][nc]
     end
+  end
+  count
+end
 
-    background "#0a0a1a"
+setup do
+  size 400, 400
+  @grid = Array.new(ROWS) { Array.new(COLS) { rand < 0.3 } }
+end
 
+draw do
+  if frameCount % 4 == 0
+    new_grid = Array.new(ROWS) { Array.new(COLS, false) }
     ROWS.times do |r|
       COLS.times do |c|
-        if @grid[r][c]
-          hue = (r * 7 + c * 3) % 360
-          fill "hsl(\#{hue}, 70%, 55%)"
-          rect c * CELL, r * CELL, CELL - 1, CELL - 1
-        end
+        n = count_neighbors(@grid, r, c)
+        new_grid[r][c] = @grid[r][c] ? (n == 2 || n == 3) : (n == 3)
       end
     end
+    @grid = new_grid
   end
 
-  def count_neighbors(r, c)
-    count = 0
-    (-1..1).each do |dr|
-      (-1..1).each do |dc|
-        next if dr == 0 && dc == 0
-        nr = (r + dr) % ROWS
-        nc = (c + dc) % COLS
-        count += 1 if @grid[nr][nc]
+  background 10, 10, 26
+
+  ROWS.times do |r|
+    COLS.times do |c|
+      if @grid[r][c]
+        hue = (r * 7 + c * 3) % 360
+        fill "hsl(\#{hue}, 70%, 55%)"
+        rect c * CELL, r * CELL, CELL - 1, CELL - 1
       end
     end
-    count
   end
 end`,
 
       starfield: `# 3D Starfield
-class Starfield < SketchBase
-  def setup
-    size 400, 400
-    @stars = 200.times.map do
-      { x: rand(-200.0..200.0), y: rand(-200.0..200.0), z: rand(1.0..400.0) }
+setup do
+  size 400, 400
+  @stars = 200.times.map do
+    { x: rand(-200.0..200.0), y: rand(-200.0..200.0), z: rand(1.0..400.0) }
+  end
+end
+
+draw do
+  background 0, 51
+
+  @stars.each do |s|
+    s[:z] -= 3
+
+    if s[:z] <= 0
+      s[:x] = rand(-200.0..200.0)
+      s[:y] = rand(-200.0..200.0)
+      s[:z] = 400.0
+    end
+
+    sx = (s[:x] / s[:z]) * 200 + 200
+    sy = (s[:y] / s[:z]) * 200 + 200
+    d = (1 - s[:z] / 400.0) * 6
+    brightness = ((1 - s[:z] / 400.0) * 255).to_i
+
+    fill brightness
+    circle sx, sy, [d, 0.5].max
+  end
+end`,
+
+      paint: `# Interactive Paint - click and drag to draw
+setup do
+  size 400, 400
+  background 240
+  @hue = 0
+end
+
+draw do
+  # Just show instructions on first frame
+  if frameCount == 1
+    fill 100
+    textSize 16
+    text "Click and drag to paint!", 100, 200
+    text "Press 'c' to clear", 140, 230
+    noLoop
+  end
+end
+
+mouseDragged do
+  noStroke
+  @hue = (@hue + 1) % 360
+  d = dist(mouseX, mouseY, pmouseX, pmouseY)
+  size = constrain(50 - d, 8, 50)
+  fill "hsl(\\#{@hue}, 80%, 60%)"
+  circle mouseX, mouseY, size
+end
+
+mousePressed do
+  loop
+end
+
+keyPressed do
+  if key == "c"
+    background 240
+    fill 100
+    textSize 16
+    text "Cleared! Drag to paint", 110, 200
+  end
+end`,
+
+      hsb_clock: `# HSB Color Mode Clock
+setup do
+  size 400, 400
+  colorMode HSB, 360, 100, 100
+end
+
+draw do
+  background 220, 15, 15
+  t = millis / 1000.0
+
+  # Draw hour marks
+  pushMatrix do
+    translate 200, 200
+    12.times do |i|
+      angle = i * (TWO_PI / 12) - HALF_PI
+      x1 = Math.cos(angle) * 150
+      y1 = Math.sin(angle) * 150
+      x2 = Math.cos(angle) * 170
+      y2 = Math.sin(angle) * 170
+      stroke i * 30, 80, 90
+      strokeWeight 4
+      line x1, y1, x2, y2
     end
   end
 
-  def draw
-    background "rgba(0, 0, 0, 0.2)"
+  # Minute ticks
+  pushMatrix do
+    translate 200, 200
+    60.times do |i|
+      angle = i * (TWO_PI / 60) - HALF_PI
+      x1 = Math.cos(angle) * 160
+      y1 = Math.sin(angle) * 160
+      x2 = Math.cos(angle) * 170
+      y2 = Math.sin(angle) * 170
+      stroke i * 6, 50, 70
+      strokeWeight 1
+      line x1, y1, x2, y2
+    end
+  end
 
-    @stars.each do |s|
-      s[:z] -= 3
+  # Seconds hand
+  sec_angle = (t % 60) / 60.0 * TWO_PI - HALF_PI
+  pushMatrix do
+    translate 200, 200
+    stroke 0, 90, 90
+    strokeWeight 2
+    line 0, 0, Math.cos(sec_angle) * 140, Math.sin(sec_angle) * 140
+  end
 
-      if s[:z] <= 0
-        s[:x] = rand(-200.0..200.0)
-        s[:y] = rand(-200.0..200.0)
-        s[:z] = 400.0
+  # Minute hand
+  min_angle = (t % 3600) / 3600.0 * TWO_PI - HALF_PI
+  pushMatrix do
+    translate 200, 200
+    stroke 120, 80, 90
+    strokeWeight 4
+    line 0, 0, Math.cos(min_angle) * 110, Math.sin(min_angle) * 110
+  end
+
+  # Center dot
+  noStroke
+  fill 60, 90, 100
+  circle 200, 200, 12
+
+  # FPS
+  fill 0, 0, 60
+  textSize 12
+  text "\\#{frameRate.to_i} FPS", 10, 20
+end`,
+
+      vectors: `# Vector Boids - flocking simulation
+class Boid
+  attr_accessor :pos, :vel, :acc
+  def initialize(x, y)
+    @pos = createVector(x, y)
+    @vel = PVector.random2D
+    @vel.mult(rand(1.0..3.0))
+    @acc = createVector(0, 0)
+  end
+
+  def edges(w, h)
+    @pos.x = w if @pos.x < 0
+    @pos.x = 0 if @pos.x > w
+    @pos.y = h if @pos.y < 0
+    @pos.y = 0 if @pos.y > h
+  end
+
+  def flock(boids)
+    sep = createVector(0, 0)
+    ali = createVector(0, 0)
+    coh = createVector(0, 0)
+    count_s = 0; count_a = 0; count_c = 0
+
+    boids.each do |other|
+      next if other.equal?(self)
+      d = @pos.dist(other.pos)
+      if d < 25
+        diff = PVector.sub(@pos, other.pos)
+        diff.div(d + 0.01)
+        sep.add(diff)
+        count_s += 1
       end
+      if d < 50
+        ali.add(other.vel)
+        count_a += 1
+        coh.add(other.pos)
+        count_c += 1
+      end
+    end
 
-      sx = (s[:x] / s[:z]) * 200 + 200
-      sy = (s[:y] / s[:z]) * 200 + 200
-      r = (1 - s[:z] / 400.0) * 3
-      brightness = ((1 - s[:z] / 400.0) * 255).to_i
-
-      fill "rgb(\#{brightness}, \#{brightness}, \#{brightness})"
-      circle sx, sy, [r, 0.1].max
+    if count_s > 0
+      sep.div(count_s)
+      sep.normalize.mult(3)
+      sep.sub(@vel)
+      sep.limit(0.3)
+      @acc.add(sep)
+    end
+    if count_a > 0
+      ali.div(count_a)
+      ali.normalize.mult(3)
+      ali.sub(@vel)
+      ali.limit(0.2)
+      @acc.add(ali)
+    end
+    if count_c > 0
+      coh.div(count_c)
+      coh.sub(@pos)
+      coh.normalize.mult(3)
+      coh.sub(@vel)
+      coh.limit(0.2)
+      @acc.add(coh)
     end
   end
+
+  def update
+    @vel.add(@acc)
+    @vel.limit(4)
+    @pos.add(@vel)
+    @acc.mult(0)
+  end
+
+  def draw_boid
+    angle = @vel.heading
+    hue = ((angle + PI) / TWO_PI * 360).to_i
+    pushMatrix do
+      translate @pos.x, @pos.y
+      rotate angle
+      fill "hsl(\\#{hue}, 70%, 60%)"
+      noStroke
+      beginShape
+      vertex 10, 0
+      vertex(-5, 5)
+      vertex(-3, 0)
+      vertex(-5, -5)
+      endShape CLOSE
+    end
+  end
+end
+
+setup do
+  size 400, 400
+  @boids = 60.times.map { Boid.new(rand(400), rand(400)) }
+end
+
+draw do
+  background 26, 26, 46, 38
+  @boids.each do |b|
+    b.flock(@boids)
+    b.update
+    b.edges(width, height)
+    b.draw_boid
+  end
+
+  fill 200
+  textSize 12
+  text "\\#{@boids.size} boids", 10, 20
 end`
     };
 
@@ -529,371 +811,890 @@ end`
         const { vm } = await DefaultRubyVM(module);
         rubyVM = vm;
 
-        // Set up the sketch DSL in Ruby
+        // Set up the Processing-compatible sketch DSL in Ruby
         rubyVM.eval(`
           require "js"
 
+          # ── Internal state ──
           module Sketch
-            @@width = 400
-            @@height = 400
             @@draw_block = nil
-            @@setup_done = false
-            @@sketch_class = nil
+            @@setup_block = nil
 
-            def self.width; @@width; end
-            def self.height; @@height; end
             def self.draw_block; @@draw_block; end
-            def self.setup_done?; @@setup_done; end
-            def self.sketch_class; @@sketch_class; end
-            def self.sketch_class=(klass); @@sketch_class = klass; end
+            def self.setup_block; @@setup_block; end
 
             def self.reset!
               @@draw_block = nil
-              @@setup_done = false
-              @@width = 400
-              @@height = 400
-              @@sketch_class = nil
+              @@setup_block = nil
+              @@mouse_pressed_block = nil
+              @@mouse_released_block = nil
+              @@mouse_moved_block = nil
+              @@mouse_dragged_block = nil
+              @@mouse_clicked_block = nil
+              @@key_pressed_block = nil
+              @@key_released_block = nil
+              @@key_typed_block = nil
+              $__p_width = 400
+              $__p_height = 400
+              $__p_fill = true
+              $__p_fill_color = "rgb(255,255,255)"
+              $__p_stroke = true
+              $__p_stroke_color = "rgb(0,0,0)"
+              $__p_frame_count = 0
+              $__p_elapsed_time = 0.0
+              $__p_mouse_x = 0
+              $__p_mouse_y = 0
+              $__p_pmouse_x = 0
+              $__p_pmouse_y = 0
+              $__p_mouse_pressed = false
+              $__p_mouse_button = 0
+              $__p_key = ""
+              $__p_key_code = 0
+              $__p_key_pressed = false
+              $__p_looping = true
+              $__p_target_fps = 60
+              $__p_needs_redraw = false
+              $__p_color_mode = :rgb
+              $__p_color_max = [255.0, 255.0, 255.0, 255.0]
+              $__p_rect_mode = :corner
+              $__p_ellipse_mode = :center
+              $__p_shape_vertices = []
+            end
+
+            # Event block accessors
+            def self.mouse_pressed_block; (defined?(@@mouse_pressed_block) && @@mouse_pressed_block) || nil; end
+            def self.mouse_released_block; (defined?(@@mouse_released_block) && @@mouse_released_block) || nil; end
+            def self.mouse_moved_block; (defined?(@@mouse_moved_block) && @@mouse_moved_block) || nil; end
+            def self.mouse_dragged_block; (defined?(@@mouse_dragged_block) && @@mouse_dragged_block) || nil; end
+            def self.mouse_clicked_block; (defined?(@@mouse_clicked_block) && @@mouse_clicked_block) || nil; end
+            def self.key_pressed_block; (defined?(@@key_pressed_block) && @@key_pressed_block) || nil; end
+            def self.key_released_block; (defined?(@@key_released_block) && @@key_released_block) || nil; end
+            def self.key_typed_block; (defined?(@@key_typed_block) && @@key_typed_block) || nil; end
+          end
+
+          # Initialize globals
+          $__p_width = 400
+          $__p_height = 400
+          $__p_fill = true
+          $__p_fill_color = "rgb(255,255,255)"
+          $__p_stroke = true
+          $__p_stroke_color = "rgb(0,0,0)"
+          $__p_frame_count = 0
+          $__p_elapsed_time = 0.0
+          $__p_mouse_x = 0
+          $__p_mouse_y = 0
+
+          # ── Canvas context bridge ──
+          class CanvasContext
+            def initialize(js_ctx)
+              @ctx = js_ctx
+            end
+
+            def fillStyle=(val);    @ctx[:fillStyle] = val; end
+            def strokeStyle=(val);  @ctx[:strokeStyle] = val; end
+            def lineWidth=(val);    @ctx[:lineWidth] = val; end
+            def font=(val);         @ctx[:font] = val; end
+            def globalAlpha=(val);  @ctx[:globalAlpha] = val; end
+            def lineCap=(val);      @ctx[:lineCap] = val; end
+            def lineJoin=(val);     @ctx[:lineJoin] = val; end
+            def textAlign=(val);    @ctx[:textAlign] = val; end
+            def textBaseline=(val); @ctx[:textBaseline] = val; end
+            def shadowColor=(val);  @ctx[:shadowColor] = val; end
+            def shadowBlur=(val);   @ctx[:shadowBlur] = val; end
+            def shadowOffsetX=(val); @ctx[:shadowOffsetX] = val; end
+            def shadowOffsetY=(val); @ctx[:shadowOffsetY] = val; end
+
+            def fillRect(x, y, w, h);   @ctx.call(:fillRect, x, y, w, h); end
+            def clearRect(x, y, w, h);  @ctx.call(:clearRect, x, y, w, h); end
+            def strokeRect(x, y, w, h); @ctx.call(:strokeRect, x, y, w, h); end
+            def beginPath;  @ctx.call(:beginPath); end
+            def closePath;  @ctx.call(:closePath); end
+            def moveTo(x, y); @ctx.call(:moveTo, x, y); end
+            def lineTo(x, y); @ctx.call(:lineTo, x, y); end
+            def fill;   @ctx.call(:fill); end
+            def stroke; @ctx.call(:stroke); end
+            def save;    @ctx.call(:save); end
+            def restore; @ctx.call(:restore); end
+
+            def arc(x, y, r, sa, ea)
+              r = [r.to_f, 0].max
+              @ctx.call(:arc, x, y, r, sa, ea)
+            end
+
+            def fillText(text, x, y);   @ctx.call(:fillText, text.to_s, x, y); end
+            def strokeText(text, x, y);  @ctx.call(:strokeText, text.to_s, x, y); end
+            def translate(x, y); @ctx.call(:translate, x, y); end
+            def rotate(angle);   @ctx.call(:rotate, angle); end
+            def scale(x, y);     @ctx.call(:scale, x, y); end
+            def quadraticCurveTo(cpx, cpy, x, y); @ctx.call(:quadraticCurveTo, cpx, cpy, x, y); end
+            def bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y); @ctx.call(:bezierCurveTo, cp1x, cp1y, cp2x, cp2y, x, y); end
+            def rect(x, y, w, h); @ctx.call(:rect, x, y, w, h); end
+            def clip; @ctx.call(:clip); end
+            def setLineDash(s); @ctx.call(:setLineDash, s); end
+          end
+
+          # ── Color parsing (Processing-compatible) ──
+          def _p_parse_color(*args)
+            case args.size
+            when 1
+              a = args[0]
+              a.is_a?(String) ? a : "rgb(\#{a},\#{a},\#{a})"
+            when 2
+              # grayscale + alpha (Processing: alpha 0-255)
+              g, al = args
+              "rgba(\#{g},\#{g},\#{g},\#{al / 255.0})"
+            when 3
+              "rgb(\#{args[0]},\#{args[1]},\#{args[2]})"
+            when 4
+              "rgba(\#{args[0]},\#{args[1]},\#{args[2]},\#{args[3] / 255.0})"
+            else
+              "rgb(255,255,255)"
             end
           end
 
-          # Block-based DSL (backward compat)
-          def setup(w = 400, h = 400)
-            Sketch.class_variable_set(:@@width, w)
-            Sketch.class_variable_set(:@@height, h)
-            Sketch.class_variable_set(:@@setup_done, true)
+          # ── Processing-compatible top-level API ──
+
+          # Canvas size (call inside setup)
+          def size(w, h)
+            $__p_width = w
+            $__p_height = h
+          end
+
+          # Built-in variables (Processing-compatible camelCase)
+          def width;      $__p_width; end
+          def height;     $__p_height; end
+          def frameCount; $__p_frame_count; end
+          def mouseX;     $__p_mouse_x; end
+          def mouseY;     $__p_mouse_y; end
+          def millis;     ($__p_elapsed_time * 1000).to_i; end
+
+          # ── Drawing functions ──
+
+          def background(*args)
+            color = _p_parse_color(*args)
+            $__canvas_ctx.fillStyle = color
+            $__canvas_ctx.fillRect(0, 0, $__p_width, $__p_height)
+          end
+
+          def fill(*args)
+            $__p_fill = true
+            $__p_fill_color = _p_parse_color(*args) unless args.empty?
+          end
+
+          def noFill
+            $__p_fill = false
+          end
+
+          def stroke(*args)
+            $__p_stroke = true
+            $__p_stroke_color = _p_parse_color(*args) unless args.empty?
+          end
+
+          def noStroke
+            $__p_stroke = false
+          end
+
+          def strokeWeight(w)
+            $__canvas_ctx.lineWidth = w
+          end
+
+          # circle, ellipse, rect, square are defined below with rectMode/ellipseMode support
+
+          def line(x1, y1, x2, y2)
+            $__canvas_ctx.beginPath
+            $__canvas_ctx.moveTo(x1, y1)
+            $__canvas_ctx.lineTo(x2, y2)
+            $__canvas_ctx.strokeStyle = $__p_stroke_color
+            $__canvas_ctx.stroke
+          end
+
+          def point(x, y)
+            $__canvas_ctx.fillStyle = $__p_stroke_color
+            $__canvas_ctx.fillRect(x, y, 1, 1)
+          end
+
+          def triangle(x1, y1, x2, y2, x3, y3)
+            $__canvas_ctx.beginPath
+            $__canvas_ctx.moveTo(x1, y1)
+            $__canvas_ctx.lineTo(x2, y2)
+            $__canvas_ctx.lineTo(x3, y3)
+            $__canvas_ctx.closePath
+            if $__p_fill
+              $__canvas_ctx.fillStyle = $__p_fill_color
+              $__canvas_ctx.fill
+            end
+            if $__p_stroke
+              $__canvas_ctx.strokeStyle = $__p_stroke_color
+              $__canvas_ctx.stroke
+            end
+          end
+
+          def quad(x1, y1, x2, y2, x3, y3, x4, y4)
+            $__canvas_ctx.beginPath
+            $__canvas_ctx.moveTo(x1, y1)
+            $__canvas_ctx.lineTo(x2, y2)
+            $__canvas_ctx.lineTo(x3, y3)
+            $__canvas_ctx.lineTo(x4, y4)
+            $__canvas_ctx.closePath
+            if $__p_fill
+              $__canvas_ctx.fillStyle = $__p_fill_color
+              $__canvas_ctx.fill
+            end
+            if $__p_stroke
+              $__canvas_ctx.strokeStyle = $__p_stroke_color
+              $__canvas_ctx.stroke
+            end
+          end
+
+          def text(str, x, y)
+            if $__p_fill
+              $__canvas_ctx.fillStyle = $__p_fill_color
+              $__canvas_ctx.fillText(str.to_s, x, y)
+            end
+          end
+
+          def textSize(s)
+            $__canvas_ctx.font = "\#{s}px monospace"
+          end
+
+          def textAlign(align)
+            $__canvas_ctx.textAlign = align.to_s
+          end
+
+          # ── arc(x, y, w, h, start, stop) ──
+          def arc(x, y, w, h, start_angle, stop_angle)
+            rx = [w.to_f / 2, 0.001].max
+            ry = [h.to_f / 2, 0.001].max
+            $__canvas_ctx.save
+            $__canvas_ctx.translate(x, y)
+            $__canvas_ctx.scale(rx, ry)
+            $__canvas_ctx.beginPath
+            $__canvas_ctx.arc(0, 0, 1, start_angle, stop_angle)
+            $__canvas_ctx.restore
+            if $__p_fill
+              $__canvas_ctx.fillStyle = $__p_fill_color
+              $__canvas_ctx.fill
+            end
+            if $__p_stroke
+              $__canvas_ctx.strokeStyle = $__p_stroke_color
+              $__canvas_ctx.stroke
+            end
+          end
+
+          # ── beginShape / endShape / vertex ──
+          def beginShape(kind = nil)
+            $__p_shape_vertices = []
+            $__p_shape_kind = kind
+          end
+
+          def vertex(x, y)
+            $__p_shape_vertices << [x, y]
+          end
+
+          def bezierVertex(cx1, cy1, cx2, cy2, x, y)
+            $__p_shape_vertices << [:bezier, cx1, cy1, cx2, cy2, x, y]
+          end
+
+          def curveVertex(x, y)
+            $__p_shape_vertices << [:curve, x, y]
+          end
+
+          def endShape(mode = nil)
+            verts = $__p_shape_vertices || []
+            return if verts.empty?
+            $__canvas_ctx.beginPath
+            first = true
+            verts.each do |v|
+              if v.is_a?(Array) && v[0] == :bezier
+                $__canvas_ctx.bezierCurveTo(v[1], v[2], v[3], v[4], v[5], v[6])
+              elsif v.is_a?(Array) && v[0] == :curve
+                # Catmull-Rom approximation: treat as lineTo for simplicity
+                $__canvas_ctx.lineTo(v[1], v[2]) unless first
+                first = false if first
+              else
+                if first
+                  $__canvas_ctx.moveTo(v[0], v[1])
+                  first = false
+                else
+                  $__canvas_ctx.lineTo(v[0], v[1])
+                end
+              end
+            end
+            $__canvas_ctx.closePath if mode == CLOSE
+            if $__p_fill
+              $__canvas_ctx.fillStyle = $__p_fill_color
+              $__canvas_ctx.fill
+            end
+            if $__p_stroke
+              $__canvas_ctx.strokeStyle = $__p_stroke_color
+              $__canvas_ctx.stroke
+            end
+            $__p_shape_vertices = []
+          end
+
+          # ── Constants ──
+          CLOSE = :close
+          CENTER = :center
+          CORNER = :corner
+          CORNERS = :corners
+          RADIUS = :radius
+          PI = Math::PI
+          TWO_PI = Math::PI * 2
+          HALF_PI = Math::PI / 2
+          QUARTER_PI = Math::PI / 4
+          TAU = Math::PI * 2
+          DEG_TO_RAD = Math::PI / 180.0
+          RAD_TO_DEG = 180.0 / Math::PI
+          HSB = :hsb
+          RGB = :rgb
+          LEFT = :left
+          RIGHT = :right
+          UP = :up
+          DOWN = :down
+
+          # ── colorMode ──
+          $__p_color_mode = :rgb
+          $__p_color_max = [255.0, 255.0, 255.0, 255.0]
+
+          def colorMode(mode, max1 = nil, max2 = nil, max3 = nil, maxA = nil)
+            $__p_color_mode = mode
+            if max1 && !max2
+              $__p_color_max = [max1.to_f, max1.to_f, max1.to_f, max1.to_f]
+            elsif max1 && max2 && max3
+              $__p_color_max = [max1.to_f, max2.to_f, max3.to_f, (maxA || max1).to_f]
+            end
+          end
+
+          # Enhanced color parsing with HSB support
+          def _p_parse_color(*args)
+            case args.size
+            when 1
+              a = args[0]
+              return a if a.is_a?(String)
+              if $__p_color_mode == :hsb
+                # single value = brightness
+                b_pct = (a.to_f / $__p_color_max[2] * 100).clamp(0, 100)
+                "hsl(0, 0%, \#{b_pct}%)"
+              else
+                g = (a.to_f / $__p_color_max[0] * 255).clamp(0, 255).to_i
+                "rgb(\#{g},\#{g},\#{g})"
+              end
+            when 2
+              g, al = args
+              if $__p_color_mode == :hsb
+                b_pct = (g.to_f / $__p_color_max[2] * 100).clamp(0, 100)
+                a_val = (al.to_f / $__p_color_max[3]).clamp(0, 1)
+                "hsla(0, 0%, \#{b_pct}%, \#{a_val})"
+              else
+                gv = (g.to_f / $__p_color_max[0] * 255).clamp(0, 255).to_i
+                a_val = (al.to_f / $__p_color_max[3]).clamp(0, 1)
+                "rgba(\#{gv},\#{gv},\#{gv},\#{a_val})"
+              end
+            when 3
+              if $__p_color_mode == :hsb
+                h = (args[0].to_f / $__p_color_max[0] * 360) % 360
+                s = (args[1].to_f / $__p_color_max[1] * 100).clamp(0, 100)
+                b = (args[2].to_f / $__p_color_max[2] * 100).clamp(0, 100)
+                "hsl(\#{h}, \#{s}%, \#{b}%)"
+              else
+                r = (args[0].to_f / $__p_color_max[0] * 255).clamp(0, 255).to_i
+                g = (args[1].to_f / $__p_color_max[1] * 255).clamp(0, 255).to_i
+                b = (args[2].to_f / $__p_color_max[2] * 255).clamp(0, 255).to_i
+                "rgb(\#{r},\#{g},\#{b})"
+              end
+            when 4
+              if $__p_color_mode == :hsb
+                h = (args[0].to_f / $__p_color_max[0] * 360) % 360
+                s = (args[1].to_f / $__p_color_max[1] * 100).clamp(0, 100)
+                b = (args[2].to_f / $__p_color_max[2] * 100).clamp(0, 100)
+                a_val = (args[3].to_f / $__p_color_max[3]).clamp(0, 1)
+                "hsla(\#{h}, \#{s}%, \#{b}%, \#{a_val})"
+              else
+                r = (args[0].to_f / $__p_color_max[0] * 255).clamp(0, 255).to_i
+                g = (args[1].to_f / $__p_color_max[1] * 255).clamp(0, 255).to_i
+                b = (args[2].to_f / $__p_color_max[2] * 255).clamp(0, 255).to_i
+                a_val = (args[3].to_f / $__p_color_max[3]).clamp(0, 1)
+                "rgba(\#{r},\#{g},\#{b},\#{a_val})"
+              end
+            else
+              "rgb(255,255,255)"
+            end
+          end
+
+          def color(*args)
+            _p_parse_color(*args)
+          end
+
+          def lerpColor(c1, c2, amt)
+            # Simple string-based lerp: only works for rgb/rgba strings
+            # For full support, parse and interpolate
+            c1.to_s
+          end
+
+          # ── rectMode / ellipseMode ──
+          $__p_rect_mode = :corner
+          $__p_ellipse_mode = :center
+
+          def rectMode(mode)
+            $__p_rect_mode = mode
+          end
+
+          def ellipseMode(mode)
+            $__p_ellipse_mode = mode
+          end
+
+          # Override rect to respect rectMode
+          def rect(x, y, w, h, *radii)
+            rx, ry, rw, rh = x, y, w, h
+            case $__p_rect_mode
+            when :center
+              rx = x - w / 2.0
+              ry = y - h / 2.0
+            when :corners
+              rw = w - x
+              rh = h - y
+            when :radius
+              rx = x - w
+              ry = y - h
+              rw = w * 2
+              rh = h * 2
+            end
+
+            if !radii.empty?
+              r = radii[0] || 0
+              $__canvas_ctx.beginPath
+              $__canvas_ctx.moveTo(rx + r, ry)
+              $__canvas_ctx.lineTo(rx + rw - r, ry)
+              $__canvas_ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + r)
+              $__canvas_ctx.lineTo(rx + rw, ry + rh - r)
+              $__canvas_ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - r, ry + rh)
+              $__canvas_ctx.lineTo(rx + r, ry + rh)
+              $__canvas_ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - r)
+              $__canvas_ctx.lineTo(rx, ry + r)
+              $__canvas_ctx.quadraticCurveTo(rx, ry, rx + r, ry)
+              $__canvas_ctx.closePath
+              if $__p_fill
+                $__canvas_ctx.fillStyle = $__p_fill_color
+                $__canvas_ctx.fill
+              end
+              if $__p_stroke
+                $__canvas_ctx.strokeStyle = $__p_stroke_color
+                $__canvas_ctx.stroke
+              end
+            else
+              if $__p_fill
+                $__canvas_ctx.fillStyle = $__p_fill_color
+                $__canvas_ctx.fillRect(rx, ry, rw, rh)
+              end
+              if $__p_stroke
+                $__canvas_ctx.strokeStyle = $__p_stroke_color
+                $__canvas_ctx.strokeRect(rx, ry, rw, rh)
+              end
+            end
+          end
+
+          # Override ellipse to respect ellipseMode
+          def ellipse(x, y, w, h = w)
+            cx, cy, rw, rh = x, y, w, h
+            case $__p_ellipse_mode
+            when :corner
+              cx = x + w / 2.0
+              cy = y + h / 2.0
+            when :corners
+              cx = (x + w) / 2.0
+              cy = (y + h) / 2.0
+              rw = (w - x).abs
+              rh = (h - y).abs
+            when :radius
+              rw = w * 2
+              rh = h * 2
+            end
+            sx = [rw.to_f / 2, 0.001].max
+            sy = [rh.to_f / 2, 0.001].max
+            $__canvas_ctx.save
+            $__canvas_ctx.translate(cx, cy)
+            $__canvas_ctx.scale(sx, sy)
+            $__canvas_ctx.beginPath
+            $__canvas_ctx.arc(0, 0, 1, 0, Math::PI * 2)
+            $__canvas_ctx.restore
+            if $__p_fill
+              $__canvas_ctx.fillStyle = $__p_fill_color
+              $__canvas_ctx.fill
+            end
+            if $__p_stroke
+              $__canvas_ctx.strokeStyle = $__p_stroke_color
+              $__canvas_ctx.stroke
+            end
+          end
+
+          def circle(x, y, d)
+            ellipse(x, y, d, d)
+          end
+
+          def square(x, y, s)
+            rect(x, y, s, s)
+          end
+
+          # ── Transform (with block support) ──
+          def push(&block)
+            $__canvas_ctx.save
+            if block
+              block.call
+              $__canvas_ctx.restore
+            end
+          end
+
+          def pop
+            $__canvas_ctx.restore
+          end
+
+          def pushMatrix(&block)
+            push(&block)
+          end
+
+          def popMatrix
+            pop
+          end
+
+          def pushStyle(&block)
+            push(&block)
+          end
+
+          def popStyle
+            pop
+          end
+
+          def translate(x, y)
+            $__canvas_ctx.translate(x, y)
+          end
+
+          def rotate(angle)
+            $__canvas_ctx.rotate(angle)
+          end
+
+          def scale(x, y = x)
+            $__canvas_ctx.scale(x, y)
+          end
+
+          # ── strokeCap / strokeJoin ──
+          def strokeCap(cap)
+            val = case cap
+                  when :round, "round" then "round"
+                  when :square, "square", :project, "project" then "square"
+                  when :butt, "butt" then "butt"
+                  else cap.to_s
+                  end
+            $__canvas_ctx.lineCap = val
+          end
+
+          def strokeJoin(join)
+            val = case join
+                  when :round, "round" then "round"
+                  when :miter, "miter" then "miter"
+                  when :bevel, "bevel" then "bevel"
+                  else join.to_s
+                  end
+            $__canvas_ctx.lineJoin = val
+          end
+
+          # ── bezier / curve ──
+          def bezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2)
+            $__canvas_ctx.beginPath
+            $__canvas_ctx.moveTo(x1, y1)
+            $__canvas_ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x2, y2)
+            if $__p_stroke
+              $__canvas_ctx.strokeStyle = $__p_stroke_color
+              $__canvas_ctx.stroke
+            end
+          end
+
+          def curve(x1, y1, x2, y2, x3, y3, x4, y4)
+            # Catmull-Rom to cubic bezier approximation
+            cp1x = x2 + (x3 - x1) / 6.0
+            cp1y = y2 + (y3 - y1) / 6.0
+            cp2x = x3 - (x4 - x2) / 6.0
+            cp2y = y3 - (y4 - y2) / 6.0
+            $__canvas_ctx.beginPath
+            $__canvas_ctx.moveTo(x2, y2)
+            $__canvas_ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x3, y3)
+            if $__p_stroke
+              $__canvas_ctx.strokeStyle = $__p_stroke_color
+              $__canvas_ctx.stroke
+            end
+          end
+
+          # ── Math helpers (Processing-compatible) ──
+          def constrain(val, low, high)
+            val.clamp(low, high)
+          end
+
+          # map(value, start1, stop1, start2, stop2)
+          def self.map(value, start1, stop1, start2, stop2)
+            start2 + (stop2 - start2) * ((value - start1).to_f / (stop1 - start1))
+          end
+
+          def map(value, start1, stop1, start2, stop2)
+            start2 + (stop2 - start2) * ((value - start1).to_f / (stop1 - start1))
+          end
+
+          def lerp(start_val, stop_val, amt)
+            start_val + (stop_val - start_val) * amt
+          end
+
+          def dist(*args)
+            if args.size == 4
+              x1, y1, x2, y2 = args
+              Math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            elsif args.size == 6
+              x1, y1, z1, x2, y2, z2 = args
+              Math.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
+            end
+          end
+
+          def mag(x, y, z = 0)
+            Math.sqrt(x*x + y*y + z*z)
+          end
+
+          def norm(value, start_val, stop_val)
+            (value - start_val).to_f / (stop_val - start_val)
+          end
+
+          def sq(n); n * n; end
+          def pow(n, e); n ** e; end
+          def degrees(radians); radians * RAD_TO_DEG; end
+          def radians(degrees); degrees * DEG_TO_RAD; end
+          def abs(n); n.abs; end
+          def ceil(n); n.ceil; end
+          def floor(n); n.floor; end
+          def round(n); n.round; end
+          def min(*args); args.flatten.min; end
+          def max(*args); args.flatten.max; end
+          def log(n); Math.log(n); end
+          def exp(n); Math.exp(n); end
+          def sqrt(n); Math.sqrt(n); end
+
+          # Perlin noise (simple implementation)
+          $__p_noise_seed = 0
+          $__p_noise_table = nil
+
+          def _p_init_noise
+            return if $__p_noise_table
+            rng = Random.new(42)
+            $__p_noise_table = Array.new(512) { rng.rand }
+          end
+
+          def noise(x, y = 0, z = 0)
+            _p_init_noise
+            # Simple value noise with interpolation
+            xi = x.floor
+            yi = y.floor
+            xf = x - xi
+            yf = y - yi
+            u = xf * xf * (3 - 2 * xf)
+            v = yf * yf * (3 - 2 * yf)
+            i00 = $__p_noise_table[(xi + yi * 57) % 512]
+            i10 = $__p_noise_table[(xi + 1 + yi * 57) % 512]
+            i01 = $__p_noise_table[(xi + (yi + 1) * 57) % 512]
+            i11 = $__p_noise_table[(xi + 1 + (yi + 1) * 57) % 512]
+            lerp(lerp(i00, i10, u), lerp(i01, i11, u), v)
+          end
+
+          def noiseSeed(seed)
+            rng = Random.new(seed)
+            $__p_noise_table = Array.new(512) { rng.rand }
+          end
+
+          def randomSeed(seed)
+            $__p_random = Random.new(seed)
+          end
+
+          def randomGaussian
+            # Box-Muller transform
+            u1 = rand
+            u2 = rand
+            Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math::PI * u2)
+          end
+
+          # ── Mouse events ──
+          $__p_mouse_pressed = false
+          $__p_mouse_button = 0
+          $__p_pmouse_x = 0
+          $__p_pmouse_y = 0
+
+          def mousePressed(&block)
+            if block
+              Sketch.class_variable_set(:@@mouse_pressed_block, block)
+            else
+              $__p_mouse_pressed
+            end
+          end
+
+          def mouseReleased(&block)
+            Sketch.class_variable_set(:@@mouse_released_block, block) if block
+          end
+
+          def mouseMoved(&block)
+            Sketch.class_variable_set(:@@mouse_moved_block, block) if block
+          end
+
+          def mouseDragged(&block)
+            Sketch.class_variable_set(:@@mouse_dragged_block, block) if block
+          end
+
+          def mouseClicked(&block)
+            Sketch.class_variable_set(:@@mouse_clicked_block, block) if block
+          end
+
+          def pmouseX; $__p_pmouse_x; end
+          def pmouseY; $__p_pmouse_y; end
+          def mouseButton; $__p_mouse_button; end
+          def mousePressed?; $__p_mouse_pressed; end
+
+          # ── Key events ──
+          $__p_key = ""
+          $__p_key_code = 0
+          $__p_key_pressed = false
+
+          def keyPressed(&block)
+            if block
+              Sketch.class_variable_set(:@@key_pressed_block, block)
+            else
+              $__p_key_pressed
+            end
+          end
+
+          def keyReleased(&block)
+            Sketch.class_variable_set(:@@key_released_block, block) if block
+          end
+
+          def keyTyped(&block)
+            Sketch.class_variable_set(:@@key_typed_block, block) if block
+          end
+
+          def key; $__p_key; end
+          def keyCode; $__p_key_code; end
+          def keyIsPressed; $__p_key_pressed; end
+
+          # ── loop / noLoop / redraw / frameRate ──
+          $__p_looping = true
+          $__p_target_fps = 60
+          $__p_needs_redraw = false
+
+          def loop
+            $__p_looping = true
+          end
+
+          def noLoop
+            $__p_looping = false
+          end
+
+          def redraw
+            $__p_needs_redraw = true
+          end
+
+          def frameRate(fps = nil)
+            if fps
+              $__p_target_fps = fps
+            else
+              $__p_current_fps || 60
+            end
+          end
+
+          # ── Vector class ──
+          class PVector
+            attr_accessor :x, :y, :z
+            def initialize(x = 0, y = 0, z = 0)
+              @x, @y, @z = x.to_f, y.to_f, z.to_f
+            end
+            def set(x, y = 0, z = 0)
+              @x, @y, @z = x.to_f, y.to_f, z.to_f; self
+            end
+            def copy; PVector.new(@x, @y, @z); end
+            def add(v); @x += v.x; @y += v.y; @z += v.z; self; end
+            def sub(v); @x -= v.x; @y -= v.y; @z -= v.z; self; end
+            def mult(n); @x *= n; @y *= n; @z *= n; self; end
+            def div(n); @x /= n; @y /= n; @z /= n; self; end
+            def mag; Math.sqrt(@x*@x + @y*@y + @z*@z); end
+            def magSq; @x*@x + @y*@y + @z*@z; end
+            def normalize; m = mag; div(m) if m > 0; self; end
+            def limit(max); mult(max / mag) if mag > max; self; end
+            def heading; Math.atan2(@y, @x); end
+            def dist(v); Math.sqrt((@x-v.x)**2 + (@y-v.y)**2 + (@z-v.z)**2); end
+            def dot(v); @x*v.x + @y*v.y + @z*v.z; end
+            def lerp(v, amt); @x += (v.x - @x) * amt; @y += (v.y - @y) * amt; @z += (v.z - @z) * amt; self; end
+            def rotate(angle)
+              c = Math.cos(angle); s = Math.sin(angle)
+              nx = @x * c - @y * s; ny = @x * s + @y * c
+              @x, @y = nx, ny; self
+            end
+            def to_s; "(\#{@x}, \#{@y}, \#{@z})"; end
+            def to_a; [@x, @y, @z]; end
+
+            def self.add(a, b); a.copy.add(b); end
+            def self.sub(a, b); a.copy.sub(b); end
+            def self.mult(v, n); v.copy.mult(n); end
+            def self.div(v, n); v.copy.div(n); end
+            def self.dist(a, b); a.dist(b); end
+            def self.dot(a, b); a.dot(b); end
+            def self.fromAngle(angle); PVector.new(Math.cos(angle), Math.sin(angle)); end
+            def self.random2D; fromAngle(rand * Math::PI * 2); end
+          end
+
+          def createVector(x = 0, y = 0, z = 0)
+            PVector.new(x, y, z)
+          end
+
+          # ── Setup / Draw DSL (Processing-compatible block style) ──
+          def setup(&block)
+            if block
+              Sketch.class_variable_set(:@@setup_block, block)
+            end
           end
 
           def draw(&block)
             Sketch.class_variable_set(:@@draw_block, block)
           end
 
-          # Bridge to JS canvas context
-          class CanvasContext
-            def initialize(js_ctx)
-              @ctx = js_ctx
-            end
-
-            def fillStyle=(val)
-              @ctx[:fillStyle] = val
-            end
-
-            def strokeStyle=(val)
-              @ctx[:strokeStyle] = val
-            end
-
-            def lineWidth=(val)
-              @ctx[:lineWidth] = val
-            end
-
-            def font=(val)
-              @ctx[:font] = val
-            end
-
-            def globalAlpha=(val)
-              @ctx[:globalAlpha] = val
-            end
-
-            def lineCap=(val)
-              @ctx[:lineCap] = val
-            end
-
-            def lineJoin=(val)
-              @ctx[:lineJoin] = val
-            end
-
-            def textAlign=(val)
-              @ctx[:textAlign] = val
-            end
-
-            def textBaseline=(val)
-              @ctx[:textBaseline] = val
-            end
-
-            def fillRect(x, y, w, h)
-              @ctx.call(:fillRect, x, y, w, h)
-            end
-
-            def clearRect(x, y, w, h)
-              @ctx.call(:clearRect, x, y, w, h)
-            end
-
-            def strokeRect(x, y, w, h)
-              @ctx.call(:strokeRect, x, y, w, h)
-            end
-
-            def beginPath
-              @ctx.call(:beginPath)
-            end
-
-            def closePath
-              @ctx.call(:closePath)
-            end
-
-            def moveTo(x, y)
-              @ctx.call(:moveTo, x, y)
-            end
-
-            def lineTo(x, y)
-              @ctx.call(:lineTo, x, y)
-            end
-
-            def arc(x, y, r, start_angle, end_angle)
-              r = [r.to_f, 0].max
-              @ctx.call(:arc, x, y, r, start_angle, end_angle)
-            end
-
-            def fill
-              @ctx.call(:fill)
-            end
-
-            def stroke
-              @ctx.call(:stroke)
-            end
-
-            def fillText(text, x, y)
-              @ctx.call(:fillText, text.to_s, x, y)
-            end
-
-            def strokeText(text, x, y)
-              @ctx.call(:strokeText, text.to_s, x, y)
-            end
-
-            def save
-              @ctx.call(:save)
-            end
-
-            def restore
-              @ctx.call(:restore)
-            end
-
-            def translate(x, y)
-              @ctx.call(:translate, x, y)
-            end
-
-            def rotate(angle)
-              @ctx.call(:rotate, angle)
-            end
-
-            def scale(x, y)
-              @ctx.call(:scale, x, y)
-            end
-
-            def quadraticCurveTo(cpx, cpy, x, y)
-              @ctx.call(:quadraticCurveTo, cpx, cpy, x, y)
-            end
-
-            def bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
-              @ctx.call(:bezierCurveTo, cp1x, cp1y, cp2x, cp2y, x, y)
-            end
-
-            def rect(x, y, w, h)
-              @ctx.call(:rect, x, y, w, h)
-            end
-
-            def clip
-              @ctx.call(:clip)
-            end
-
-            def setLineDash(segments)
-              @ctx.call(:setLineDash, segments)
-            end
-
-            def shadowColor=(val)
-              @ctx[:shadowColor] = val
-            end
-
-            def shadowBlur=(val)
-              @ctx[:shadowBlur] = val
-            end
-
-            def shadowOffsetX=(val)
-              @ctx[:shadowOffsetX] = val
-            end
-
-            def shadowOffsetY=(val)
-              @ctx[:shadowOffsetY] = val
-            end
-          end
-
-          # ── Processing-like class-based SketchBase ──
-          $__elapsed_time = 0.0
-          $__frame_count = 0
-
-          class SketchBase
-            attr_reader :width, :height
-
-            def self.inherited(subclass)
-              Sketch.sketch_class = subclass
-            end
-
-            def initialize
-              @width = 400
-              @height = 400
-              @_fill = true
-              @_stroke = false
-              @_fill_color = "white"
-              @_stroke_color = "white"
-              @_font_size = 14
-            end
-
-            def size(w, h)
-              @width = w
-              @height = h
-            end
-
-            def setup; end
-            def draw; end
-
-            # ── Drawing helpers ──
-
-            def background(*args)
-              color = _parse_color(*args)
-              ctx.fillStyle = color
-              ctx.fillRect(0, 0, @width, @height)
-            end
-
-            def fill(*args)
-              @_fill = true
-              @_fill_color = _parse_color(*args) unless args.empty?
-            end
-
-            def no_fill
-              @_fill = false
-            end
-
-            def stroke(*args)
-              @_stroke = true
-              @_stroke_color = _parse_color(*args) unless args.empty?
-            end
-
-            def no_stroke
-              @_stroke = false
-            end
-
-            def stroke_weight(w)
-              ctx.lineWidth = w
-            end
-
-            def circle(x, y, r)
-              r = [r.to_f, 0].max
-              ctx.beginPath
-              ctx.arc(x, y, r, 0, Math::PI * 2)
-              if @_fill
-                ctx.fillStyle = @_fill_color
-                ctx.fill
-              end
-              if @_stroke
-                ctx.strokeStyle = @_stroke_color
-                ctx.stroke
-              end
-            end
-
-            def ellipse(x, y, w, h)
-              ctx.save
-              ctx.translate(x, y)
-              ctx.scale(w / 2.0, h / 2.0)
-              ctx.beginPath
-              ctx.arc(0, 0, 1, 0, Math::PI * 2)
-              ctx.restore
-              if @_fill
-                ctx.fillStyle = @_fill_color
-                ctx.fill
-              end
-              if @_stroke
-                ctx.strokeStyle = @_stroke_color
-                ctx.stroke
-              end
-            end
-
-            def rect(x, y, w, h)
-              if @_fill
-                ctx.fillStyle = @_fill_color
-                ctx.fillRect(x, y, w, h)
-              end
-              if @_stroke
-                ctx.strokeStyle = @_stroke_color
-                ctx.strokeRect(x, y, w, h)
-              end
-            end
-
-            def line(x1, y1, x2, y2)
-              ctx.beginPath
-              ctx.moveTo(x1, y1)
-              ctx.lineTo(x2, y2)
-              ctx.strokeStyle = @_stroke_color
-              ctx.stroke
-            end
-
-            def text(str, x, y)
-              if @_fill
-                ctx.fillStyle = @_fill_color
-                ctx.fillText(str.to_s, x, y)
-              end
-            end
-
-            def text_size(s)
-              @_font_size = s
-              ctx.font = "\#{s}px monospace"
-            end
-
-            def push_matrix
-              ctx.save
-            end
-
-            def pop_matrix
-              ctx.restore
-            end
-
-            def translate(x, y)
-              ctx.translate(x, y)
-            end
-
-            def rotate(angle)
-              ctx.rotate(angle)
-            end
-
-            def scale(x, y = x)
-              ctx.scale(x, y)
-            end
-
-            def elapsed_time
-              $__elapsed_time.to_f
-            end
-
-            def frame_count
-              $__frame_count.to_i
-            end
-
-            private
-
-            def ctx
-              $__canvas_ctx
-            end
-
-            def _parse_color(*args)
-              case args.size
-              when 1
-                arg = args[0]
-                if arg.is_a?(String)
-                  arg
-                else
-                  "rgb(\#{arg},\#{arg},\#{arg})"
-                end
-              when 3
-                "rgb(\#{args[0]},\#{args[1]},\#{args[2]})"
-              when 4
-                "rgba(\#{args[0]},\#{args[1]},\#{args[2]},\#{args[3]})"
-              else
-                "white"
-              end
-            end
-          end
+          # Ruby-style aliases
+          # Snake_case aliases (using alias keyword, which works in main scope)
+          alias no_fill noFill
+          alias no_stroke noStroke
+          alias stroke_weight strokeWeight
+          alias text_size textSize
+          alias text_align textAlign
+          alias push_matrix pushMatrix
+          alias pop_matrix popMatrix
+          alias push_style pushStyle
+          alias pop_style popStyle
+          alias frame_count frameCount
+          alias mouse_x mouseX
+          alias mouse_y mouseY
+          alias pmouse_x pmouseX
+          alias pmouse_y pmouseY
+          alias mouse_button mouseButton
+          alias stroke_cap strokeCap
+          alias stroke_join strokeJoin
+          alias color_mode colorMode
+          alias rect_mode rectMode
+          alias ellipse_mode ellipseMode
+          alias no_loop noLoop
+          alias frame_rate frameRate
+          alias create_vector createVector
+          alias begin_shape beginShape
+          alias end_shape endShape
+          alias bezier_vertex bezierVertex
+          alias curve_vertex curveVertex
+          alias noise_seed noiseSeed
+          alias random_seed randomSeed
+          alias random_gaussian randomGaussian
+          alias lerp_color lerpColor
         `);
 
         statusEl.textContent = 'Ready';
         statusEl.className = 'status ready';
         runBtn.disabled = false;
         logConsole(`Ruby ${rubyVM.eval('RUBY_VERSION')} loaded successfully!`, 'output');
+        logConsole('Processing/RubySketch-compatible API ready (shapes, events, vectors, HSB, ...)', 'info');
       } catch (e) {
         statusEl.textContent = 'Error loading';
         statusEl.className = 'status error';
@@ -928,7 +1729,7 @@ end`
         // Reset sketch state
         rubyVM.eval('Sketch.reset!');
 
-        // Clear instance variables from previous runs (best effort)
+        // Clear instance variables from previous runs
         rubyVM.eval(`
           instance_variables.each do |v|
             remove_instance_variable(v)
@@ -938,32 +1739,32 @@ end`
         // Evaluate user code
         rubyVM.eval(code);
 
-        // Determine if class-based or block-based
-        const hasSketchClass = rubyVM.eval('!Sketch.sketch_class.nil?').toString() === 'true';
         const hasDrawBlock = rubyVM.eval('!Sketch.draw_block.nil?').toString() === 'true';
+        const hasSetupBlock = rubyVM.eval('!Sketch.setup_block.nil?').toString() === 'true';
 
-        if (!hasSketchClass && !hasDrawBlock) {
-          logConsole('No sketch defined. Use class-based (class MySketch < SketchBase) or block-based (draw { |ctx, t| ... })', 'info');
+        if (!hasDrawBlock) {
+          logConsole('No draw block defined. Use: draw { ... }', 'info');
           return;
         }
 
-        let w, h;
+        // Set up JS canvas context for Ruby
+        rubyVM.eval(`
+          $__js_ctx = JS.global[:document].call(:getElementById, "sketchCanvas").call(:getContext, "2d")
+          $__canvas_ctx = CanvasContext.new($__js_ctx)
+        `);
 
-        if (hasSketchClass) {
-          // Class-based sketch
-          rubyVM.eval('$__sketch_instance = Sketch.sketch_class.new; $__sketch_instance.setup');
-          w = parseInt(rubyVM.eval('$__sketch_instance.width').toString(), 10) || 400;
-          h = parseInt(rubyVM.eval('$__sketch_instance.height').toString(), 10) || 400;
-        } else {
-          // Block-based sketch
-          w = parseInt(rubyVM.eval('Sketch.width').toString(), 10) || 400;
-          h = parseInt(rubyVM.eval('Sketch.height').toString(), 10) || 400;
+        // Run setup block (once)
+        if (hasSetupBlock) {
+          rubyVM.eval('Sketch.setup_block.call');
         }
 
+        // Get canvas size (setup may have called size())
+        const w = parseInt(rubyVM.eval('$__p_width').toString(), 10) || 400;
+        const h = parseInt(rubyVM.eval('$__p_height').toString(), 10) || 400;
         canvas.width = w;
         canvas.height = h;
 
-        // Set up JS canvas context for Ruby
+        // Re-create context after resize
         rubyVM.eval(`
           $__js_ctx = JS.global[:document].call(:getElementById, "sketchCanvas").call(:getContext, "2d")
           $__canvas_ctx = CanvasContext.new($__js_ctx)
@@ -981,18 +1782,38 @@ end`
 
         const startTime = performance.now();
 
-        function loop() {
+        let lastFrameTime = 0;
+
+        function loop(timestamp) {
           if (!running) return;
 
           try {
+            // Check looping state and frameRate control
+            const looping = rubyVM.eval('$__p_looping').toString() === 'true';
+            const needsRedraw = rubyVM.eval('$__p_needs_redraw').toString() === 'true';
+            const targetFps = parseInt(rubyVM.eval('$__p_target_fps').toString(), 10) || 60;
+            const frameInterval = 1000 / targetFps;
+
+            if (!looping && !needsRedraw) {
+              animationId = requestAnimationFrame(loop);
+              return;
+            }
+
+            if (needsRedraw) {
+              rubyVM.eval('$__p_needs_redraw = false');
+            }
+
+            // Throttle to target FPS
+            if (timestamp - lastFrameTime < frameInterval * 0.95) {
+              animationId = requestAnimationFrame(loop);
+              return;
+            }
+            lastFrameTime = timestamp;
+
             const t = (performance.now() - startTime) / 1000;
             frameCount++;
 
-            if (hasSketchClass) {
-              rubyVM.eval(`$__elapsed_time = ${t}; $__frame_count = ${frameCount}; $__sketch_instance.draw`);
-            } else {
-              rubyVM.eval(`Sketch.draw_block.call($__canvas_ctx, ${t})`);
-            }
+            rubyVM.eval(`$__p_pmouse_x = $__p_mouse_x; $__p_pmouse_y = $__p_mouse_y; $__p_elapsed_time = ${t}; $__p_frame_count = ${frameCount}; $__p_mouse_x = ${jsMouseX}; $__p_mouse_y = ${jsMouseY}; $__p_current_fps = ${Math.round(frameCount * 1000 / Math.max(performance.now() - lastFpsTime, 1))}; Sketch.draw_block.call`);
 
             const now = performance.now();
             if (now - lastFpsTime >= 1000) {
@@ -1033,7 +1854,6 @@ end`
         e.preventDefault();
         runSketch();
       }
-      // Tab support
       if (e.key === 'Tab') {
         e.preventDefault();
         const start = editor.selectionStart;
