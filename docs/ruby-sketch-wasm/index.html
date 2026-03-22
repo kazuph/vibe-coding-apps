@@ -1656,43 +1656,38 @@ end`
           end
 
           # Ruby-style aliases
-          alias_method :no_fill, :noFill
-          alias_method :no_stroke, :noStroke
-          alias_method :stroke_weight, :strokeWeight
-          alias_method :text_size, :textSize
-          alias_method :text_align, :textAlign
-          alias_method :push_matrix, :pushMatrix
-          alias_method :pop_matrix, :popMatrix
-          alias_method :push_style, :pushStyle
-          alias_method :pop_style, :popStyle
-          alias_method :frame_count, :frameCount
-          alias_method :mouse_x, :mouseX
-          alias_method :mouse_y, :mouseY
-          alias_method :pmouse_x, :pmouseX
-          alias_method :pmouse_y, :pmouseY
-          alias_method :mouse_button, :mouseButton
-          alias_method :mouse_pressed?, :mousePressed?
-          alias_method :key_pressed, :keyPressed
-          alias_method :key_released, :keyReleased
-          alias_method :key_typed, :keyTyped
-          alias_method :key_code, :keyCode
-          alias_method :key_is_pressed, :keyIsPressed
-          alias_method :stroke_cap, :strokeCap
-          alias_method :stroke_join, :strokeJoin
-          alias_method :color_mode, :colorMode
-          alias_method :rect_mode, :rectMode
-          alias_method :ellipse_mode, :ellipseMode
-          alias_method :no_loop, :noLoop
-          alias_method :frame_rate, :frameRate
-          alias_method :create_vector, :createVector
-          alias_method :begin_shape, :beginShape
-          alias_method :end_shape, :endShape
-          alias_method :bezier_vertex, :bezierVertex
-          alias_method :curve_vertex, :curveVertex
-          alias_method :noise_seed, :noiseSeed
-          alias_method :random_seed, :randomSeed
-          alias_method :random_gaussian, :randomGaussian
-          alias_method :lerp_color, :lerpColor
+          # Snake_case aliases (using alias keyword, which works in main scope)
+          alias no_fill noFill
+          alias no_stroke noStroke
+          alias stroke_weight strokeWeight
+          alias text_size textSize
+          alias text_align textAlign
+          alias push_matrix pushMatrix
+          alias pop_matrix popMatrix
+          alias push_style pushStyle
+          alias pop_style popStyle
+          alias frame_count frameCount
+          alias mouse_x mouseX
+          alias mouse_y mouseY
+          alias pmouse_x pmouseX
+          alias pmouse_y pmouseY
+          alias mouse_button mouseButton
+          alias stroke_cap strokeCap
+          alias stroke_join strokeJoin
+          alias color_mode colorMode
+          alias rect_mode rectMode
+          alias ellipse_mode ellipseMode
+          alias no_loop noLoop
+          alias frame_rate frameRate
+          alias create_vector createVector
+          alias begin_shape beginShape
+          alias end_shape endShape
+          alias bezier_vertex bezierVertex
+          alias curve_vertex curveVertex
+          alias noise_seed noiseSeed
+          alias random_seed randomSeed
+          alias random_gaussian randomGaussian
+          alias lerp_color lerpColor
         `);
 
         statusEl.textContent = 'Ready';
