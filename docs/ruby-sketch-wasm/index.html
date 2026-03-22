@@ -501,6 +501,46 @@
       } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
     });
 
+    // ── Touch events on canvas ──
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      jsMouseX = Math.round(touch.clientX - rect.left);
+      jsMouseY = Math.round(touch.clientY - rect.top);
+      jsMousePressed = true;
+      if (running && rubyVM) {
+        try {
+          const touchData = Array.from(e.touches).map(t => `{x: ${Math.round(t.clientX - rect.left)}, y: ${Math.round(t.clientY - rect.top)}, id: ${t.identifier}}`).join(', ');
+          rubyVM.eval(`$__p_mouse_pressed = true; $__p_mouse_x = ${jsMouseX}; $__p_mouse_y = ${jsMouseY}; $__p_touches = [${touchData}]; Sketch.mouse_pressed_block&.call; Sketch.touch_started_block&.call`);
+        } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      jsMouseX = Math.round(touch.clientX - rect.left);
+      jsMouseY = Math.round(touch.clientY - rect.top);
+      if (running && rubyVM) {
+        try {
+          const touchData = Array.from(e.touches).map(t => `{x: ${Math.round(t.clientX - rect.left)}, y: ${Math.round(t.clientY - rect.top)}, id: ${t.identifier}}`).join(', ');
+          rubyVM.eval(`$__p_mouse_x = ${jsMouseX}; $__p_mouse_y = ${jsMouseY}; $__p_touches = [${touchData}]; Sketch.mouse_dragged_block&.call; Sketch.touch_moved_block&.call`);
+        } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      jsMousePressed = false;
+      if (running && rubyVM) {
+        try {
+          rubyVM.eval('$__p_mouse_pressed = false; $__p_touches = []; Sketch.mouse_released_block&.call; Sketch.touch_ended_block&.call');
+        } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
+      }
+    }, { passive: false });
+
     // ── Sidebar ──
     function toggleSidebar() {
       sidebar.classList.toggle('collapsed');
@@ -543,8 +583,18 @@
         open: false,
         examples: [
           { id: 'paint', name: 'Interactive Paint', icon: '🎨' },
+          { id: 'touch_paint', name: 'Touch Paint', icon: '👆' },
           { id: 'particles', name: 'Particles', icon: '🎆' },
           { id: 'vectors', name: 'Vector Boids', icon: '🐦' },
+        ]
+      },
+      {
+        name: 'Media',
+        icon: '🎵',
+        open: true,
+        examples: [
+          { id: 'image_demo', name: 'Image Gallery', icon: '🖼️' },
+          { id: 'sound_piano', name: 'Sound Piano', icon: '🎹' },
         ]
       },
       {
@@ -1868,6 +1918,202 @@ mousePressed do
   reset_game if @game_over
 end`,
 
+      touch_paint: `# Touch Paint - works with mouse AND touch!
+setup do
+  size 400, 400
+  background 30, 30, 50
+  @hue = 0
+  @strokes = []
+end
+
+draw do
+  if frameCount == 1
+    fill 200
+    textSize 18
+    text "Draw with mouse or touch!", 80, 200
+  end
+end
+
+mouseDragged do
+  noStroke
+  @hue = (@hue + 2) % 360
+  d = dist(mouseX, mouseY, pmouseX, pmouseY)
+  s = constrain(40 - d, 6, 40)
+  fill "hsl(\#{@hue}, 80%, 60%)"
+  circle mouseX, mouseY, s
+end
+
+mousePressed do
+  loop
+end
+
+keyPressed do
+  if key == "c"
+    background 30, 30, 50
+    fill 200
+    textSize 18
+    text "Cleared!", 160, 200
+  end
+end`,
+
+      image_demo: `# Image Gallery - load images from the web
+setup do
+  size 400, 400
+  @images = []
+  @loaded = false
+  # Load random images from picsum.photos
+  4.times do |i|
+    @images << {
+      img: loadImage("https://picsum.photos/150/150?random=\#{i + 1}"),
+      x: (i % 2) * 200 + 25,
+      y: (i / 2) * 200 + 25,
+      angle: 0.0
+    }
+  end
+end
+
+draw do
+  background 26, 26, 46
+
+  fill 200
+  textSize 14
+  text "Image Gallery - drag to rearrange", 70, 18
+
+  @images.each_with_index do |img, i|
+    if imageLoaded?(img[:img])
+      # Draw frame
+      fill 50, 50, 70
+      noStroke
+      rect img[:x] - 5, img[:y] - 5, 160, 160, 4
+
+      # Draw image
+      image img[:img], img[:x], img[:y], 150, 150
+    else
+      fill 60
+      rect img[:x], img[:y], 150, 150, 4
+      fill 150
+      textSize 12
+      text "Loading...", img[:x] + 45, img[:y] + 80
+    end
+  end
+end
+
+mouseDragged do
+  @images.each do |img|
+    if mouseX > img[:x] && mouseX < img[:x] + 150 &&
+       mouseY > img[:y] && mouseY < img[:y] + 150
+      img[:x] += mouseX - pmouseX
+      img[:y] += mouseY - pmouseY
+    end
+  end
+end`,
+
+      sound_piano: `# Sound Piano - click keys to play!
+NOTES = {
+  "C" => 261.63, "D" => 293.66, "E" => 329.63,
+  "F" => 349.23, "G" => 392.00, "A" => 440.00,
+  "B" => 493.88, "C5" => 523.25
+}
+
+KEY_NAMES = NOTES.keys
+
+setup do
+  size 400, 300
+  @active_key = nil
+  @particles = []
+end
+
+draw do
+  background 30, 30, 50
+
+  # Title
+  fill 200
+  textSize 16
+  text "Click the keys to play!", 110, 25
+
+  # Draw piano keys
+  key_w = 400 / KEY_NAMES.size
+  KEY_NAMES.each_with_index do |name, i|
+    x = i * key_w
+    is_active = @active_key == i
+
+    # Key background
+    if is_active
+      fill "hsl(\#{i * 45}, 70%, 70%)"
+    else
+      fill 240
+    end
+    stroke 100
+    strokeWeight 1
+    rect x + 2, 50, key_w - 4, 200, 0, 0, 8, 8
+
+    # Key label
+    fill is_active ? 255 : 80
+    noStroke
+    textSize 18
+    text name, x + key_w / 2 - 8, 230
+  end
+
+  # Particles
+  @particles.each do |p|
+    p[:y] -= 2
+    p[:life] -= 0.02
+    next if p[:life] <= 0
+    fill "hsla(\#{p[:hue]}, 80%, 60%, \#{p[:life]})"
+    noStroke
+    circle p[:x], p[:y], p[:life] * 10
+  end
+  @particles.reject! { |p| p[:life] <= 0 }
+
+  # Instructions
+  fill 120
+  textSize 11
+  text "Keys: 1-8 | Waveform: S=sine Q=square W=sawtooth T=triangle", 20, 290
+  @active_key = nil
+end
+
+mousePressed do
+  key_w = 400 / KEY_NAMES.size
+  if mouseY >= 50 && mouseY <= 250
+    i = (mouseX / key_w).to_i
+    if i >= 0 && i < KEY_NAMES.size
+      @active_key = i
+      freq = NOTES[KEY_NAMES[i]]
+      playTone(freq, 0.5, "sine", 0.4)
+      # Spawn particles
+      5.times do
+        @particles << {
+          x: mouseX + rand(-20..20),
+          y: mouseY,
+          hue: i * 45,
+          life: 1.0
+        }
+      end
+    end
+  end
+end
+
+keyPressed do
+  # Number keys 1-8 play notes
+  idx = key.to_i - 1
+  if idx >= 0 && idx < KEY_NAMES.size
+    @active_key = idx
+    freq = NOTES[KEY_NAMES[idx]]
+    playTone(freq, 0.5, "sine", 0.4)
+    5.times do
+      @particles << {
+        x: idx * 50 + 25 + rand(-20..20),
+        y: 150,
+        hue: idx * 45,
+        life: 1.0
+      }
+    end
+  end
+
+  # Waveform shortcuts
+  # These could be extended for different wave types
+end`,
+
       minesweeper: `# Mine Sweeper - Click to reveal, right-click to flag
 CELL = 30
 COLS = 12
@@ -2056,6 +2302,104 @@ mousePressed do
 end`,
     };
 
+    // ── Image Store ──
+    const imageStore = {};
+    let nextImageId = 1;
+
+    window.__rubySketchLoadImage = function(url) {
+      const id = nextImageId++;
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+      imageStore[id] = { img, loaded: false, width: 0, height: 0 };
+      img.onload = () => {
+        imageStore[id].loaded = true;
+        imageStore[id].width = img.naturalWidth;
+        imageStore[id].height = img.naturalHeight;
+      };
+      return id;
+    };
+
+    window.__rubySketchDrawImage = function(id, x, y, w, h) {
+      const entry = imageStore[id];
+      if (!entry || !entry.loaded) return;
+      const c = document.getElementById('sketchCanvas').getContext('2d');
+      if (w > 0 && h > 0) {
+        c.drawImage(entry.img, x, y, w, h);
+      } else {
+        c.drawImage(entry.img, x, y);
+      }
+    };
+
+    window.__rubySketchImageWidth = function(id) {
+      const entry = imageStore[id];
+      return entry ? entry.width : 0;
+    };
+
+    window.__rubySketchImageHeight = function(id) {
+      const entry = imageStore[id];
+      return entry ? entry.height : 0;
+    };
+
+    window.__rubySketchImageLoaded = function(id) {
+      const entry = imageStore[id];
+      return entry ? entry.loaded : false;
+    };
+
+    // ── Sound Store ──
+    let audioCtx = null;
+    function getAudioCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+
+    const soundStore = {};
+    let nextSoundId = 1;
+
+    window.__rubySketchLoadSound = function(url) {
+      const id = nextSoundId++;
+      const audio = new Audio(url);
+      audio.preload = 'auto';
+      soundStore[id] = audio;
+      return id;
+    };
+
+    window.__rubySketchPlaySound = function(id, doLoop) {
+      const audio = soundStore[id];
+      if (!audio) return;
+      audio.loop = !!doLoop;
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    };
+
+    window.__rubySketchStopSound = function(id) {
+      const audio = soundStore[id];
+      if (!audio) return;
+      audio.pause();
+      audio.currentTime = 0;
+    };
+
+    window.__rubySketchPlayTone = function(freq, duration, type, volume) {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = volume;
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    };
+
+    window.__rubySketchStopAllSounds = function() {
+      Object.values(soundStore).forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+    };
+
     // ── Console helpers ──
     function logConsole(text, type = 'info') {
       const line = document.createElement('div');
@@ -2132,6 +2476,10 @@ end`,
               $__p_rect_mode = :corner
               $__p_ellipse_mode = :center
               $__p_shape_vertices = []
+              $__p_touches = []
+              @@touch_started_block = nil
+              @@touch_moved_block = nil
+              @@touch_ended_block = nil
             end
 
             # Event block accessors
@@ -2143,6 +2491,9 @@ end`,
             def self.key_pressed_block; (defined?(@@key_pressed_block) && @@key_pressed_block) || nil; end
             def self.key_released_block; (defined?(@@key_released_block) && @@key_released_block) || nil; end
             def self.key_typed_block; (defined?(@@key_typed_block) && @@key_typed_block) || nil; end
+            def self.touch_started_block; (defined?(@@touch_started_block) && @@touch_started_block) || nil; end
+            def self.touch_moved_block; (defined?(@@touch_moved_block) && @@touch_moved_block) || nil; end
+            def self.touch_ended_block; (defined?(@@touch_ended_block) && @@touch_ended_block) || nil; end
           end
 
           # Initialize globals
@@ -2907,6 +3258,66 @@ end`,
             Sketch.class_variable_set(:@@draw_block, block)
           end
 
+          # ── Touch events ──
+          $__p_touches = []
+
+          def touches; $__p_touches; end
+
+          def touchStarted(&block)
+            Sketch.class_variable_set(:@@touch_started_block, block) if block
+          end
+
+          def touchMoved(&block)
+            Sketch.class_variable_set(:@@touch_moved_block, block) if block
+          end
+
+          def touchEnded(&block)
+            Sketch.class_variable_set(:@@touch_ended_block, block) if block
+          end
+
+          # ── Image functions ──
+          def loadImage(url)
+            JS.global.call(:__rubySketchLoadImage, url.to_s).to_i
+          end
+
+          def image(img_id, x, y, w = nil, h = nil)
+            if w && h
+              JS.global.call(:__rubySketchDrawImage, img_id, x, y, w, h)
+            else
+              JS.global.call(:__rubySketchDrawImage, img_id, x, y, -1, -1)
+            end
+          end
+
+          def imageWidth(img_id)
+            JS.global.call(:__rubySketchImageWidth, img_id).to_i
+          end
+
+          def imageHeight(img_id)
+            JS.global.call(:__rubySketchImageHeight, img_id).to_i
+          end
+
+          def imageLoaded?(img_id)
+            JS.global.call(:__rubySketchImageLoaded, img_id).to_s == "true"
+          end
+
+          # ── Sound functions ──
+          class SoundFile
+            def initialize(url)
+              @id = JS.global.call(:__rubySketchLoadSound, url.to_s).to_i
+            end
+            def play;  JS.global.call(:__rubySketchPlaySound, @id, false); end
+            def loop;  JS.global.call(:__rubySketchPlaySound, @id, true); end
+            def stop;  JS.global.call(:__rubySketchStopSound, @id); end
+          end
+
+          def loadSound(url)
+            SoundFile.new(url)
+          end
+
+          def playTone(freq, duration = 0.3, type = "sine", volume = 0.5)
+            JS.global.call(:__rubySketchPlayTone, freq, duration, type.to_s, volume)
+          end
+
           # Snake_case aliases
           alias no_fill noFill
           alias no_stroke noStroke
@@ -2939,6 +3350,15 @@ end`,
           alias random_seed randomSeed
           alias random_gaussian randomGaussian
           alias lerp_color lerpColor
+          alias touch_started touchStarted
+          alias touch_moved touchMoved
+          alias touch_ended touchEnded
+          alias load_image loadImage
+          alias image_width imageWidth
+          alias image_height imageHeight
+          alias image_loaded? imageLoaded?
+          alias load_sound loadSound
+          alias play_tone playTone
         `);
 
         statusEl.textContent = 'Ready';
@@ -2964,6 +3384,8 @@ end`,
       stopBtn.style.display = 'none';
       runBtn.style.display = '';
       fpsCounter.textContent = '';
+      // Clean up sounds
+      try { window.__rubySketchStopAllSounds(); } catch(e) {}
     }
 
     function runSketch() {
