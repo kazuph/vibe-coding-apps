@@ -26,6 +26,9 @@
         .kanji-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
+        .hiragana-card {
+            background: linear-gradient(135deg, #faf0e6 0%, #f5d5b8 100%);
+        }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500">
@@ -40,6 +43,20 @@
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            <!-- Hiragana Practice App -->
+            <a href="./hiragana-practice/" class="app-card hiragana-card rounded-2xl p-8 text-center shadow-xl block no-underline">
+                <div class="text-6xl mb-4">✍️</div>
+                <h2 class="text-3xl font-bold text-gray-800 mb-4">
+                    ひらがな書き順れんしゅう
+                </h2>
+                <p class="text-gray-700 mb-6">
+                    なぞって覚える！五十音すべてのひらがなの書き順を練習しよう
+                </p>
+                <span class="inline-block bg-orange-400 hover:bg-orange-300 text-white font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
+                    れんしゅうする →
+                </span>
+            </a>
+
             <!-- Kids Learning App -->
             <a href="./kids-learning/" class="app-card kids-card rounded-2xl p-8 text-center shadow-xl block no-underline">
                 <div class="text-6xl mb-4">🌈</div>
