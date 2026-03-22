@@ -39,32 +39,15 @@
       font-weight: 400;
     }
 
-    .example-selector-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .example-selector-label {
-      font-size: 12px;
-      color: #888;
-      flex-shrink: 0;
-    }
-
-    .example-select {
-      background: #0f3460;
+    .sidebar-toggle {
+      display: none;
+      background: none;
+      border: 1px solid #0f3460;
       color: #e0e0e0;
-      border: 1px solid #1a4a8a;
-      border-radius: 4px;
-      padding: 4px 8px;
-      font-size: 13px;
+      font-size: 18px;
       cursor: pointer;
-      min-width: 160px;
-    }
-
-    .example-select:focus {
-      border-color: #e94560;
-      outline: none;
+      padding: 4px 8px;
+      border-radius: 4px;
     }
 
     .header-actions {
@@ -119,15 +102,144 @@
       overflow: hidden;
     }
 
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+      background: #121a30;
+      border-right: 1px solid #0f3460;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition: margin-left 0.2s;
+    }
+
+    .sidebar.collapsed {
+      margin-left: -220px;
+    }
+
+    .sidebar-header {
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-collapse-btn {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 4px;
+    }
+    .sidebar-collapse-btn:hover { color: #e0e0e0; }
+
+    .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
+    .sidebar-content::-webkit-scrollbar { width: 6px; }
+    .sidebar-content::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-content::-webkit-scrollbar-thumb { background: #2a3050; border-radius: 3px; }
+
+    .category {
+      user-select: none;
+    }
+
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: #aaa;
+      transition: color 0.15s;
+    }
+
+    .category-header:hover { color: #e0e0e0; }
+
+    .category-arrow {
+      font-size: 10px;
+      transition: transform 0.15s;
+      width: 12px;
+      text-align: center;
+    }
+
+    .category.open > .category-header .category-arrow {
+      transform: rotate(90deg);
+    }
+
+    .category-icon {
+      font-size: 14px;
+    }
+
+    .category-items {
+      display: none;
+    }
+
+    .category.open > .category-items {
+      display: block;
+    }
+
+    .example-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px 5px 32px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #999;
+      transition: all 0.1s;
+      border-left: 2px solid transparent;
+    }
+
+    .example-item:hover {
+      color: #e0e0e0;
+      background: rgba(233, 69, 96, 0.08);
+    }
+
+    .example-item.active {
+      color: #e94560;
+      background: rgba(233, 69, 96, 0.12);
+      border-left-color: #e94560;
+      font-weight: 600;
+    }
+
+    .example-item-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .example-item-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Editor / Canvas ── */
     .editor-panel {
-      width: 50%;
+      flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       border-right: 1px solid #0f3460;
     }
 
     .canvas-panel {
-      width: 50%;
+      flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
     }
@@ -207,45 +319,69 @@
       color: #666;
     }
 
+    /* ── Mobile ── */
     @media (max-width: 768px) {
+      .sidebar-toggle { display: block; }
+
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 100;
+        margin-left: 0 !important;
+      }
+
+      .sidebar.collapsed {
+        transform: translateX(-100%);
+      }
+
+      .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 99;
+      }
+
+      .sidebar-overlay.visible { display: block; }
+
       .main-container { flex-direction: column; }
-      .editor-panel, .canvas-panel { width: 100%; height: 50%; }
+      .editor-panel, .canvas-panel { width: 100%; flex: 1; }
       .editor-panel { border-right: none; border-bottom: 1px solid #0f3460; }
       .console-panel { height: 80px; }
-      .example-selector-label { display: none; }
     }
   </style>
 </head>
 <body>
   <header>
+    <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
     <h1>Ruby Sketch <span>WASM</span></h1>
-    <div class="example-selector-group">
-      <span class="example-selector-label">Example:</span>
-      <select id="exampleSelect" class="example-select">
-        <option value="circles">Circles</option>
-        <option value="rainbow">Rainbow Wave</option>
-        <option value="particles">Particles</option>
-        <option value="fractal_tree">Fractal Tree</option>
-        <option value="game_of_life">Game of Life</option>
-        <option value="starfield">Starfield</option>
-        <option value="paint">Interactive Paint</option>
-        <option value="hsb_clock">HSB Clock</option>
-        <option value="vectors">Vector Boids</option>
-      </select>
-    </div>
     <div class="header-actions">
-      <button id="runBtn" class="btn btn-run" disabled>Run</button>
-      <button id="stopBtn" class="btn btn-stop" style="display:none;">Stop</button>
+      <button id="runBtn" class="btn btn-run" disabled>▶ Run</button>
+      <button id="stopBtn" class="btn btn-stop" style="display:none;">■ Stop</button>
       <span id="status" class="status loading">Loading ruby.wasm...</span>
     </div>
   </header>
 
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
   <div class="main-container">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span>Examples</span>
+        <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse sidebar">◀</button>
+      </div>
+      <div class="sidebar-content" id="sidebarContent">
+        <!-- Generated by JS -->
+      </div>
+    </div>
+
     <div class="editor-panel">
       <div class="panel-header">
         <div class="editor-title">
           <span>editor.rb</span>
-          <span class="current-example-name" id="currentExampleName">Circles</span>
+          <span class="current-example-name" id="currentExampleName">Hello World</span>
         </div>
         <span style="font-size:11px;color:#555;">Ctrl+Enter to run</span>
       </div>
@@ -283,15 +419,17 @@
     const statusEl = document.getElementById('status');
     const consolePanel = document.getElementById('consolePanel');
     const fpsCounter = document.getElementById('fpsCounter');
-    const exampleSelect = document.getElementById('exampleSelect');
     const currentExampleName = document.getElementById('currentExampleName');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarContent = document.getElementById('sidebarContent');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
 
     let jsMousePressed = false;
     let jsMouseButton = 0;
-    let jsKey = '';
-    let jsKeyCode = 0;
 
-    // Track mouse position on canvas
+    // ── Mouse/Key events on canvas ──
     canvas.addEventListener('mousemove', (e) => {
       const rect = canvas.getBoundingClientRect();
       jsMouseX = Math.round(e.clientX - rect.left);
@@ -309,7 +447,7 @@
 
     canvas.addEventListener('mousedown', (e) => {
       jsMousePressed = true;
-      jsMouseButton = e.button === 0 ? 37 : e.button === 2 ? 39 : 0; // LEFT=37, RIGHT=39
+      jsMouseButton = e.button === 0 ? 37 : e.button === 2 ? 39 : 0;
       if (running && rubyVM) {
         try {
           rubyVM.eval(`$__p_mouse_pressed = true; $__p_mouse_button = ${jsMouseButton}; Sketch.mouse_pressed_block&.call`);
@@ -334,10 +472,9 @@
       }
     });
 
-    // Keyboard events (on document, forwarded to sketch)
     document.addEventListener('keydown', (e) => {
       if (!running || !rubyVM) return;
-      if (e.target === editor) return; // Don't capture when typing in editor
+      if (e.target === editor) return;
       try {
         const k = e.key.length === 1 ? e.key : '';
         const kc = e.keyCode;
@@ -353,21 +490,252 @@
       } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
     });
 
-    // ── Example display names ──
-    const EXAMPLE_NAMES = {
-      circles: 'Circles',
-      rainbow: 'Rainbow Wave',
-      particles: 'Particles',
-      fractal_tree: 'Fractal Tree',
-      game_of_life: 'Game of Life',
-      starfield: 'Starfield',
-      paint: 'Interactive Paint',
-      hsb_clock: 'HSB Clock',
-      vectors: 'Vector Boids'
-    };
+    // ── Sidebar ──
+    function toggleSidebar() {
+      sidebar.classList.toggle('collapsed');
+      sidebarOverlay.classList.toggle('visible', !sidebar.classList.contains('collapsed'));
+    }
 
-    // ── Examples (Processing/RubySketch compatible DSL) ──
+    sidebarToggle.addEventListener('click', toggleSidebar);
+    sidebarOverlay.addEventListener('click', toggleSidebar);
+    sidebarCollapseBtn.addEventListener('click', () => {
+      sidebar.classList.add('collapsed');
+      sidebarOverlay.classList.remove('visible');
+    });
+
+    // ── Example Categories & Data ──
+    const CATEGORIES = [
+      {
+        name: 'Basics',
+        icon: '📝',
+        open: true,
+        examples: [
+          { id: 'hello', name: 'Hello World', icon: '👋' },
+          { id: 'shapes', name: 'Shapes', icon: '🔷' },
+          { id: 'random_walk', name: 'Random Walk', icon: '🔀' },
+        ]
+      },
+      {
+        name: 'Animation',
+        icon: '🎬',
+        open: true,
+        examples: [
+          { id: 'circles', name: 'Circles', icon: '🔴' },
+          { id: 'rainbow', name: 'Rainbow Wave', icon: '🌈' },
+          { id: 'starfield', name: 'Starfield', icon: '✨' },
+          { id: 'hsb_clock', name: 'HSB Clock', icon: '🕐' },
+        ]
+      },
+      {
+        name: 'Interactive',
+        icon: '🖱️',
+        open: false,
+        examples: [
+          { id: 'paint', name: 'Interactive Paint', icon: '🎨' },
+          { id: 'particles', name: 'Particles', icon: '🎆' },
+          { id: 'vectors', name: 'Vector Boids', icon: '🐦' },
+        ]
+      },
+      {
+        name: 'Simulation',
+        icon: '🔬',
+        open: false,
+        examples: [
+          { id: 'game_of_life', name: 'Game of Life', icon: '🧬' },
+          { id: 'fractal_tree', name: 'Fractal Tree', icon: '🌳' },
+          { id: 'physics', name: 'Physics', icon: '⚡' },
+        ]
+      },
+      {
+        name: 'Games',
+        icon: '🎮',
+        open: true,
+        examples: [
+          { id: 'flappy', name: 'Flappy Bird', icon: '🐤' },
+          { id: 'danmaku', name: 'Danmaku Shooter', icon: '🚀' },
+          { id: 'breakout', name: 'Breakout', icon: '🧱' },
+          { id: 'snake', name: 'Snake', icon: '🐍' },
+          { id: 'minesweeper', name: 'Mine Sweeper', icon: '💣' },
+        ]
+      },
+    ];
+
+    let activeExampleId = 'hello';
+
+    function renderSidebar() {
+      sidebarContent.innerHTML = '';
+      CATEGORIES.forEach((cat, ci) => {
+        const div = document.createElement('div');
+        div.className = `category${cat.open ? ' open' : ''}`;
+        div.innerHTML = `
+          <div class="category-header" data-cat="${ci}">
+            <span class="category-arrow">▶</span>
+            <span class="category-icon">${cat.icon}</span>
+            <span>${cat.name}</span>
+          </div>
+          <div class="category-items">
+            ${cat.examples.map(ex => `
+              <div class="example-item${ex.id === activeExampleId ? ' active' : ''}" data-id="${ex.id}">
+                <span class="example-item-icon">${ex.icon}</span>
+                <span class="example-item-name">${ex.name}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        sidebarContent.appendChild(div);
+      });
+
+      // Category toggle
+      sidebarContent.querySelectorAll('.category-header').forEach(h => {
+        h.addEventListener('click', () => {
+          h.parentElement.classList.toggle('open');
+        });
+      });
+
+      // Example select
+      sidebarContent.querySelectorAll('.example-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const id = item.dataset.id;
+          selectExample(id);
+          // On mobile, close sidebar after selection
+          if (window.innerWidth <= 768) {
+            sidebar.classList.add('collapsed');
+            sidebarOverlay.classList.remove('visible');
+          }
+        });
+      });
+    }
+
+    function selectExample(id) {
+      if (!EXAMPLES[id]) return;
+      activeExampleId = id;
+      stopSketch();
+      editor.value = EXAMPLES[id];
+      // Find display name
+      let displayName = id;
+      CATEGORIES.forEach(cat => {
+        cat.examples.forEach(ex => {
+          if (ex.id === id) displayName = ex.name;
+        });
+      });
+      currentExampleName.textContent = displayName;
+      statusEl.textContent = 'Ready';
+      statusEl.className = 'status ready';
+      // Update active state
+      sidebarContent.querySelectorAll('.example-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.id === id);
+      });
+    }
+
+    // ── Examples ──
     const EXAMPLES = {
+      // ── Basics ──
+      hello: `# Hello World - move your mouse!
+setup do
+  size 400, 400
+end
+
+draw do
+  background 0, 15
+  fill 255
+  textSize 40
+  text "Hello, Ruby!", mouseX, mouseY
+end`,
+
+      shapes: `# Basic Shapes Gallery
+setup do
+  size 400, 400
+end
+
+draw do
+  background 26, 26, 46
+
+  # Row 1
+  noStroke
+  fill "hsl(0, 70%, 60%)"
+  circle 80, 80, 60
+
+  fill "hsl(60, 70%, 60%)"
+  rect 150, 50, 60, 60
+
+  fill "hsl(120, 70%, 60%)"
+  triangle 280, 50, 310, 110, 250, 110
+
+  # Row 2
+  fill "hsl(180, 70%, 60%)"
+  ellipse 80, 180, 80, 50
+
+  fill "hsl(240, 70%, 60%)"
+  square 150, 155, 50
+
+  fill "hsl(300, 70%, 60%)"
+  quad 250, 155, 320, 160, 310, 210, 260, 205
+
+  # Lines
+  stroke "hsl(30, 90%, 60%)"
+  strokeWeight 3
+  line 50, 260, 350, 260
+  strokeWeight 1
+
+  # Labels
+  noStroke
+  fill 200
+  textSize 14
+  text "circle", 55, 130
+  text "rect", 160, 130
+  text "triangle", 255, 130
+  text "ellipse", 50, 220
+  text "square", 155, 220
+  text "quad", 260, 220
+  text "line", 50, 285
+
+  # Interactive circle follows mouse
+  fill "hsla(45, 100%, 70%, 0.7)"
+  circle mouseX, mouseY, 30
+
+  fill 150
+  textSize 11
+  text "Move your mouse!", 140, 380
+
+  noLoop
+  redraw if mouseX > 0
+end
+
+mouseMoved do
+  redraw
+end`,
+
+      random_walk: `# Random Walk Triangles
+setup do
+  size 400, 400
+  background 26, 26, 46
+  @x = 200.0
+  @y = 200.0
+  @hue = 0
+end
+
+draw do
+  @x += rand(-8.0..8.0)
+  @y += rand(-8.0..8.0)
+  @x = @x.clamp(20, 380)
+  @y = @y.clamp(20, 380)
+
+  s = rand(10..30)
+  @hue = (@hue + 3) % 360
+
+  fill "hsla(\#{@hue}, 70%, 60%, 0.6)"
+  noStroke
+
+  x1 = @x + rand(-s..s)
+  y1 = @y + rand(-s..s)
+  x2 = @x + rand(-s..s)
+  y2 = @y + rand(-s..s)
+  x3 = @x + rand(-s..s)
+  y3 = @y + rand(-s..s)
+  triangle x1, y1, x2, y2, x3, y3
+end`,
+
+      // ── Animation ──
       circles: `# Colorful bouncing circles
 setup do
   size 400, 400
@@ -416,125 +784,6 @@ draw do
   end
 end`,
 
-      particles: `# Particle fountain
-setup do
-  size 400, 400
-  @particles = []
-end
-
-draw do
-  background 10, 10, 26, 20
-
-  # Emit new particles
-  3.times do
-    @particles << {
-      x: 200.0, y: 380.0,
-      vx: rand(-2.0..2.0),
-      vy: rand(-8.0..-3.0),
-      life: 1.0,
-      hue: rand(0..60)
-    }
-  end
-
-  # Update and draw
-  @particles.each do |p|
-    p[:vy] += 0.05
-    p[:x] += p[:vx]
-    p[:y] += p[:vy]
-    p[:life] -= 0.008
-
-    next if p[:life] <= 0
-
-    fill "hsla(\#{p[:hue]}, 100%, 60%, \#{p[:life]})"
-    circle p[:x], p[:y], p[:life] * 8
-  end
-
-  @particles.reject! { |p| p[:life] <= 0 }
-
-  fill 224
-  textSize 12
-  text "particles: \#{@particles.size}", 10, 20
-end`,
-
-      fractal_tree: `# Fractal tree swaying in the wind
-def draw_branch(x, y, angle, length, depth)
-  return if depth <= 0
-
-  t = millis / 1000.0
-  sway = Math.sin(t * 2 + depth * 0.5) * 0.1
-  end_x = x + Math.cos(angle + sway) * length
-  end_y = y + Math.sin(angle + sway) * length
-
-  hue = 120 - depth * 10
-  lightness = 30 + depth * 5
-
-  stroke "hsl(\#{hue}, 60%, \#{lightness}%)"
-  strokeWeight depth * 1.2
-  line end_x, end_y, x, y
-
-  new_len = length * 0.72
-  draw_branch(end_x, end_y, angle - 0.5, new_len, depth - 1)
-  draw_branch(end_x, end_y, angle + 0.5, new_len, depth - 1)
-end
-
-setup do
-  size 400, 400
-end
-
-draw do
-  background 26, 26, 46
-  noFill
-  draw_branch(200, 380, -Math::PI / 2, 80, 10)
-end`,
-
-      game_of_life: `# Conway's Game of Life
-CELL = 8
-COLS = 400 / CELL
-ROWS = 400 / CELL
-
-def count_neighbors(grid, r, c)
-  count = 0
-  (-1..1).each do |dr|
-    (-1..1).each do |dc|
-      next if dr == 0 && dc == 0
-      nr = (r + dr) % ROWS
-      nc = (c + dc) % COLS
-      count += 1 if grid[nr][nc]
-    end
-  end
-  count
-end
-
-setup do
-  size 400, 400
-  @grid = Array.new(ROWS) { Array.new(COLS) { rand < 0.3 } }
-end
-
-draw do
-  if frameCount % 4 == 0
-    new_grid = Array.new(ROWS) { Array.new(COLS, false) }
-    ROWS.times do |r|
-      COLS.times do |c|
-        n = count_neighbors(@grid, r, c)
-        new_grid[r][c] = @grid[r][c] ? (n == 2 || n == 3) : (n == 3)
-      end
-    end
-    @grid = new_grid
-  end
-
-  background 10, 10, 26
-
-  ROWS.times do |r|
-    COLS.times do |c|
-      if @grid[r][c]
-        hue = (r * 7 + c * 3) % 360
-        fill "hsl(\#{hue}, 70%, 55%)"
-        rect c * CELL, r * CELL, CELL - 1, CELL - 1
-      end
-    end
-  end
-end`,
-
       starfield: `# 3D Starfield
 setup do
   size 400, 400
@@ -562,46 +811,6 @@ draw do
 
     fill brightness
     circle sx, sy, [d, 0.5].max
-  end
-end`,
-
-      paint: `# Interactive Paint - click and drag to draw
-setup do
-  size 400, 400
-  background 240
-  @hue = 0
-end
-
-draw do
-  # Just show instructions on first frame
-  if frameCount == 1
-    fill 100
-    textSize 16
-    text "Click and drag to paint!", 100, 200
-    text "Press 'c' to clear", 140, 230
-    noLoop
-  end
-end
-
-mouseDragged do
-  noStroke
-  @hue = (@hue + 1) % 360
-  d = dist(mouseX, mouseY, pmouseX, pmouseY)
-  size = constrain(50 - d, 8, 50)
-  fill "hsl(\\#{@hue}, 80%, 60%)"
-  circle mouseX, mouseY, size
-end
-
-mousePressed do
-  loop
-end
-
-keyPressed do
-  if key == "c"
-    background 240
-    fill 100
-    textSize 16
-    text "Cleared! Drag to paint", 110, 200
   end
 end`,
 
@@ -672,6 +881,87 @@ draw do
   fill 0, 0, 60
   textSize 12
   text "\\#{frameRate.to_i} FPS", 10, 20
+end`,
+
+      // ── Interactive ──
+      paint: `# Interactive Paint - click and drag to draw
+setup do
+  size 400, 400
+  background 240
+  @hue = 0
+end
+
+draw do
+  # Just show instructions on first frame
+  if frameCount == 1
+    fill 100
+    textSize 16
+    text "Click and drag to paint!", 100, 200
+    text "Press 'c' to clear", 140, 230
+    noLoop
+  end
+end
+
+mouseDragged do
+  noStroke
+  @hue = (@hue + 1) % 360
+  d = dist(mouseX, mouseY, pmouseX, pmouseY)
+  size = constrain(50 - d, 8, 50)
+  fill "hsl(\\#{@hue}, 80%, 60%)"
+  circle mouseX, mouseY, size
+end
+
+mousePressed do
+  loop
+end
+
+keyPressed do
+  if key == "c"
+    background 240
+    fill 100
+    textSize 16
+    text "Cleared! Drag to paint", 110, 200
+  end
+end`,
+
+      particles: `# Particle fountain
+setup do
+  size 400, 400
+  @particles = []
+end
+
+draw do
+  background 10, 10, 26, 20
+
+  # Emit new particles
+  3.times do
+    @particles << {
+      x: 200.0, y: 380.0,
+      vx: rand(-2.0..2.0),
+      vy: rand(-8.0..-3.0),
+      life: 1.0,
+      hue: rand(0..60)
+    }
+  end
+
+  # Update and draw
+  @particles.each do |p|
+    p[:vy] += 0.05
+    p[:x] += p[:vx]
+    p[:y] += p[:vy]
+    p[:life] -= 0.008
+
+    next if p[:life] <= 0
+
+    fill "hsla(\#{p[:hue]}, 100%, 60%, \#{p[:life]})"
+    circle p[:x], p[:y], p[:life] * 8
+  end
+
+  @particles.reject! { |p| p[:life] <= 0 }
+
+  fill 224
+  textSize 12
+  text "particles: \#{@particles.size}", 10, 20
 end`,
 
       vectors: `# Vector Boids - flocking simulation
@@ -780,7 +1070,982 @@ draw do
   fill 200
   textSize 12
   text "\\#{@boids.size} boids", 10, 20
-end`
+end`,
+
+      // ── Simulation ──
+      game_of_life: `# Conway's Game of Life
+CELL = 8
+COLS = 400 / CELL
+ROWS = 400 / CELL
+
+def count_neighbors(grid, r, c)
+  count = 0
+  (-1..1).each do |dr|
+    (-1..1).each do |dc|
+      next if dr == 0 && dc == 0
+      nr = (r + dr) % ROWS
+      nc = (c + dc) % COLS
+      count += 1 if grid[nr][nc]
+    end
+  end
+  count
+end
+
+setup do
+  size 400, 400
+  @grid = Array.new(ROWS) { Array.new(COLS) { rand < 0.3 } }
+end
+
+draw do
+  if frameCount % 4 == 0
+    new_grid = Array.new(ROWS) { Array.new(COLS, false) }
+    ROWS.times do |r|
+      COLS.times do |c|
+        n = count_neighbors(@grid, r, c)
+        new_grid[r][c] = @grid[r][c] ? (n == 2 || n == 3) : (n == 3)
+      end
+    end
+    @grid = new_grid
+  end
+
+  background 10, 10, 26
+
+  ROWS.times do |r|
+    COLS.times do |c|
+      if @grid[r][c]
+        hue = (r * 7 + c * 3) % 360
+        fill "hsl(\#{hue}, 70%, 55%)"
+        rect c * CELL, r * CELL, CELL - 1, CELL - 1
+      end
+    end
+  end
+end`,
+
+      fractal_tree: `# Fractal tree swaying in the wind
+def draw_branch(x, y, angle, length, depth)
+  return if depth <= 0
+
+  t = millis / 1000.0
+  sway = Math.sin(t * 2 + depth * 0.5) * 0.1
+  end_x = x + Math.cos(angle + sway) * length
+  end_y = y + Math.sin(angle + sway) * length
+
+  hue = 120 - depth * 10
+  lightness = 30 + depth * 5
+
+  stroke "hsl(\#{hue}, 60%, \#{lightness}%)"
+  strokeWeight depth * 1.2
+  line end_x, end_y, x, y
+
+  new_len = length * 0.72
+  draw_branch(end_x, end_y, angle - 0.5, new_len, depth - 1)
+  draw_branch(end_x, end_y, angle + 0.5, new_len, depth - 1)
+end
+
+setup do
+  size 400, 400
+end
+
+draw do
+  background 26, 26, 46
+  noFill
+  draw_branch(200, 380, -Math::PI / 2, 80, 10)
+end`,
+
+      physics: `# Simple Physics - bouncing balls with gravity
+setup do
+  size 400, 400
+  @balls = 8.times.map do
+    {
+      x: rand(50.0..350.0),
+      y: rand(50.0..200.0),
+      vx: rand(-3.0..3.0),
+      vy: 0.0,
+      r: rand(15.0..30.0),
+      hue: rand(360),
+      bounce: rand(0.7..0.9)
+    }
+  end
+end
+
+draw do
+  background 26, 26, 46
+
+  # Ground
+  fill 60
+  noStroke
+  rect 0, 370, 400, 30
+
+  @balls.each do |b|
+    # Gravity
+    b[:vy] += 0.3
+
+    # Move
+    b[:x] += b[:vx]
+    b[:y] += b[:vy]
+
+    # Bounce off walls
+    if b[:x] - b[:r] < 0
+      b[:x] = b[:r]
+      b[:vx] = b[:vx].abs * b[:bounce]
+    elsif b[:x] + b[:r] > 400
+      b[:x] = 400 - b[:r]
+      b[:vx] = -b[:vx].abs * b[:bounce]
+    end
+
+    # Bounce off ground
+    if b[:y] + b[:r] > 370
+      b[:y] = 370 - b[:r]
+      b[:vy] = -b[:vy].abs * b[:bounce]
+      b[:vx] *= 0.99
+    end
+
+    # Draw shadow
+    fill "rgba(0,0,0,0.2)"
+    shadow_y = 370
+    shadow_scale = 1.0 - (shadow_y - b[:y]) / 400.0
+    ellipse b[:x], shadow_y, b[:r] * 2 * shadow_scale, b[:r] * 0.4 * shadow_scale
+
+    # Draw ball
+    fill "hsl(\#{b[:hue]}, 70%, 60%)"
+    circle b[:x], b[:y], b[:r] * 2
+  end
+
+  fill 200
+  textSize 12
+  text "Click to add ball", 10, 20
+end
+
+mousePressed do
+  @balls << {
+    x: mouseX.to_f, y: mouseY.to_f,
+    vx: rand(-5.0..5.0), vy: rand(-8.0..-2.0),
+    r: rand(15.0..30.0), hue: rand(360),
+    bounce: rand(0.7..0.9)
+  }
+end`,
+
+      // ── Games ──
+      flappy: `# Flappy Bird - Click or Space to flap!
+GRAVITY = 0.4
+FLAP_POWER = -6.5
+PIPE_SPEED = 2.5
+PIPE_GAP = 120
+PIPE_WIDTH = 50
+
+setup do
+  size 400, 400
+  @bird_y = 200.0
+  @bird_vy = 0.0
+  @pipes = []
+  @score = 0
+  @game_over = false
+  @started = false
+  @frame = 0
+end
+
+draw do
+  @frame += 1
+  background 135, 206, 235  # sky blue
+
+  # Ground
+  fill 34, 139, 34
+  noStroke
+  rect 0, 360, 400, 40
+
+  # Ground pattern
+  fill 50, 160, 50
+  10.times do |i|
+    rect i * 40 - (@frame * 2) % 40, 360, 20, 5
+  end
+
+  if !@started
+    fill 255
+    textSize 30
+    text "Flappy Bird", 100, 150
+    textSize 16
+    text "Click or Space to start", 100, 200
+
+    # Bird idle animation
+    bird_display_y = 200 + Math.sin(@frame * 0.1) * 10
+    textSize 30
+    text "\\u{1F425}", 185, bird_display_y
+  else
+    if !@game_over
+      # Physics
+      @bird_vy += GRAVITY
+      @bird_y += @bird_vy
+
+      # Pipes
+      if @frame % 90 == 0
+        gap_y = rand(100..260)
+        @pipes << { x: 420.0, gap_y: gap_y, scored: false }
+      end
+
+      @pipes.each do |p|
+        p[:x] -= PIPE_SPEED
+
+        # Score
+        if !p[:scored] && p[:x] + PIPE_WIDTH < 180
+          p[:scored] = true
+          @score += 1
+        end
+      end
+      @pipes.reject! { |p| p[:x] < -PIPE_WIDTH }
+
+      # Collision check
+      @pipes.each do |p|
+        if 180 > p[:x] && 180 < p[:x] + PIPE_WIDTH
+          if @bird_y < p[:gap_y] || @bird_y > p[:gap_y] + PIPE_GAP
+            @game_over = true
+          end
+        end
+      end
+
+      @game_over = true if @bird_y > 350 || @bird_y < 0
+    end
+
+    # Draw pipes
+    @pipes.each do |p|
+      fill 46, 139, 87
+      # Top pipe
+      rect p[:x], 0, PIPE_WIDTH, p[:gap_y]
+      rect p[:x] - 3, p[:gap_y] - 15, PIPE_WIDTH + 6, 15
+      # Bottom pipe
+      rect p[:x], p[:gap_y] + PIPE_GAP, PIPE_WIDTH, 400 - p[:gap_y] - PIPE_GAP
+      rect p[:x] - 3, p[:gap_y] + PIPE_GAP, PIPE_WIDTH + 6, 15
+    end
+
+    # Draw bird
+    textSize 28
+    text "\\u{1F425}", 170, @bird_y.to_i
+
+    # Score
+    fill 255
+    textSize 28
+    text @score.to_s, 195, 40
+
+    if @game_over
+      fill "rgba(0,0,0,0.5)"
+      rect 0, 0, 400, 400
+      fill 255
+      textSize 30
+      text "Game Over!", 120, 180
+      textSize 18
+      text "Score: \#{@score}", 160, 220
+      textSize 14
+      text "Click to restart", 145, 260
+    end
+  end
+end
+
+def flap
+  if @game_over
+    @bird_y = 200.0
+    @bird_vy = 0.0
+    @pipes = []
+    @score = 0
+    @game_over = false
+    @frame = 0
+  elsif !@started
+    @started = true
+    @bird_vy = FLAP_POWER
+  else
+    @bird_vy = FLAP_POWER
+  end
+end
+
+mousePressed do
+  flap
+end
+
+keyPressed do
+  flap if key == " "
+end`,
+
+      danmaku: `# Danmaku Shooter - Arrow keys to move, auto-fire!
+setup do
+  size 400, 400
+  @px = 200.0
+  @py = 350.0
+  @bullets = []
+  @enemies = []
+  @enemy_bullets = []
+  @score = 0
+  @game_over = false
+  @frame = 0
+  @lives = 3
+end
+
+draw do
+  @frame += 1
+  background 10, 10, 30
+
+  # Stars background
+  20.times do |i|
+    fill 100 + (i * 37) % 155
+    sx = (i * 97 + @frame) % 400
+    sy = (i * 53 + @frame * (1 + i % 3)) % 400
+    circle sx, sy, 2
+  end
+
+  if @game_over
+    fill 255
+    textSize 30
+    text "GAME OVER", 110, 180
+    textSize 18
+    text "Score: \#{@score}", 155, 220
+    textSize 14
+    text "Click to restart", 145, 260
+  else
+
+  # Player movement via keyboard state
+  speed = 4
+  @px -= speed if $__p_key_code == 37  # LEFT
+  @px += speed if $__p_key_code == 39  # RIGHT
+  @py -= speed if $__p_key_code == 38  # UP
+  @py += speed if $__p_key_code == 40  # DOWN
+  @px = @px.clamp(20, 380)
+  @py = @py.clamp(20, 380)
+
+  # Auto fire
+  if @frame % 6 == 0
+    @bullets << { x: @px - 8, y: @py - 15 }
+    @bullets << { x: @px + 8, y: @py - 15 }
+  end
+
+  # Spawn enemies
+  if @frame % 40 == 0
+    @enemies << {
+      x: rand(40.0..360.0), y: -20.0,
+      vx: rand(-1.0..1.0), vy: rand(1.0..2.0),
+      hp: 2, hue: rand(360),
+      pattern: rand(3)
+    }
+  end
+
+  # Update player bullets
+  @bullets.each { |b| b[:y] -= 8 }
+  @bullets.reject! { |b| b[:y] < -10 }
+
+  # Update enemies
+  @enemies.each do |e|
+    e[:x] += e[:vx]
+    e[:y] += e[:vy]
+
+    # Enemy shooting patterns
+    if @frame % 30 == 0
+      case e[:pattern]
+      when 0  # Aimed shot
+        dx = @px - e[:x]
+        dy = @py - e[:y]
+        d = Math.sqrt(dx*dx + dy*dy) + 0.01
+        @enemy_bullets << { x: e[:x], y: e[:y], vx: dx/d*3, vy: dy/d*3 }
+      when 1  # Circle burst
+        8.times do |i|
+          a = i * TWO_PI / 8
+          @enemy_bullets << { x: e[:x], y: e[:y], vx: Math.cos(a)*2, vy: Math.sin(a)*2 }
+        end
+      when 2  # Spiral
+        a = @frame * 0.2
+        3.times do |i|
+          aa = a + i * TWO_PI / 3
+          @enemy_bullets << { x: e[:x], y: e[:y], vx: Math.cos(aa)*2.5, vy: Math.sin(aa)*2.5 }
+        end
+      end
+    end
+  end
+  @enemies.reject! { |e| e[:y] > 420 }
+
+  # Update enemy bullets
+  @enemy_bullets.each do |b|
+    b[:x] += b[:vx]
+    b[:y] += b[:vy]
+  end
+  @enemy_bullets.reject! { |b| b[:x] < -10 || b[:x] > 410 || b[:y] < -10 || b[:y] > 410 }
+
+  # Hit detection: player bullets vs enemies
+  @bullets.reject! do |b|
+    hit = false
+    @enemies.reject! do |e|
+      if (b[:x] - e[:x]).abs < 20 && (b[:y] - e[:y]).abs < 20
+        e[:hp] -= 1
+        hit = true
+        if e[:hp] <= 0
+          @score += 100
+          true
+        else
+          false
+        end
+      else
+        false
+      end
+    end
+    hit
+  end
+
+  # Hit detection: enemy bullets vs player
+  @enemy_bullets.reject! do |b|
+    if (b[:x] - @px).abs < 12 && (b[:y] - @py).abs < 12
+      @lives -= 1
+      @game_over = true if @lives <= 0
+      true
+    else
+      false
+    end
+  end
+
+  # Draw enemy bullets
+  noStroke
+  @enemy_bullets.each do |b|
+    fill "hsl(\#{(@frame * 3) % 360}, 100%, 70%)"
+    circle b[:x], b[:y], 6
+  end
+
+  # Draw player bullets
+  fill 100, 255, 100
+  @bullets.each do |b|
+    rect b[:x] - 2, b[:y], 4, 10
+  end
+
+  # Draw enemies
+  @enemies.each do |e|
+    textSize 28
+    text "\\u{1F47E}", e[:x].to_i - 14, e[:y].to_i
+  end
+
+  # Draw player
+  textSize 28
+  text "\\u{1F680}", @px.to_i - 14, @py.to_i
+
+  # HUD
+  fill 255
+  textSize 14
+  text "SCORE: \#{@score}", 10, 20
+  text "\\u{2764}\\u{FE0F} x \#{@lives}", 330, 20
+
+  fill 150
+  textSize 11
+  text "Arrow keys to move", 140, 395
+  end
+end
+
+mousePressed do
+  if @game_over
+    @px = 200.0; @py = 350.0
+    @bullets = []; @enemies = []; @enemy_bullets = []
+    @score = 0; @game_over = false; @frame = 0; @lives = 3
+  end
+end`,
+
+      breakout: `# Breakout - mouse to move paddle, click to start
+BRICK_ROWS = 5
+BRICK_COLS = 10
+BRICK_W = 36
+BRICK_H = 16
+BRICK_PAD = 4
+PADDLE_W = 80
+PADDLE_H = 12
+BALL_R = 6
+
+setup do
+  size 400, 400
+  @state = :title
+  reset_game
+end
+
+def reset_game
+  bricks = []
+  BRICK_ROWS.times do |r|
+    BRICK_COLS.times do |c|
+      x = 10 + c * (BRICK_W + BRICK_PAD)
+      y = 40 + r * (BRICK_H + BRICK_PAD)
+      bricks << { x: x, y: y, hue: r * 60, alive: true }
+    end
+  end
+  @bricks = bricks
+  @ball = { x: 200.0, y: 300.0, vx: 2.5, vy: -3.5 }
+  @paddle_x = 160.0
+  @score = 0
+  @lives = 3
+end
+
+draw do
+  background 15, 15, 30
+
+  if @state == :title
+    fill 255
+    textSize 36
+    text "BREAKOUT", 110, 160
+    textSize 16
+    text "Click to start", 150, 220
+
+    # Animate bricks on title screen
+    @bricks.each do |b|
+      next unless b[:alive]
+      fill "hsl(\#{b[:hue]}, 70%, 55%)"
+      noStroke
+      rect b[:x], b[:y], BRICK_W, BRICK_H, 2
+    end
+  else
+
+  # Paddle follows mouse
+  @paddle_x = mouseX - PADDLE_W / 2.0
+  @paddle_x = @paddle_x.clamp(0, 400 - PADDLE_W)
+
+  if @state == :playing
+    # Ball physics
+    @ball[:x] += @ball[:vx]
+    @ball[:y] += @ball[:vy]
+
+    # Wall bounce
+    if @ball[:x] - BALL_R < 0
+      @ball[:x] = BALL_R
+      @ball[:vx] = @ball[:vx].abs
+    elsif @ball[:x] + BALL_R > 400
+      @ball[:x] = 400 - BALL_R
+      @ball[:vx] = -@ball[:vx].abs
+    end
+    if @ball[:y] - BALL_R < 0
+      @ball[:y] = BALL_R
+      @ball[:vy] = @ball[:vy].abs
+    end
+
+    # Paddle collision
+    if @ball[:vy] > 0 &&
+       @ball[:y] + BALL_R >= 370 && @ball[:y] + BALL_R <= 375 &&
+       @ball[:x] >= @paddle_x && @ball[:x] <= @paddle_x + PADDLE_W
+      @ball[:vy] = -@ball[:vy].abs
+      # Add angle based on hit position
+      hit_pos = (@ball[:x] - @paddle_x) / PADDLE_W - 0.5
+      @ball[:vx] = hit_pos * 6
+      speed = Math.sqrt(@ball[:vx]**2 + @ball[:vy]**2)
+      @ball[:vx] = @ball[:vx] / speed * 4.5
+      @ball[:vy] = @ball[:vy] / speed * 4.5
+    end
+
+    # Brick collision
+    @bricks.each do |b|
+      next unless b[:alive]
+      if @ball[:x] + BALL_R > b[:x] && @ball[:x] - BALL_R < b[:x] + BRICK_W &&
+         @ball[:y] + BALL_R > b[:y] && @ball[:y] - BALL_R < b[:y] + BRICK_H
+        b[:alive] = false
+        @score += 10
+        # Determine bounce direction
+        overlap_left = (@ball[:x] + BALL_R) - b[:x]
+        overlap_right = (b[:x] + BRICK_W) - (@ball[:x] - BALL_R)
+        overlap_top = (@ball[:y] + BALL_R) - b[:y]
+        overlap_bottom = (b[:y] + BRICK_H) - (@ball[:y] - BALL_R)
+        min_overlap = [overlap_left, overlap_right, overlap_top, overlap_bottom].min
+        if min_overlap == overlap_left || min_overlap == overlap_right
+          @ball[:vx] *= -1
+        else
+          @ball[:vy] *= -1
+        end
+        break
+      end
+    end
+
+    # Ball out of bounds
+    if @ball[:y] > 410
+      @lives -= 1
+      if @lives <= 0
+        @state = :gameover
+      else
+        @ball = { x: 200.0, y: 300.0, vx: rand(-2.0..2.0), vy: -3.5 }
+      end
+    end
+
+    # Win check
+    if @bricks.none? { |b| b[:alive] }
+      @state = :win
+    end
+  end
+
+  # Draw bricks
+  noStroke
+  @bricks.each do |b|
+    next unless b[:alive]
+    fill "hsl(\#{b[:hue]}, 70%, 55%)"
+    rect b[:x], b[:y], BRICK_W, BRICK_H, 2
+  end
+
+  # Draw paddle
+  fill 200, 200, 255
+  rect @paddle_x, 370, PADDLE_W, PADDLE_H, 4
+
+  # Draw ball
+  fill 255
+  circle @ball[:x], @ball[:y], BALL_R * 2
+
+  # HUD
+  fill 200
+  textSize 14
+  text "Score: \#{@score}", 10, 20
+  text "\\u{2764}\\u{FE0F} x \#{@lives}", 330, 20
+
+  if @state == :gameover
+    fill "rgba(0,0,0,0.6)"
+    rect 0, 0, 400, 400
+    fill 255
+    textSize 30
+    text "GAME OVER", 110, 190
+    textSize 16
+    text "Score: \#{@score}", 160, 230
+    textSize 14
+    text "Click to restart", 150, 270
+  elsif @state == :win
+    fill "rgba(0,0,0,0.4)"
+    rect 0, 0, 400, 400
+    fill "hsl(60, 100%, 70%)"
+    textSize 30
+    text "YOU WIN!", 130, 190
+    textSize 16
+    fill 255
+    text "Score: \#{@score}", 160, 230
+    textSize 14
+    text "Click to restart", 150, 270
+  end
+  end
+end
+
+mousePressed do
+  if @state == :title
+    @state = :playing
+  elsif @state == :gameover || @state == :win
+    reset_game
+    @state = :playing
+  end
+end`,
+
+      snake: `# Snake Game - Arrow keys to move
+CELL = 20
+COLS = 400 / CELL
+ROWS = 400 / CELL
+
+setup do
+  size 400, 400
+  reset_game
+end
+
+def reset_game
+  @snake = [{ x: 10, y: 10 }]
+  @dir = { x: 1, y: 0 }
+  @next_dir = { x: 1, y: 0 }
+  @food = spawn_food
+  @score = 0
+  @game_over = false
+  @speed = 8
+  @grow = 0
+end
+
+def spawn_food
+  fx = rand(COLS)
+  fy = rand(ROWS)
+  while @snake.any? { |s| s[:x] == fx && s[:y] == fy }
+    fx = rand(COLS)
+    fy = rand(ROWS)
+  end
+  { x: fx, y: fy }
+end
+
+draw do
+  background 26, 26, 46
+
+  if @game_over
+    # Draw final state
+    draw_grid
+    draw_snake
+    draw_food
+
+    fill "rgba(0,0,0,0.6)"
+    rect 0, 0, 400, 400
+    fill 255
+    textSize 30
+    text "GAME OVER", 110, 180
+    textSize 18
+    text "Score: \#{@score}", 155, 220
+    textSize 14
+    text "Click to restart", 145, 260
+  else
+    # Update at controlled speed
+    if !@game_over && frameCount % (60 / @speed) == 0
+      @dir = @next_dir.dup
+
+      head = @snake.last
+      new_head = { x: head[:x] + @dir[:x], y: head[:y] + @dir[:y] }
+
+      # Wall collision
+      if new_head[:x] < 0 || new_head[:x] >= COLS ||
+         new_head[:y] < 0 || new_head[:y] >= ROWS
+        @game_over = true
+      end
+
+      # Self collision
+      if !@game_over && @snake.any? { |s| s[:x] == new_head[:x] && s[:y] == new_head[:y] }
+        @game_over = true
+      end
+
+      if !@game_over
+        @snake << new_head
+
+        # Eat food?
+        if new_head[:x] == @food[:x] && new_head[:y] == @food[:y]
+          @score += 10
+          @food = spawn_food
+          @speed = [@speed + 0.5, 20].min
+        else
+          @snake.shift unless @grow > 0
+          @grow -= 1 if @grow > 0
+        end
+      end
+    end
+
+    draw_grid
+    draw_food
+    draw_snake
+
+    # HUD
+    fill 200
+    textSize 14
+    text "Score: \#{@score}", 10, 18
+    text "\\u{1F40D} \#{@snake.size}", 330, 18
+  end
+end
+
+def draw_grid
+  stroke 40, 40, 60
+  strokeWeight 1
+  (COLS + 1).times { |i| line i * CELL, 0, i * CELL, 400 }
+  (ROWS + 1).times { |i| line 0, i * CELL, 400, i * CELL }
+  noStroke
+end
+
+def draw_snake
+  @snake.each_with_index do |s, i|
+    t = i.to_f / @snake.size
+    hue = (120 + t * 60).to_i
+    fill "hsl(\#{hue}, 70%, \#{40 + t * 30}%)"
+    noStroke
+    rect s[:x] * CELL + 1, s[:y] * CELL + 1, CELL - 2, CELL - 2, 3
+  end
+
+  # Eyes on head
+  head = @snake.last
+  fill 255
+  hx = head[:x] * CELL + CELL / 2
+  hy = head[:y] * CELL + CELL / 2
+  circle hx - 3, hy - 3, 4
+  circle hx + 3, hy - 3, 4
+end
+
+def draw_food
+  textSize 16
+  text "\\u{1F34E}", @food[:x] * CELL + 2, @food[:y] * CELL + 16
+end
+
+keyPressed do
+  case $__p_key_code
+  when 37 then @next_dir = { x: -1, y: 0 } unless @dir[:x] == 1
+  when 38 then @next_dir = { x: 0, y: -1 } unless @dir[:y] == 1
+  when 39 then @next_dir = { x: 1, y: 0 } unless @dir[:x] == -1
+  when 40 then @next_dir = { x: 0, y: 1 } unless @dir[:y] == -1
+  end
+end
+
+mousePressed do
+  reset_game if @game_over
+end`,
+
+      minesweeper: `# Mine Sweeper - Click to reveal, right-click to flag
+CELL = 30
+COLS = 12
+ROWS = 12
+MINES = 20
+
+setup do
+  size COLS * CELL, ROWS * CELL + 40
+  reset_game
+end
+
+def reset_game
+  @board = Array.new(ROWS) { Array.new(COLS, 0) }
+  @revealed = Array.new(ROWS) { Array.new(COLS, false) }
+  @flagged = Array.new(ROWS) { Array.new(COLS, false) }
+  @game_over = false
+  @won = false
+  @first_click = true
+  @mines_left = MINES
+end
+
+def place_mines(safe_r, safe_c)
+  placed = 0
+  while placed < MINES
+    r = rand(ROWS)
+    c = rand(COLS)
+    next if @board[r][c] == -1
+    next if (r - safe_r).abs <= 1 && (c - safe_c).abs <= 1
+    @board[r][c] = -1
+    placed += 1
+  end
+  # Count neighbors
+  ROWS.times do |r|
+    COLS.times do |c|
+      next if @board[r][c] == -1
+      count = 0
+      (-1..1).each do |dr|
+        (-1..1).each do |dc|
+          nr, nc = r + dr, c + dc
+          next if nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS
+          count += 1 if @board[nr][nc] == -1
+        end
+      end
+      @board[r][c] = count
+    end
+  end
+end
+
+def reveal(r, c)
+  return if r < 0 || r >= ROWS || c < 0 || c >= COLS
+  return if @revealed[r][c] || @flagged[r][c]
+  @revealed[r][c] = true
+
+  if @board[r][c] == -1
+    @game_over = true
+    # Reveal all mines
+    ROWS.times { |rr| COLS.times { |cc| @revealed[rr][cc] = true if @board[rr][cc] == -1 } }
+    return
+  end
+
+  # Flood fill for 0s
+  if @board[r][c] == 0
+    (-1..1).each do |dr|
+      (-1..1).each do |dc|
+        reveal(r + dr, c + dc)
+      end
+    end
+  end
+end
+
+def check_win
+  ROWS.times do |r|
+    COLS.times do |c|
+      return false if @board[r][c] != -1 && !@revealed[r][c]
+    end
+  end
+  true
+end
+
+draw do
+  background 40, 40, 60
+
+  NUM_COLORS = [
+    nil,
+    "hsl(210, 80%, 60%)",  # 1 blue
+    "hsl(120, 70%, 45%)",  # 2 green
+    "hsl(0, 80%, 55%)",    # 3 red
+    "hsl(240, 70%, 45%)",  # 4 dark blue
+    "hsl(0, 60%, 35%)",    # 5 dark red
+    "hsl(180, 70%, 45%)",  # 6 cyan
+    "hsl(0, 0%, 20%)",     # 7 black
+    "hsl(0, 0%, 50%)",     # 8 gray
+  ]
+
+  ROWS.times do |r|
+    COLS.times do |c|
+      x = c * CELL
+      y = r * CELL + 40
+
+      if @revealed[r][c]
+        fill 70, 70, 90
+        stroke 50, 50, 70
+        strokeWeight 1
+        rect x, y, CELL, CELL
+
+        if @board[r][c] == -1
+          textSize 18
+          text "\\u{1F4A3}", x + 6, y + 22
+        elsif @board[r][c] > 0
+          fill NUM_COLORS[@board[r][c]] || "white"
+          noStroke
+          textSize 16
+          text @board[r][c].to_s, x + 10, y + 24
+        end
+      else
+        # Unrevealed cell
+        fill 90, 100, 130
+        stroke 110, 120, 150
+        strokeWeight 1
+        rect x, y, CELL, CELL
+        # Highlight
+        stroke 120, 130, 165
+        line x, y, x + CELL, y
+        line x, y, x, y + CELL
+
+        if @flagged[r][c]
+          noStroke
+          textSize 16
+          text "\\u{1F6A9}", x + 6, y + 22
+        end
+      end
+    end
+  end
+
+  # Header
+  fill 200
+  noStroke
+  textSize 14
+  text "\\u{1F4A3} \#{@mines_left}", 10, 25
+  text "Click: reveal | Long-press: flag", 120, 25
+
+  if @game_over
+    fill "rgba(200,50,50,0.3)"
+    rect 0, 40, COLS * CELL, ROWS * CELL
+    fill 255
+    textSize 24
+    text "GAME OVER", COLS * CELL / 2 - 70, ROWS * CELL / 2 + 40
+    textSize 14
+    text "Click to restart", COLS * CELL / 2 - 50, ROWS * CELL / 2 + 70
+  elsif @won
+    fill "rgba(50,200,50,0.3)"
+    rect 0, 40, COLS * CELL, ROWS * CELL
+    fill 255
+    textSize 24
+    text "YOU WIN!", COLS * CELL / 2 - 55, ROWS * CELL / 2 + 40
+    textSize 14
+    text "Click to restart", COLS * CELL / 2 - 50, ROWS * CELL / 2 + 70
+  end
+
+  noLoop unless @game_over || @won
+  redraw
+end
+
+mousePressed do
+  if @game_over || @won
+    reset_game
+    loop
+  else
+    c = (mouseX / CELL).to_i
+    r = ((mouseY - 40) / CELL).to_i
+
+    if r >= 0 && r < ROWS && c >= 0 && c < COLS
+      if $__p_mouse_button == 39  # right click = flag
+        unless @revealed[r][c]
+          @flagged[r][c] = !@flagged[r][c]
+          @mines_left += @flagged[r][c] ? -1 : 1
+        end
+      else
+        if @first_click
+          place_mines(r, c)
+          @first_click = false
+        end
+        reveal(r, c) unless @flagged[r][c]
+        @won = check_win
+      end
+      loop
+    end
+  end
+end`,
     };
 
     // ── Console helpers ──
@@ -940,7 +2205,6 @@ end`
               a = args[0]
               a.is_a?(String) ? a : "rgb(\#{a},\#{a},\#{a})"
             when 2
-              # grayscale + alpha (Processing: alpha 0-255)
               g, al = args
               "rgba(\#{g},\#{g},\#{g},\#{al / 255.0})"
             when 3
@@ -954,21 +2218,17 @@ end`
 
           # ── Processing-compatible top-level API ──
 
-          # Canvas size (call inside setup)
           def size(w, h)
             $__p_width = w
             $__p_height = h
           end
 
-          # Built-in variables (Processing-compatible camelCase)
           def width;      $__p_width; end
           def height;     $__p_height; end
           def frameCount; $__p_frame_count; end
           def mouseX;     $__p_mouse_x; end
           def mouseY;     $__p_mouse_y; end
           def millis;     ($__p_elapsed_time * 1000).to_i; end
-
-          # ── Drawing functions ──
 
           def background(*args)
             color = _p_parse_color(*args)
@@ -997,8 +2257,6 @@ end`
           def strokeWeight(w)
             $__canvas_ctx.lineWidth = w
           end
-
-          # circle, ellipse, rect, square are defined below with rectMode/ellipseMode support
 
           def line(x1, y1, x2, y2)
             $__canvas_ctx.beginPath
@@ -1061,7 +2319,6 @@ end`
             $__canvas_ctx.textAlign = align.to_s
           end
 
-          # ── arc(x, y, w, h, start, stop) ──
           def arc(x, y, w, h, start_angle, stop_angle)
             rx = [w.to_f / 2, 0.001].max
             ry = [h.to_f / 2, 0.001].max
@@ -1081,7 +2338,6 @@ end`
             end
           end
 
-          # ── beginShape / endShape / vertex ──
           def beginShape(kind = nil)
             $__p_shape_vertices = []
             $__p_shape_kind = kind
@@ -1108,7 +2364,6 @@ end`
               if v.is_a?(Array) && v[0] == :bezier
                 $__canvas_ctx.bezierCurveTo(v[1], v[2], v[3], v[4], v[5], v[6])
               elsif v.is_a?(Array) && v[0] == :curve
-                # Catmull-Rom approximation: treat as lineTo for simplicity
                 $__canvas_ctx.lineTo(v[1], v[2]) unless first
                 first = false if first
               else
@@ -1172,7 +2427,6 @@ end`
               a = args[0]
               return a if a.is_a?(String)
               if $__p_color_mode == :hsb
-                # single value = brightness
                 b_pct = (a.to_f / $__p_color_max[2] * 100).clamp(0, 100)
                 "hsl(0, 0%, \#{b_pct}%)"
               else
@@ -1226,8 +2480,6 @@ end`
           end
 
           def lerpColor(c1, c2, amt)
-            # Simple string-based lerp: only works for rgb/rgba strings
-            # For full support, parse and interpolate
             c1.to_s
           end
 
@@ -1243,7 +2495,6 @@ end`
             $__p_ellipse_mode = mode
           end
 
-          # Override rect to respect rectMode
           def rect(x, y, w, h, *radii)
             rx, ry, rw, rh = x, y, w, h
             case $__p_rect_mode
@@ -1293,7 +2544,6 @@ end`
             end
           end
 
-          # Override ellipse to respect ellipseMode
           def ellipse(x, y, w, h = w)
             cx, cy, rw, rh = x, y, w, h
             case $__p_ellipse_mode
@@ -1376,7 +2626,6 @@ end`
             $__canvas_ctx.scale(x, y)
           end
 
-          # ── strokeCap / strokeJoin ──
           def strokeCap(cap)
             val = case cap
                   when :round, "round" then "round"
@@ -1397,7 +2646,6 @@ end`
             $__canvas_ctx.lineJoin = val
           end
 
-          # ── bezier / curve ──
           def bezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2)
             $__canvas_ctx.beginPath
             $__canvas_ctx.moveTo(x1, y1)
@@ -1409,7 +2657,6 @@ end`
           end
 
           def curve(x1, y1, x2, y2, x3, y3, x4, y4)
-            # Catmull-Rom to cubic bezier approximation
             cp1x = x2 + (x3 - x1) / 6.0
             cp1y = y2 + (y3 - y1) / 6.0
             cp2x = x3 - (x4 - x2) / 6.0
@@ -1423,12 +2670,11 @@ end`
             end
           end
 
-          # ── Math helpers (Processing-compatible) ──
+          # ── Math helpers ──
           def constrain(val, low, high)
             val.clamp(low, high)
           end
 
-          # map(value, start1, stop1, start2, stop2)
           def self.map(value, start1, stop1, start2, stop2)
             start2 + (stop2 - start2) * ((value - start1).to_f / (stop1 - start1))
           end
@@ -1473,7 +2719,7 @@ end`
           def exp(n); Math.exp(n); end
           def sqrt(n); Math.sqrt(n); end
 
-          # Perlin noise (simple implementation)
+          # Perlin noise
           $__p_noise_seed = 0
           $__p_noise_table = nil
 
@@ -1485,7 +2731,6 @@ end`
 
           def noise(x, y = 0, z = 0)
             _p_init_noise
-            # Simple value noise with interpolation
             xi = x.floor
             yi = y.floor
             xf = x - xi
@@ -1509,7 +2754,6 @@ end`
           end
 
           def randomGaussian
-            # Box-Muller transform
             u1 = rand
             u2 = rand
             Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math::PI * u2)
@@ -1644,7 +2888,7 @@ end`
             PVector.new(x, y, z)
           end
 
-          # ── Setup / Draw DSL (Processing-compatible block style) ──
+          # ── Setup / Draw DSL ──
           def setup(&block)
             if block
               Sketch.class_variable_set(:@@setup_block, block)
@@ -1655,8 +2899,7 @@ end`
             Sketch.class_variable_set(:@@draw_block, block)
           end
 
-          # Ruby-style aliases
-          # Snake_case aliases (using alias keyword, which works in main scope)
+          # Snake_case aliases
           alias no_fill noFill
           alias no_stroke noStroke
           alias stroke_weight strokeWeight
@@ -1694,7 +2937,7 @@ end`
         statusEl.className = 'status ready';
         runBtn.disabled = false;
         logConsole(`Ruby ${rubyVM.eval('RUBY_VERSION')} loaded successfully!`, 'output');
-        logConsole('Processing/RubySketch-compatible API ready (shapes, events, vectors, HSB, ...)', 'info');
+        logConsole('Processing/RubySketch-compatible API ready', 'info');
       } catch (e) {
         statusEl.textContent = 'Error loading';
         statusEl.className = 'status error';
@@ -1726,17 +2969,13 @@ end`
       }
 
       try {
-        // Reset sketch state
         rubyVM.eval('Sketch.reset!');
-
-        // Clear instance variables from previous runs
         rubyVM.eval(`
           instance_variables.each do |v|
             remove_instance_variable(v)
           end
         `);
 
-        // Evaluate user code
         rubyVM.eval(code);
 
         const hasDrawBlock = rubyVM.eval('!Sketch.draw_block.nil?').toString() === 'true';
@@ -1747,24 +2986,20 @@ end`
           return;
         }
 
-        // Set up JS canvas context for Ruby
         rubyVM.eval(`
           $__js_ctx = JS.global[:document].call(:getElementById, "sketchCanvas").call(:getContext, "2d")
           $__canvas_ctx = CanvasContext.new($__js_ctx)
         `);
 
-        // Run setup block (once)
         if (hasSetupBlock) {
           rubyVM.eval('Sketch.setup_block.call');
         }
 
-        // Get canvas size (setup may have called size())
         const w = parseInt(rubyVM.eval('$__p_width').toString(), 10) || 400;
         const h = parseInt(rubyVM.eval('$__p_height').toString(), 10) || 400;
         canvas.width = w;
         canvas.height = h;
 
-        // Re-create context after resize
         rubyVM.eval(`
           $__js_ctx = JS.global[:document].call(:getElementById, "sketchCanvas").call(:getContext, "2d")
           $__canvas_ctx = CanvasContext.new($__js_ctx)
@@ -1781,14 +3016,12 @@ end`
         logConsole(`Sketch started (${w}x${h})`, 'output');
 
         const startTime = performance.now();
-
         let lastFrameTime = 0;
 
         function loop(timestamp) {
           if (!running) return;
 
           try {
-            // Check looping state and frameRate control
             const looping = rubyVM.eval('$__p_looping').toString() === 'true';
             const needsRedraw = rubyVM.eval('$__p_needs_redraw').toString() === 'true';
             const targetFps = parseInt(rubyVM.eval('$__p_target_fps').toString(), 10) || 60;
@@ -1803,7 +3036,6 @@ end`
               rubyVM.eval('$__p_needs_redraw = false');
             }
 
-            // Throttle to target FPS
             if (timestamp - lastFrameTime < frameInterval * 0.95) {
               animationId = requestAnimationFrame(loop);
               return;
@@ -1850,7 +3082,7 @@ end`
     });
 
     editor.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key === 'Enter') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         runSketch();
       }
@@ -1863,23 +3095,9 @@ end`
       }
     });
 
-    exampleSelect.addEventListener('change', (e) => {
-      const name = e.target.value;
-      if (name && EXAMPLES[name]) {
-        stopSketch();
-        editor.value = EXAMPLES[name];
-        currentExampleName.textContent = EXAMPLE_NAMES[name] || name;
-        statusEl.textContent = 'Ready';
-        statusEl.className = 'status ready';
-      }
-    });
-
-    // ── Load default example ──
-    editor.value = EXAMPLES.circles;
-    exampleSelect.value = 'circles';
-    currentExampleName.textContent = 'Circles';
-
-    // ── Load ruby.wasm ──
+    // ── Init ──
+    renderSidebar();
+    selectExample('hello');
     initRuby();
   </script>
 </body>
