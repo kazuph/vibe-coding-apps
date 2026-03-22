@@ -15,7 +15,7 @@ const MIN_MOVE = 2
 // Pen width for user drawing
 const PEN_WIDTH = 18
 // Guide character opacity
-const GUIDE_OPACITY = 0.12
+const GUIDE_OPACITY = 0.15
 // Traced character opacity
 const TRACED_OPACITY = 0.85
 
@@ -41,16 +41,17 @@ export function TracingCanvas({ char, onComplete }: Props) {
     ctx.clearRect(0, 0, size, size)
 
     // Draw grid lines (田字格 - traditional practice grid)
-    ctx.strokeStyle = 'rgba(200, 180, 160, 0.25)'
-    ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(180, 150, 120, 0.45)'
+    ctx.lineWidth = 2
 
     // Outer border
     const margin = size * 0.05
     ctx.strokeRect(margin, margin, size - margin * 2, size - margin * 2)
 
-    // Center cross (dashed)
-    ctx.setLineDash([8, 8])
-    ctx.strokeStyle = 'rgba(200, 180, 160, 0.2)'
+    // Center cross (dashed) - more visible
+    ctx.setLineDash([10, 8])
+    ctx.strokeStyle = 'rgba(180, 150, 120, 0.35)'
+    ctx.lineWidth = 1.5
     ctx.beginPath()
     ctx.moveTo(size / 2, margin)
     ctx.lineTo(size / 2, size - margin)
@@ -59,7 +60,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
     ctx.stroke()
 
     // Diagonal guides
-    ctx.strokeStyle = 'rgba(200, 180, 160, 0.1)'
+    ctx.strokeStyle = 'rgba(180, 150, 120, 0.18)'
     ctx.beginPath()
     ctx.moveTo(margin, margin)
     ctx.lineTo(size - margin, size - margin)

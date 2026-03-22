@@ -52,13 +52,13 @@ export default function App() {
     <div className="app-container">
       {/* Header */}
       <header className="app-header">
-        <span className="app-title">ひらがな れんしゅう</span>
+        <span className="app-title">ひらがな</span>
         <div className="header-actions">
           <button className="btn btn-secondary" onClick={handleReset}>
-            やりなおす
+            クリア
           </button>
           <button className="btn btn-primary" onClick={() => setShowSelector(true)}>
-            もじ一覧
+            50音
           </button>
         </div>
       </header>
