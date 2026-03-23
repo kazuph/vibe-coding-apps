@@ -270,10 +270,37 @@
       font-size: 12px;
     }
 
-    textarea {
+    .editor-container {
+      position: relative;
       flex: 1;
+      overflow: hidden;
+    }
+
+    .editor-highlight {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      margin: 0;
+      padding: 12px;
+      font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      tab-size: 2;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-y: auto;
+      pointer-events: none;
+      z-index: 1;
       background: #0a0a1a;
-      color: #e0e0e0;
+    }
+
+    textarea {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      color: transparent;
+      caret-color: #e0e0e0;
       border: none;
       padding: 12px;
       font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
@@ -282,9 +309,32 @@
       resize: none;
       outline: none;
       tab-size: 2;
+      z-index: 2;
+    }
+
+    textarea::selection {
+      background: rgba(233, 69, 96, 0.3);
+      color: transparent;
     }
 
     textarea::placeholder { color: #444; }
+
+    /* Syntax highlighting colors */
+    .hl-keyword { color: #c678dd; }
+    .hl-builtin { color: #61afef; }
+    .hl-string { color: #98c379; }
+    .hl-number { color: #d19a66; }
+    .hl-comment { color: #5c6370; font-style: italic; }
+    .hl-symbol { color: #e06c75; }
+    .hl-ivar { color: #e5c07b; }
+    .hl-global { color: #e06c75; }
+    .hl-constant { color: #d19a66; }
+
+    .syntax-status {
+      font-size: 11px;
+      margin-left: 6px;
+      transition: color 0.2s;
+    }
 
     .canvas-wrapper {
       flex: 1;
@@ -390,9 +440,12 @@
           <span>editor.rb</span>
           <span class="current-example-name" id="currentExampleName">Hello World</span>
         </div>
-        <span style="font-size:11px;color:#555;">Ctrl+Enter to run</span>
+        <span style="font-size:11px;color:#555;">Ctrl+Enter to run<span id="syntaxStatus" class="syntax-status"></span></span>
       </div>
-      <textarea id="editor" spellcheck="false" placeholder="# Write your Ruby sketch here..."></textarea>
+      <div class="editor-container">
+        <pre id="editorHighlight" class="editor-highlight" aria-hidden="true"></pre>
+        <textarea id="editor" spellcheck="false" placeholder="# Write your Ruby sketch here..."></textarea>
+      </div>
     </div>
     <div class="canvas-panel">
       <div class="panel-header">
@@ -432,6 +485,9 @@
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebarOverlay = document.getElementById('sidebarOverlay');
     const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+
+    const editorHighlight = document.getElementById('editorHighlight');
+    const syntaxStatusEl = document.getElementById('syntaxStatus');
 
     let jsMousePressed = false;
     let jsMouseButton = 0;
@@ -554,6 +610,170 @@
       sidebarOverlay.classList.remove('visible');
     });
 
+    // ── Ruby Syntax Highlighter ──
+    function highlightRuby(code) {
+      // Tokenize properly to avoid overlapping highlights
+      const tokens = [];
+      let i = 0;
+      while (i < code.length) {
+        // Comments
+        if (code[i] === '#') {
+          let end = code.indexOf('\n', i);
+          if (end === -1) end = code.length;
+          tokens.push({ type: 'comment', text: code.slice(i, end) });
+          i = end;
+          continue;
+        }
+        // Double-quoted strings (with interpolation)
+        if (code[i] === '"') {
+          let j = i + 1;
+          while (j < code.length && code[j] !== '"') {
+            if (code[j] === '\\') j++;
+            j++;
+          }
+          tokens.push({ type: 'string', text: code.slice(i, j + 1) });
+          i = j + 1;
+          continue;
+        }
+        // Single-quoted strings
+        if (code[i] === "'") {
+          let j = i + 1;
+          while (j < code.length && code[j] !== "'") {
+            if (code[j] === '\\') j++;
+            j++;
+          }
+          tokens.push({ type: 'string', text: code.slice(i, j + 1) });
+          i = j + 1;
+          continue;
+        }
+        // Symbols (:word)
+        if (code[i] === ':' && i + 1 < code.length && /[a-zA-Z_]/.test(code[i + 1])) {
+          let j = i + 1;
+          while (j < code.length && /\w/.test(code[j])) j++;
+          tokens.push({ type: 'symbol', text: code.slice(i, j) });
+          i = j;
+          continue;
+        }
+        // Instance variables (@word)
+        if (code[i] === '@' && i + 1 < code.length && /\w/.test(code[i + 1])) {
+          let j = i + 1;
+          while (j < code.length && /\w/.test(code[j])) j++;
+          tokens.push({ type: 'ivar', text: code.slice(i, j) });
+          i = j;
+          continue;
+        }
+        // Global variables ($word)
+        if (code[i] === '$' && i + 1 < code.length && /\w/.test(code[i + 1])) {
+          let j = i + 1;
+          while (j < code.length && /\w/.test(code[j])) j++;
+          tokens.push({ type: 'global', text: code.slice(i, j) });
+          i = j;
+          continue;
+        }
+        // Words (identifiers, keywords, numbers)
+        if (/[a-zA-Z_0-9]/.test(code[i])) {
+          let j = i;
+          while (j < code.length && /[\w?!]/.test(code[j])) j++;
+          // Check if it's a pure number (possibly with decimal)
+          const word = code.slice(i, j);
+          if (/^\d[\d_.]*\.?\d*$/.test(word)) {
+            tokens.push({ type: 'number', text: word });
+          } else {
+            tokens.push({ type: 'word', text: word });
+          }
+          i = j;
+          continue;
+        }
+        // Everything else (operators, punctuation, whitespace)
+        tokens.push({ type: 'plain', text: code[i] });
+        i++;
+      }
+
+      const keywords = new Set(['def', 'end', 'do', 'if', 'else', 'elsif', 'unless', 'while', 'until', 'for', 'in', 'case', 'when', 'then', 'class', 'module', 'begin', 'rescue', 'ensure', 'raise', 'return', 'yield', 'require', 'include', 'extend', 'attr_reader', 'attr_writer', 'attr_accessor', 'self', 'true', 'false', 'nil', 'and', 'or', 'not', 'lambda', 'proc', 'puts', 'print', 'p', 'new', 'alias']);
+      const builtins = new Set(['setup', 'draw', 'size', 'background', 'fill', 'noFill', 'stroke', 'noStroke', 'strokeWeight', 'circle', 'ellipse', 'rect', 'square', 'triangle', 'quad', 'line', 'point', 'arc', 'text', 'textSize', 'textAlign', 'translate', 'rotate', 'scale', 'push', 'pop', 'pushMatrix', 'popMatrix', 'beginShape', 'endShape', 'vertex', 'mouseX', 'mouseY', 'mousePressed', 'mouseReleased', 'mouseMoved', 'mouseDragged', 'mouseClicked', 'keyPressed', 'keyReleased', 'touchStarted', 'touchMoved', 'touchEnded', 'noLoop', 'loop', 'redraw', 'frameRate', 'frameCount', 'millis', 'width', 'height', 'createVector', 'loadImage', 'image', 'loadSound', 'playTone', 'createCapture', 'createSprite', 'sprite', 'gravity', 'random', 'noise', 'constrain', 'map', 'lerp', 'dist', 'colorMode', 'blendMode', 'filter', 'angleMode', 'rand', 'clamp', 'times', 'each', 'to_i', 'to_f', 'to_s', 'abs', 'round', 'ceil', 'floor', 'min', 'max']);
+
+      function escHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      let html = '';
+      for (const tok of tokens) {
+        const escaped = escHtml(tok.text);
+        switch (tok.type) {
+          case 'comment':
+            html += `<span class="hl-comment">${escaped}</span>`;
+            break;
+          case 'string':
+            html += `<span class="hl-string">${escaped}</span>`;
+            break;
+          case 'number':
+            html += `<span class="hl-number">${escaped}</span>`;
+            break;
+          case 'symbol':
+            html += `<span class="hl-symbol">${escaped}</span>`;
+            break;
+          case 'ivar':
+            html += `<span class="hl-ivar">${escaped}</span>`;
+            break;
+          case 'global':
+            html += `<span class="hl-global">${escaped}</span>`;
+            break;
+          case 'word':
+            if (keywords.has(tok.text)) {
+              html += `<span class="hl-keyword">${escaped}</span>`;
+            } else if (builtins.has(tok.text)) {
+              html += `<span class="hl-builtin">${escaped}</span>`;
+            } else if (/^[A-Z][A-Z0-9_]{2,}$/.test(tok.text)) {
+              html += `<span class="hl-constant">${escaped}</span>`;
+            } else {
+              html += escaped;
+            }
+            break;
+          default:
+            html += escaped;
+        }
+      }
+      return html;
+    }
+
+    function updateHighlight() {
+      editorHighlight.innerHTML = highlightRuby(editor.value) + '\n';
+    }
+
+    editor.addEventListener('input', () => {
+      updateHighlight();
+      // Save custom edits to localStorage
+      localStorage.setItem('rubySketch_editorContent', editor.value);
+      localStorage.setItem('rubySketch_isCustomCode', 'true');
+    });
+
+    editor.addEventListener('scroll', () => {
+      editorHighlight.scrollTop = editor.scrollTop;
+      editorHighlight.scrollLeft = editor.scrollLeft;
+    });
+
+    // ── localStorage helpers ──
+    function saveCategoryState() {
+      const state = {};
+      document.querySelectorAll('.category').forEach((cat, i) => {
+        state[i] = cat.classList.contains('open');
+      });
+      localStorage.setItem('rubySketch_categoryState', JSON.stringify(state));
+    }
+
+    function restoreCategoryState() {
+      const saved = localStorage.getItem('rubySketch_categoryState');
+      if (!saved) return;
+      try {
+        const state = JSON.parse(saved);
+        document.querySelectorAll('.category').forEach((cat, i) => {
+          if (state[i] !== undefined) {
+            cat.classList.toggle('open', state[i]);
+          }
+        });
+      } catch(e) {}
+    }
+
     // ── Example Categories & Data ──
     const CATEGORIES = [
       {
@@ -659,6 +879,7 @@
       sidebarContent.querySelectorAll('.category-header').forEach(h => {
         h.addEventListener('click', () => {
           h.parentElement.classList.toggle('open');
+          saveCategoryState();
         });
       });
 
@@ -681,6 +902,7 @@
       activeExampleId = id;
       stopSketch();
       editor.value = EXAMPLES[id];
+      updateHighlight();
       // Find display name
       let displayName = id;
       CATEGORIES.forEach(cat => {
@@ -695,6 +917,12 @@
       sidebarContent.querySelectorAll('.example-item').forEach(item => {
         item.classList.toggle('active', item.dataset.id === id);
       });
+      // Save to localStorage, clear custom code flag
+      localStorage.setItem('rubySketch_activeExample', id);
+      localStorage.removeItem('rubySketch_isCustomCode');
+      localStorage.removeItem('rubySketch_editorContent');
+      // Reset syntax status
+      syntaxStatusEl.textContent = '';
     }
 
     // ── Examples ──
@@ -4682,8 +4910,16 @@ end`,
 
         animationId = requestAnimationFrame(loop);
       } catch (e) {
-        logConsole(`Error: ${e.message}`, 'error');
-        statusEl.textContent = 'Error';
+        const msg = e.message || String(e);
+        if (msg.includes('syntax error') || msg.includes('SyntaxError')) {
+          const lineMatch = msg.match(/eval:(\d+)/);
+          const lineNum = lineMatch ? lineMatch[1] : '?';
+          logConsole(`Syntax error (line ${lineNum}): ${msg.split('\n')[0]}`, 'error');
+          statusEl.textContent = 'Syntax Error';
+        } else {
+          logConsole(`Error: ${msg}`, 'error');
+          statusEl.textContent = 'Error';
+        }
         statusEl.className = 'status error';
       }
     }
@@ -4707,12 +4943,76 @@ end`,
         const end = editor.selectionEnd;
         editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
         editor.selectionStart = editor.selectionEnd = start + 2;
+        updateHighlight();
       }
+    });
+
+    // ── Real-time syntax check (debounced, only after Ruby VM loaded) ──
+    let syntaxCheckTimer = null;
+    editor.addEventListener('input', () => {
+      clearTimeout(syntaxCheckTimer);
+      syntaxCheckTimer = setTimeout(() => {
+        if (!rubyVM) return;
+        const code = editor.value;
+        if (!code.trim()) {
+          syntaxStatusEl.textContent = '';
+          return;
+        }
+        try {
+          rubyVM.eval('begin; ' + 'RubyVM::AbstractSyntaxTree.parse(' + JSON.stringify(code) + '); rescue SyntaxError => e; raise e; end');
+          syntaxStatusEl.textContent = ' OK';
+          syntaxStatusEl.style.color = '#10b981';
+        } catch(e) {
+          const msg = e.message || '';
+          if (msg.includes('syntax error') || msg.includes('SyntaxError')) {
+            syntaxStatusEl.textContent = ' Syntax Error';
+            syntaxStatusEl.style.color = '#ef4444';
+          } else {
+            // Not a syntax error (e.g. NameError for RubyVM::AbstractSyntaxTree)
+            // Fall back to simpler check
+            syntaxStatusEl.textContent = '';
+          }
+        }
+      }, 1500);
     });
 
     // ── Init ──
     renderSidebar();
-    selectExample('hello');
+
+    // Restore category open/close state from localStorage
+    restoreCategoryState();
+
+    // Restore last selected example or custom code
+    const savedIsCustom = localStorage.getItem('rubySketch_isCustomCode');
+    const savedContent = localStorage.getItem('rubySketch_editorContent');
+    const savedExample = localStorage.getItem('rubySketch_activeExample');
+
+    if (savedIsCustom === 'true' && savedContent) {
+      // User had custom edits - restore them
+      if (savedExample && EXAMPLES[savedExample]) {
+        activeExampleId = savedExample;
+        // Update sidebar active state and name
+        let displayName = savedExample;
+        CATEGORIES.forEach(cat => {
+          cat.examples.forEach(ex => {
+            if (ex.id === savedExample) displayName = ex.name;
+          });
+        });
+        currentExampleName.textContent = displayName + ' (edited)';
+        sidebarContent.querySelectorAll('.example-item').forEach(item => {
+          item.classList.toggle('active', item.dataset.id === savedExample);
+        });
+      }
+      editor.value = savedContent;
+      updateHighlight();
+      statusEl.textContent = 'Ready';
+      statusEl.className = 'status ready';
+    } else if (savedExample && EXAMPLES[savedExample]) {
+      selectExample(savedExample);
+    } else {
+      selectExample('hello');
+    }
+
     initRuby();
   </script>
 </body>
