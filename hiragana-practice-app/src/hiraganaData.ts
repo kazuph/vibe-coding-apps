@@ -9,6 +9,7 @@ import { kanjiGrade4Data } from './data/kanjiGrade4'
 import { kanjiGrade5Data } from './data/kanjiGrade5'
 import { kanjiGrade6Data } from './data/kanjiGrade6'
 import { GRADE_1, GRADE_2, GRADE_3, GRADE_4, GRADE_5, GRADE_6, GRADE_LABELS, type GradeIndex } from './data/kanjiGrades'
+import { kanjiReadings } from './data/kanjiReadings'
 import type { StrokeData } from './data/hiraganaStrokes'
 
 export type { GradeIndex }
@@ -52,7 +53,7 @@ function createKanjiChar(char: string, gradeData: Record<string, StrokeData>): H
   const strokes = data
     ? data.strokes.map(s => s.median.map(([x, y]) => [x / 1024, y / 1024]))
     : [[[0.5, 0.5]]]
-  return { char, romaji: '', strokeCount, strokes }
+  return { char, romaji: kanjiReadings[char] || '', strokeCount, strokes }
 }
 
 // Hiragana 50-on table

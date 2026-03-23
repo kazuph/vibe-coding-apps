@@ -9,11 +9,11 @@ import {
 } from './hiraganaData'
 import { TracingCanvas } from './TracingCanvas'
 import { CharacterSelect } from './CharacterSelect'
-import { speakChar, speakPraise, speakStrokeComplete, speakRetry, isSpeechEnabled, toggleSpeech } from './useSpeech'
+import { speak, speakChar, speakPraise, speakStrokeComplete, speakRetry, isSpeechEnabled, toggleSpeech } from './useSpeech'
 
 const STORAGE_KEY = 'hiragana-practice-progress'
 
-type PracticeMode = null | 'free' | 'row' | 'random'
+type PracticeMode = null | 'free' | 'row' | 'random' | 'progress'
 
 function loadProgress(): Record<string, string[]> {
   try {
@@ -85,25 +85,20 @@ export default function App() {
     setCompletedChars(new Set(data[modeKey] || []))
   }, [modeKey])
 
-  // Build character list based on practice mode
-  const chars = useMemo(() => {
-    let base: HiraganaChar[]
-    if (charMode === 'hiragana') base = allHiragana
-    else if (charMode === 'katakana') base = allKatakana
-    else base = getKanjiChars(kanjiGrade)
+  const allCharsForMode = useMemo(() => {
+    if (charMode === 'hiragana') return allHiragana
+    if (charMode === 'katakana') return allKatakana
+    return getKanjiChars(kanjiGrade)
+  }, [charMode, kanjiGrade])
 
+  const chars = useMemo(() => {
     if (practiceMode === 'row' && selectedRow) {
-      if (charMode === 'kanji') {
-        // For kanji, selectedRow is grade label index
-        return base
-      }
+      if (charMode === 'kanji') return allCharsForMode
       return getRowChars(charMode, selectedRow)
     }
-    if (practiceMode === 'random') {
-      return shuffle(base)
-    }
-    return base
-  }, [charMode, kanjiGrade, practiceMode, selectedRow])
+    if (practiceMode === 'random') return shuffle(allCharsForMode)
+    return allCharsForMode
+  }, [charMode, kanjiGrade, practiceMode, selectedRow, allCharsForMode])
 
   const table = useMemo(() => {
     if (charMode === 'hiragana') return [...gojuonTable, ...dakuonTable]
@@ -113,9 +108,8 @@ export default function App() {
 
   const currentChar = chars[Math.min(currentIndex, chars.length - 1)] || chars[0]
 
-  // Speak character when it changes (including initial display)
   useEffect(() => {
-    if (practiceMode && currentChar && isSpeechEnabled()) {
+    if (practiceMode && practiceMode !== 'progress' && currentChar && isSpeechEnabled()) {
       speakChar(currentChar.char)
     }
   }, [currentChar, practiceMode])
@@ -167,6 +161,9 @@ export default function App() {
   const handleReset = useCallback(() => {
     setShowSuccess(false)
     setResetKey(k => k + 1)
+    if (isSpeechEnabled()) {
+      speak('さいしょから！', 1.0)
+    }
   }, [])
 
   const handleStrokeComplete = useCallback((strokeIndex: number, totalStrokes: number) => {
@@ -181,13 +178,18 @@ export default function App() {
     }
   }, [])
 
+  const handleDemoPlay = useCallback(() => {
+    if (isSpeechEnabled() && currentChar) {
+      speakChar(currentChar.char)
+    }
+  }, [currentChar])
+
   const switchCharMode = useCallback((newMode: CharMode) => {
     if (charMode !== newMode) {
       setCharMode(newMode)
       setCurrentIndex(0)
       setShowSuccess(false)
       setResetKey(k => k + 1)
-      // Go back to start screen when switching char type
       setPracticeMode(null)
       setSelectedRow(null)
     }
@@ -221,6 +223,74 @@ export default function App() {
   }, [])
 
   const rowLabels = useMemo(() => getRowLabels(charMode), [charMode])
+
+  // Progress stats
+  const progressCount = completedChars.size
+  const totalCount = allCharsForMode.length
+  const progressPercent = totalCount > 0 ? Math.round((progressCount / totalCount) * 100) : 0
+
+  // Render reading display (ruby for kanji, romaji for kana)
+  const renderCharDisplay = (ch: HiraganaChar) => {
+    if (charMode === 'kanji' && ch.romaji) {
+      return <ruby className="current-char-display">{ch.char}<rp>(</rp><rt>{ch.romaji}</rt><rp>)</rp></ruby>
+    }
+    return <div className="current-char-display">{ch.char}</div>
+  }
+
+  // === Progress screen ===
+  if (practiceMode === 'progress') {
+    return (
+      <div className="app-container">
+        <header className="app-header">
+          <div className="header-left">
+            <button className="btn btn-back" onClick={goBackToStart}>← もどる</button>
+          </div>
+          <div className="header-actions">
+            <button className="btn btn-icon-sm" onClick={handleToggleSound} title={soundOn ? '音声オフ' : '音声オン'}>
+              {soundOn ? '🔊' : '🔇'}
+            </button>
+          </div>
+        </header>
+
+        <div className="progress-screen">
+          <div className="progress-title">しんちょく</div>
+          <div className="progress-mode-label">
+            {charMode === 'hiragana' ? 'ひらがな' : charMode === 'katakana' ? 'カタカナ' : `漢字（${GRADE_LABELS[kanjiGrade]}）`}
+          </div>
+
+          <div className="progress-ring-container">
+            <svg viewBox="0 0 120 120" className="progress-ring">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="#e8e0d6" strokeWidth="10" />
+              <circle cx="60" cy="60" r="52" fill="none" stroke="#4caf50" strokeWidth="10"
+                strokeDasharray={`${2 * Math.PI * 52}`}
+                strokeDashoffset={`${2 * Math.PI * 52 * (1 - progressPercent / 100)}`}
+                strokeLinecap="round"
+                transform="rotate(-90 60 60)"
+              />
+            </svg>
+            <div className="progress-ring-text">
+              <div className="progress-percent">{progressPercent}%</div>
+              <div className="progress-count">{progressCount}/{totalCount}</div>
+            </div>
+          </div>
+
+          <div className="progress-chars-grid">
+            {allCharsForMode.map(ch => (
+              <div key={ch.char} className={`progress-char-cell ${completedChars.has(ch.char) ? 'done' : ''}`}>
+                {charMode === 'kanji' && ch.romaji ? (
+                  <ruby>{ch.char}<rp>(</rp><rt className="progress-ruby">{ch.romaji}</rt><rp>)</rp></ruby>
+                ) : ch.char}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="license-footer">
+          Stroke data: <a href="https://github.com/parsimonhi/animCJK" target="_blank" rel="noopener noreferrer">animCJK</a> (LGPL-3.0)
+        </div>
+      </div>
+    )
+  }
 
   // === Start screen ===
   if (practiceMode === null) {
@@ -266,26 +336,39 @@ export default function App() {
           <div className="start-subtitle">れんしゅうモードをえらんでね</div>
 
           <div className="start-modes">
+            <button className="start-mode-card" onClick={() => startPractice('progress')}>
+              <div className="start-mode-icon">📊</div>
+              <div>
+                <div className="start-mode-label">しんちょくを見る</div>
+                <div className="start-mode-desc">{progressCount}/{totalCount}もじ クリア ({progressPercent}%)</div>
+              </div>
+            </button>
+
             <button className="start-mode-card" onClick={() => startPractice('free')}>
               <div className="start-mode-icon">📋</div>
-              <div className="start-mode-label">じゆうにえらぶ</div>
-              <div className="start-mode-desc">すきな文字かられんしゅう</div>
+              <div>
+                <div className="start-mode-label">じゆうにえらぶ</div>
+                <div className="start-mode-desc">すきな文字かられんしゅう</div>
+              </div>
             </button>
 
             <button className="start-mode-card" onClick={() => setPracticeMode('row')}>
               <div className="start-mode-icon">📖</div>
-              <div className="start-mode-label">行をえらぶ</div>
-              <div className="start-mode-desc">あ行、か行…からえらぶ</div>
+              <div>
+                <div className="start-mode-label">行をえらぶ</div>
+                <div className="start-mode-desc">あ行、か行…からえらぶ</div>
+              </div>
             </button>
 
             <button className="start-mode-card" onClick={() => startPractice('random')}>
               <div className="start-mode-icon">🎲</div>
-              <div className="start-mode-label">ランダム</div>
-              <div className="start-mode-desc">ランダムじゅんばんで出題</div>
+              <div>
+                <div className="start-mode-label">ランダム</div>
+                <div className="start-mode-desc">ランダムじゅんばんで出題</div>
+              </div>
             </button>
           </div>
 
-          {/* Row selection sub-screen */}
           {practiceMode === 'row' && (
             <div className="row-select-overlay" onClick={(e) => {
               if (e.target === e.currentTarget) setPracticeMode(null)
@@ -297,11 +380,7 @@ export default function App() {
                 </div>
                 <div className="row-select-grid">
                   {rowLabels.map(label => (
-                    <button
-                      key={label}
-                      className="row-select-btn"
-                      onClick={() => startPractice('row', label)}
-                    >
+                    <button key={label} className="row-select-btn" onClick={() => startPractice('row', label)}>
                       {label}
                     </button>
                   ))}
@@ -345,6 +424,7 @@ export default function App() {
           onComplete={handleComplete}
           onStrokeComplete={handleStrokeComplete}
           onStrokeFailed={handleStrokeFailed}
+          onDemoPlay={handleDemoPlay}
         />
 
         {showSuccess && (
@@ -353,15 +433,11 @@ export default function App() {
               <div className="success-char">{successChar}</div>
               <div className="success-text">{successPraise}</div>
               <div className="success-buttons">
-                <button className="btn btn-retry" onClick={handleRetry}>
-                  もう一回
-                </button>
+                <button className="btn btn-retry" onClick={handleRetry}>もう一回</button>
                 <button className="btn btn-next" onClick={() => {
                   if (currentIndex < chars.length - 1) goTo(currentIndex + 1)
                   else setShowSuccess(false)
-                }}>
-                  つぎへ ▶
-                </button>
+                }}>つぎへ ▶</button>
               </div>
             </div>
           </div>
@@ -371,9 +447,10 @@ export default function App() {
       <div className="bottom-controls">
         <button className="char-nav-btn" onClick={goPrev} disabled={currentIndex === 0}>◀</button>
         <div style={{ textAlign: 'center' }}>
-          <div className="current-char-display">{currentChar.char}</div>
+          {renderCharDisplay(currentChar)}
           <div className="stroke-info">
-            {currentChar.romaji ? `${currentChar.romaji} ・ ` : ''}{currentChar.strokeCount}画
+            {charMode !== 'kanji' && currentChar.romaji ? `${currentChar.romaji} ・ ` : ''}
+            {currentChar.strokeCount}画
             {practiceMode === 'row' && selectedRow ? ` ・ ${selectedRow}` : ''}
             {practiceMode === 'random' ? ' ・ ランダム' : ''}
             {` (${currentIndex + 1}/${chars.length})`}

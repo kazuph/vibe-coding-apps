@@ -725,6 +725,101 @@ body {
   background: #d04e2e;
 }
 
+/* ==================== */
+/* Progress screen      */
+/* ==================== */
+.progress-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.progress-title {
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--text-primary);
+  font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
+}
+
+.progress-mode-label {
+  font-size: 22px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.progress-ring-container {
+  position: relative;
+  width: 160px;
+  height: 160px;
+}
+
+.progress-ring {
+  width: 100%;
+  height: 100%;
+}
+
+.progress-ring-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-percent {
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--success-color);
+}
+
+.progress-count {
+  font-size: 18px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.progress-chars-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  max-width: 500px;
+}
+
+.progress-char-cell {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
+  background: #f0ebe4;
+  color: var(--text-secondary);
+}
+
+.progress-char-cell.done {
+  background: #e8f5e9;
+  color: var(--success-color);
+}
+
+.progress-ruby {
+  font-size: 9px;
+}
+
+/* Ruby for kanji readings */
+.current-char-display rt {
+  font-size: 22px;
+  color: var(--text-secondary);
+}
+
 /* License footer */
 .license-footer {
   text-align: center;

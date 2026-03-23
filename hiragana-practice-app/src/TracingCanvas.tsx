@@ -7,22 +7,25 @@ interface Props {
   onComplete: () => void
   onStrokeComplete?: (strokeIndex: number, totalStrokes: number) => void
   onStrokeFailed?: () => void
+  onDemoPlay?: () => void
 }
 
 const CANVAS_RES = 800
 // Must start within this distance of stroke start point
-const START_RADIUS = 55
+const START_RADIUS = 50
 // Must stay within this distance of stroke path
-const PATH_RADIUS = 50
+const PATH_RADIUS = 45
 // Score threshold: average distance from path. Lower = stricter
-const SCORE_THRESHOLD = 35
+const SCORE_THRESHOLD = 30
 // Min distance between tracked points to avoid jitter
 const MIN_MOVE = 2
 const PEN_WIDTH = 18
 const GUIDE_OPACITY = 0.15
 const TRACED_OPACITY = 0.85
 // Minimum % of stroke path that must be covered
-const MIN_COVERAGE = 0.6
+const MIN_COVERAGE = 0.7
+// Minimum number of sample points required (prevents quick tap-through)
+const MIN_SAMPLE_POINTS = 8
 
 interface StrokeTraceState {
   started: boolean         // Did user start near the start point?
@@ -34,7 +37,7 @@ interface StrokeTraceState {
   currentFarStreak: number // Current streak of far points
 }
 
-export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFailed }: Props) {
+export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFailed, onDemoPlay }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const guideCanvasRef = useRef<HTMLCanvasElement>(null)
   const drawCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -302,6 +305,7 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
     if (!paths || paths.length === 0) return
 
     setIsPlayingDemo(true)
+    onDemoPlay?.()
     const drawCtx = drawCanvasRef.current?.getContext('2d')
     if (drawCtx) drawCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES)
 
@@ -511,8 +515,8 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
     const stroke = paths[currentStroke]
     const ts = traceState.current
 
-    if (!ts.started || ts.pointCount < 3) {
-      // Not enough data, ignore
+    if (!ts.started || ts.pointCount < MIN_SAMPLE_POINTS) {
+      // Not enough data - user just tapped, not traced
       resetTraceState()
       return
     }
@@ -522,9 +526,6 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
     const coverage = ts.nextCheckpoint / stroke.length
     const reachedEnd = ts.nextCheckpoint >= stroke.length - 2
 
-    // Scoring: lower is better
-    // avgDist: how close to the path on average
-    // coverage: how much of the path was covered
     const score = avgDist
 
     // Pass conditions:
