@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Cursor / その他のエディタ AI**: このリポジトリでは `CLAUDE.md` がワークスペースルールとして読み込まれる設定になっていることが多い。ここに書いた方針は **Claude Code だけでなく Cursor 上のエージェントも従うこと**。
+
+## Git worktree（必須）★
+
+**新規ブランチでの作業・タスク単位の開発は、必ず `git worktree` で別ディレクトリを切って行う。** メインのクローン上で直接ブランチを切り替えて作業しない（衝突・取りこぼし防止）。
+
+- 略称 `git wt` をシェルにエイリアスしておくとよい（例: `git config --global alias.wt worktree`）。
+- 典型例（`main` から feature 用の別フォルダを追加）:
+  ```bash
+  git fetch origin main
+  git worktree add ../vibe-coding-apps-<ブランチ名> -b feature/<topic> origin/main
+  cd ../vibe-coding-apps-<ブランチ名>
+  ```
+- マージ・片付け後: `git worktree remove ../vibe-coding-apps-<ブランチ名>`（作業ツリー側で未コミットがないことを確認してから）。
+
 ## Project Overview
 
 This repository is a **monorepo** containing multiple AI-powered applications built with modern web technologies and IoT Bluetooth Low Energy (BLE) control systems:
