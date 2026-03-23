@@ -51,7 +51,10 @@
     }
 
     .header-actions {
-      display: none;
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+      align-items: center;
     }
 
     .btn {
@@ -252,7 +255,7 @@
 
     .panel-header {
       background: #16213e;
-      padding: 6px 12px;
+      padding: 6px 16px;
       font-size: 12px;
       color: #888;
       border-bottom: 1px solid #0f3460;
@@ -418,6 +421,10 @@
   <header>
     <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
     <h1>Ruby Sketch <span>WASM</span></h1>
+    <div class="header-actions">
+      <button id="runBtn" class="btn btn-run" disabled>▶ Run</button>
+      <button id="stopBtn" class="btn btn-stop" style="display:none;">■ Stop</button>
+    </div>
   </header>
 
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -452,8 +459,6 @@
         <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
           <span id="fpsCounter" class="fps-counter"></span>
           <span id="status" class="status loading">Loading...</span>
-          <button id="runBtn" class="btn btn-run" disabled>▶ Run</button>
-          <button id="stopBtn" class="btn btn-stop" style="display:none;">■ Stop</button>
         </div>
       </div>
       <div class="canvas-wrapper">
