@@ -2358,24 +2358,21 @@ end`,
 setup do
   size 400, 400
   @cam = createCapture
-  @started = false
 end
 
 draw do
-  if !@started
+  if @cam.loaded? && @cam.width > 0
+    image @cam, 0, 0, width, height
+    fill 255
+    textSize 12
+    text "\#{frameRate.to_i} FPS", 10, 20
+  else
     background 30, 30, 50
     fill 200
     textSize 16
     text "Camera access requested...", 90, 180
     text "Please allow camera permission", 60, 210
-    @started = true if frameCount > 60
-  else
-    image @cam, 0, 0, width, height
   end
-
-  fill 255
-  textSize 12
-  text "\#{frameRate.to_i} FPS", 10, 20
 end`,
 
       camera_filter: `# Camera Filter - apply effects to webcam
@@ -2385,17 +2382,15 @@ setup do
   size 400, 400
   @cam = createCapture
   @filter_idx = 0
-  @started = false
 end
 
 draw do
-  if !@started
+  if !@cam.loaded? || @cam.width == 0
     background 30, 30, 50
     fill 200
     textSize 16
     text "Camera access requested...", 90, 180
     text "Click to cycle filters", 100, 210
-    @started = true if frameCount > 60
   else
     image @cam, 0, 0, width, height
 
@@ -2428,17 +2423,15 @@ setup do
   size 400, 400
   @cam = createCapture
   @frames = []
-  @started = false
 end
 
 draw do
-  if !@started
+  if !@cam.loaded? || @cam.width == 0
     background 30, 30, 50
     fill 200
     textSize 16
     text "Delay Camera", 140, 180
     text "Shows you from 1 second ago!", 80, 210
-    @started = true if frameCount > 60
   else
     # Current frame (small, top-right)
     image @cam, 280, 10, 110, 80
@@ -2906,7 +2899,9 @@ end`,
 
     window.__rubySketchImageWidth = function(id) {
       const entry = imageStore[id];
-      return entry ? entry.width : 0;
+      if (!entry) return 0;
+      if (entry.isVideo && entry.img.videoWidth) return entry.img.videoWidth;
+      return entry.width;
     };
 
     window.__rubySketchImageHeight = function(id) {
@@ -3074,7 +3069,9 @@ end`,
       ctx.putImageData(imageData, 0, 0);
     };
 
-    // ── Camera capture ──
+    // ── Camera capture (stream cached across stop/restart) ──
+    let _cachedCameraStream = null;
+
     window.__rubySketchCreateCapture = function() {
       const video = document.createElement('video');
       video.setAttribute('autoplay', '');
@@ -3082,30 +3079,36 @@ end`,
       video.style.display = 'none';
       document.body.appendChild(video);
 
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-        .then(stream => {
-          video.srcObject = stream;
-          video.play();
-        })
-        .catch(err => console.error('Camera error:', err));
-
       const id = nextImageId++;
       imageStore[id] = { img: video, loaded: true, width: 0, height: 0, isVideo: true };
+
+      function attachStream(stream) {
+        _cachedCameraStream = stream;
+        video.srcObject = stream;
+        video.play().catch(() => {});
+      }
 
       video.addEventListener('loadedmetadata', () => {
         imageStore[id].width = video.videoWidth;
         imageStore[id].height = video.videoHeight;
       });
 
+      if (_cachedCameraStream && _cachedCameraStream.active) {
+        attachStream(_cachedCameraStream);
+      } else {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+          .then(attachStream)
+          .catch(err => console.error('Camera error:', err));
+      }
+
       return id;
     };
 
-    // ── Cleanup (sounds + camera) ──
+    // ── Cleanup (sounds only, camera stream preserved) ──
     window.__rubySketchCleanup = function() {
       Object.values(soundStore).forEach(audio => { audio.pause(); audio.currentTime = 0; });
       Object.values(imageStore).forEach(entry => {
-        if (entry.isVideo && entry.img.srcObject) {
-          entry.img.srcObject.getTracks().forEach(t => t.stop());
+        if (entry.isVideo && entry.img) {
           entry.img.remove();
         }
       });
