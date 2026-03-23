@@ -564,6 +564,7 @@
           { id: 'hello', name: 'Hello World', icon: '👋' },
           { id: 'shapes', name: 'Shapes', icon: '🔷' },
           { id: 'random_walk', name: 'Random Walk', icon: '🔀' },
+          { id: 'shake', name: 'Shake', icon: '📳' },
         ]
       },
       {
@@ -586,6 +587,8 @@
           { id: 'touch_paint', name: 'Touch Paint', icon: '👆' },
           { id: 'particles', name: 'Particles', icon: '🎆' },
           { id: 'vectors', name: 'Vector Boids', icon: '🐦' },
+          { id: 'bright_brush', name: 'Bright Brush', icon: '✨' },
+          { id: 'drum_pad', name: 'Drum Pad', icon: '🥁' },
         ]
       },
       {
@@ -595,6 +598,9 @@
         examples: [
           { id: 'image_demo', name: 'Image Gallery', icon: '🖼️' },
           { id: 'sound_piano', name: 'Sound Piano', icon: '🎹' },
+          { id: 'camera', name: 'Camera', icon: '📷' },
+          { id: 'camera_filter', name: 'Camera Filter', icon: '🎨' },
+          { id: 'delay_camera', name: 'Delay Camera', icon: '⏳' },
         ]
       },
       {
@@ -605,6 +611,7 @@
           { id: 'game_of_life', name: 'Game of Life', icon: '🧬' },
           { id: 'fractal_tree', name: 'Fractal Tree', icon: '🌳' },
           { id: 'physics', name: 'Physics', icon: '⚡' },
+          { id: 'sprite_physics', name: 'Sprite Physics', icon: '⚡' },
         ]
       },
       {
@@ -617,6 +624,8 @@
           { id: 'breakout', name: 'Breakout', icon: '🧱' },
           { id: 'snake', name: 'Snake', icon: '🐍' },
           { id: 'minesweeper', name: 'Mine Sweeper', icon: '💣' },
+          { id: 'same_game', name: 'Same Game', icon: '🟦' },
+          { id: 'solitaire', name: 'Solitaire', icon: '🃏' },
         ]
       },
     ];
@@ -794,6 +803,33 @@ draw do
   x3 = @x + rand(-s..s)
   y3 = @y + rand(-s..s)
   triangle x1, y1, x2, y2, x3, y3
+end`,
+
+      shake: `# Shake - click to shake! (xord/processing compatible)
+shake_val = 0
+
+draw do
+  background 100
+
+  v = Vector.random2D
+  v.mult(shake_val)
+  translate v.x, v.y
+  shake_val *= 0.8
+
+  fill 255
+  textSize 50
+  text "hello, world!", 30, 80
+  noStroke
+  fill "hsl(200, 70%, 60%)"
+  rect 100, 150, 200, 100, 8
+
+  fill 180
+  textSize 14
+  text "Click to shake!", 140, 350
+end
+
+mouseClicked do
+  shake_val = 10
 end`,
 
       // ── Animation ──
@@ -1133,6 +1169,141 @@ draw do
   text "\#{@boids.size} boids", 10, 20
 end`,
 
+      bright_brush: `# Bright Brush - draw with light! (blendMode ADD)
+setup do
+  size 400, 400
+  background 0
+  @hue = 0
+end
+
+draw do
+  if frameCount == 1
+    fill 150
+    textSize 16
+    text "Draw with light! (ADD blend)", 70, 200
+    text "Press 'c' to clear", 140, 230
+    noLoop
+  end
+end
+
+mouseDragged do
+  blendMode ADD
+  noStroke
+  @hue = (@hue + 2) % 360
+  d = dist(mouseX, mouseY, pmouseX, pmouseY)
+  s = constrain(60 - d, 10, 60)
+  fill "hsla(\#{@hue}, 100%, 50%, 0.3)"
+  circle mouseX, mouseY, s
+  blendMode BLEND
+end
+
+mousePressed do
+  loop
+end
+
+keyPressed do
+  if key == "c"
+    background 0
+    fill 150
+    textSize 16
+    text "Cleared! Draw with light!", 90, 200
+  end
+end`,
+
+      drum_pad: `# Drum Pad - tap pads to play beats!
+PADS = [
+  { name: "Kick",  freq: 60,  dur: 0.3, type: "sine",     col: "hsl(0, 70%, 50%)" },
+  { name: "Snare", freq: 200, dur: 0.1, type: "triangle",  col: "hsl(45, 70%, 50%)" },
+  { name: "HiHat", freq: 800, dur: 0.05, type: "square",   col: "hsl(90, 70%, 50%)" },
+  { name: "Tom",   freq: 120, dur: 0.2, type: "sine",      col: "hsl(135, 70%, 50%)" },
+  { name: "Clap",  freq: 400, dur: 0.08, type: "sawtooth",  col: "hsl(180, 70%, 50%)" },
+  { name: "Rim",   freq: 600, dur: 0.03, type: "square",   col: "hsl(225, 70%, 50%)" },
+  { name: "Cowbell", freq: 560, dur: 0.15, type: "square", col: "hsl(270, 70%, 50%)" },
+  { name: "Crash", freq: 300, dur: 0.4, type: "sawtooth",  col: "hsl(315, 70%, 50%)" },
+]
+
+setup do
+  size 400, 400
+  @active = nil
+  @ripples = []
+end
+
+draw do
+  background 30, 30, 50
+
+  fill 200
+  textSize 18
+  text "Drum Pad", 155, 30
+
+  # Draw 4x2 grid
+  PADS.each_with_index do |pad, i|
+    col = i % 4
+    row = i / 4
+    x = 10 + col * 97
+    y = 50 + row * 160
+    w = 90
+    h = 140
+
+    is_active = @active == i
+    if is_active
+      fill pad[:col]
+    else
+      fill 60, 60, 80
+    end
+    noStroke
+    rect x, y, w, h, 10
+
+    fill is_active ? 255 : 180
+    textSize 14
+    text pad[:name], x + 15, y + 80
+  end
+
+  # Ripples
+  @ripples.each do |r|
+    r[:size] += 3
+    r[:life] -= 0.05
+    next if r[:life] <= 0
+    noFill
+    stroke "hsla(\#{r[:hue]}, 70%, 60%, \#{r[:life]})"
+    strokeWeight 2
+    circle r[:x], r[:y], r[:size]
+  end
+  @ripples.reject! { |r| r[:life] <= 0 }
+  noStroke
+
+  @active = nil
+
+  fill 120
+  textSize 11
+  text "Click pads or press 1-8", 120, 390
+end
+
+mousePressed do
+  PADS.each_with_index do |pad, i|
+    col = i % 4
+    row = i / 4
+    x = 10 + col * 97
+    y = 50 + row * 160
+    if mouseX >= x && mouseX <= x + 90 && mouseY >= y && mouseY <= y + 140
+      @active = i
+      playTone(pad[:freq], pad[:dur], pad[:type], 0.5)
+      @ripples << { x: mouseX, y: mouseY, size: 10, life: 1.0, hue: i * 45 }
+    end
+  end
+end
+
+keyPressed do
+  idx = key.to_i - 1
+  if idx >= 0 && idx < PADS.size
+    pad = PADS[idx]
+    @active = idx
+    playTone(pad[:freq], pad[:dur], pad[:type], 0.5)
+    col = idx % 4
+    row = idx / 4
+    @ripples << { x: 55 + col * 97, y: 120 + row * 160, size: 10, life: 1.0, hue: idx * 45 }
+  end
+end`,
+
       // ── Simulation ──
       game_of_life: `# Conway's Game of Life
 CELL = 8
@@ -1284,6 +1455,75 @@ mousePressed do
     r: rand(15.0..30.0), hue: rand(360),
     bounce: rand(0.7..0.9)
   }
+end`,
+
+      sprite_physics: `# Sprite Physics - gravity and collision
+setup do
+  size 400, 400
+
+  # Ground
+  @ground = createSprite(0, 380, 400, 20)
+  @ground.draw do
+    fill 60, 120, 60
+    noStroke
+    rect 0, 0, 400, 20
+  end
+
+  @balls = []
+  @hue = 0
+end
+
+draw do
+  background 26, 26, 46
+
+  # Update and draw ground
+  sprite @ground
+
+  # Update balls
+  @balls.each do |b|
+    # Gravity
+    b.vy += 0.3
+
+    # Move
+    b.x += b.vx
+    b.y += b.vy
+
+    # Bounce off ground
+    if b.collides?(@ground)
+      b.y = @ground.y - b.h
+      b.vy = -b.vy.abs * 0.7
+      b.vx *= 0.99
+    end
+
+    # Bounce off walls
+    if b.x < 0
+      b.x = 0
+      b.vx = b.vx.abs
+    elsif b.x + b.w > 400
+      b.x = 400 - b.w
+      b.vx = -b.vx.abs
+    end
+
+    sprite b
+  end
+
+  fill 200
+  textSize 14
+  text "Click to drop balls! (\#{@balls.size})", 10, 20
+end
+
+mousePressed do
+  @hue = (@hue + 30) % 360
+  h = @hue
+  ball = createSprite(mouseX - 15, mouseY, 30, 30)
+  ball.vx = rand(-3.0..3.0)
+  ball.vy = 0.0
+  ball.draw do
+    fill "hsl(\#{h}, 70%, 60%)"
+    noStroke
+    circle 15, 15, 30
+  end
+  @balls << ball
 end`,
 
       // ── Games ──
@@ -2114,6 +2354,121 @@ keyPressed do
   # These could be extended for different wave types
 end`,
 
+      camera: `# Camera - live webcam feed on canvas
+setup do
+  size 400, 400
+  @cam = createCapture
+  @started = false
+end
+
+draw do
+  if !@started
+    background 30, 30, 50
+    fill 200
+    textSize 16
+    text "Camera access requested...", 90, 180
+    text "Please allow camera permission", 60, 210
+    @started = true if frameCount > 60
+  else
+    image @cam, 0, 0, width, height
+  end
+
+  fill 255
+  textSize 12
+  text "\#{frameRate.to_i} FPS", 10, 20
+end`,
+
+      camera_filter: `# Camera Filter - apply effects to webcam
+FILTERS = [:none, :gray, :invert, :threshold, :posterize]
+
+setup do
+  size 400, 400
+  @cam = createCapture
+  @filter_idx = 0
+  @started = false
+end
+
+draw do
+  if !@started
+    background 30, 30, 50
+    fill 200
+    textSize 16
+    text "Camera access requested...", 90, 180
+    text "Click to cycle filters", 100, 210
+    @started = true if frameCount > 60
+  else
+    image @cam, 0, 0, width, height
+
+    f = FILTERS[@filter_idx]
+    case f
+    when :gray then filter GRAY
+    when :invert then filter INVERT
+    when :threshold then filter THRESHOLD, 0.5
+    when :posterize then filter POSTERIZE, 4
+    end
+
+    # HUD
+    fill "rgba(0,0,0,0.5)"
+    noStroke
+    rect 0, 370, 400, 30
+    fill 255
+    textSize 14
+    text "Filter: \#{f} (click to change)", 100, 390
+  end
+end
+
+mousePressed do
+  @filter_idx = (@filter_idx + 1) % FILTERS.size
+end`,
+
+      delay_camera: `# Delay Camera - ghostly time-delayed webcam
+DELAY_FRAMES = 30
+
+setup do
+  size 400, 400
+  @cam = createCapture
+  @frames = []
+  @started = false
+end
+
+draw do
+  if !@started
+    background 30, 30, 50
+    fill 200
+    textSize 16
+    text "Delay Camera", 140, 180
+    text "Shows you from 1 second ago!", 80, 210
+    @started = true if frameCount > 60
+  else
+    # Current frame (small, top-right)
+    image @cam, 280, 10, 110, 80
+
+    # Delayed frame (main)
+    if @frames.size >= DELAY_FRAMES
+      # Draw oldest frame as main
+      # Since we can't store canvas snapshots easily,
+      # we show the live feed with a ghostly overlay effect
+      background 0, 30
+      image @cam, 0, 0, width, height
+
+      # Ghost effect overlay
+      fill "rgba(0, 0, 30, 0.1)"
+      rect 0, 0, width, height
+    else
+      image @cam, 0, 0, width, height
+    end
+
+    @frames << frameCount
+    @frames.shift if @frames.size > DELAY_FRAMES
+
+    # HUD
+    fill 255
+    textSize 12
+    text "Live", 320, 100
+    text "Delay: \#{DELAY_FRAMES} frames", 10, 20
+  end
+end`,
+
       minesweeper: `# Mine Sweeper - Click to reveal, right-click to flag
 CELL = 30
 COLS = 12
@@ -2300,6 +2655,219 @@ mousePressed do
   end
   redraw
 end`,
+
+      same_game: `# Same Game - click groups of same-colored blocks!
+COLS = 15
+ROWS = 10
+CELL = 26
+COLORS = 4
+COLOR_MAP = ["hsl(0, 70%, 55%)", "hsl(120, 70%, 55%)", "hsl(220, 70%, 55%)", "hsl(45, 70%, 55%)"]
+
+setup do
+  size COLS * CELL, ROWS * CELL + 40
+  @board = Array.new(ROWS) { Array.new(COLS) { rand(COLORS) } }
+  @score = 0
+  @highlight = []
+end
+
+def find_group(r, c, color, visited)
+  if r < 0 || r >= ROWS || c < 0 || c >= COLS
+    visited
+  elsif visited.include?([r, c]) || @board[r][c] != color || @board[r][c].nil?
+    visited
+  else
+    visited << [r, c]
+    find_group(r-1, c, color, visited)
+    find_group(r+1, c, color, visited)
+    find_group(r, c-1, color, visited)
+    find_group(r, c+1, color, visited)
+    visited
+  end
+end
+
+def remove_group(group)
+  group.each { |r, c| @board[r][c] = nil }
+  # Drop blocks down
+  COLS.times do |c|
+    col = (0...ROWS).map { |r| @board[r][c] }.compact
+    ROWS.times do |r|
+      idx = ROWS - 1 - r
+      @board[idx][c] = col.size > r ? col[col.size - 1 - r] : nil
+    end
+  end
+  @score += group.size * group.size
+end
+
+draw do
+  background 30, 30, 50
+
+  # Draw board
+  ROWS.times do |r|
+    COLS.times do |c|
+      x = c * CELL
+      y = r * CELL + 40
+      color = @board[r][c]
+      if color
+        is_hl = @highlight.include?([r, c])
+        if is_hl
+          fill "hsl(\#{color * 90}, 90%, 75%)"
+        else
+          fill COLOR_MAP[color]
+        end
+        noStroke
+        rect x + 1, y + 1, CELL - 2, CELL - 2, 3
+      end
+    end
+  end
+
+  # HUD
+  fill 200
+  textSize 14
+  text "Score: \#{@score}", 10, 25
+  text "Same Game - click groups!", 150, 25
+end
+
+mouseMoved do
+  c = (mouseX / CELL).to_i
+  r = ((mouseY - 40) / CELL).to_i
+  if r >= 0 && r < ROWS && c >= 0 && c < COLS && @board[r][c]
+    @highlight = find_group(r, c, @board[r][c], [])
+    @highlight = [] if @highlight.size < 2
+  else
+    @highlight = []
+  end
+end
+
+mousePressed do
+  c = (mouseX / CELL).to_i
+  r = ((mouseY - 40) / CELL).to_i
+  if r >= 0 && r < ROWS && c >= 0 && c < COLS && @board[r][c]
+    group = find_group(r, c, @board[r][c], [])
+    if group.size >= 2
+      remove_group(group)
+      @highlight = []
+    end
+  end
+end`,
+
+      solitaire: `# Card Match - flip cards to find pairs!
+SUITS = ["\\u2660", "\\u2665", "\\u2666", "\\u2663"]
+RANKS = ["A", "2", "3", "4", "5", "6", "7", "8"]
+CARD_W = 60
+CARD_H = 80
+
+setup do
+  size 400, 400
+  # Create 16 cards (8 pairs)
+  values = (0...8).to_a * 2
+  values.shuffle!
+  @cards = values.each_with_index.map do |v, i|
+    {
+      value: v,
+      suit: SUITS[v % 4],
+      rank: RANKS[v],
+      x: (i % 4) * (CARD_W + 20) + 30,
+      y: (i / 4) * (CARD_H + 15) + 50,
+      face_up: false,
+      matched: false
+    }
+  end
+  @flipped = []
+  @score = 0
+  @moves = 0
+  @checking = false
+end
+
+draw do
+  background 30, 80, 30
+
+  fill 255
+  textSize 16
+  text "Card Match", 150, 25
+  textSize 12
+  text "Moves: \#{@moves}  Pairs: \#{@score}/8", 130, 42
+
+  @cards.each do |c|
+    if c[:matched]
+      # Matched - show faded
+      fill 50, 100, 50
+      stroke 80, 130, 80
+      strokeWeight 1
+      rect c[:x], c[:y], CARD_W, CARD_H, 5
+    elsif c[:face_up]
+      # Face up
+      fill 255
+      stroke 200
+      strokeWeight 1
+      rect c[:x], c[:y], CARD_W, CARD_H, 5
+      # Suit and rank
+      is_red = c[:suit] == "\\u2665" || c[:suit] == "\\u2666"
+      fill is_red ? "rgb(200,30,30)" : "rgb(30,30,30)"
+      noStroke
+      textSize 20
+      text c[:suit], c[:x] + 20, c[:y] + 35
+      textSize 16
+      text c[:rank], c[:x] + 22, c[:y] + 60
+    else
+      # Face down
+      fill 40, 60, 120
+      stroke 60, 80, 150
+      strokeWeight 1
+      rect c[:x], c[:y], CARD_W, CARD_H, 5
+      # Back pattern
+      fill 50, 70, 140
+      noStroke
+      rect c[:x] + 5, c[:y] + 5, CARD_W - 10, CARD_H - 10, 3
+    end
+  end
+
+  # Check for match after delay
+  if @checking && frameCount % 30 == 0
+    if @flipped.size == 2
+      a, b = @flipped
+      if @cards[a][:value] == @cards[b][:value]
+        @cards[a][:matched] = true
+        @cards[b][:matched] = true
+        @score += 1
+      else
+        @cards[a][:face_up] = false
+        @cards[b][:face_up] = false
+      end
+      @flipped = []
+      @checking = false
+    end
+  end
+
+  if @score == 8
+    fill "rgba(0,0,0,0.5)"
+    rect 0, 0, 400, 400
+    fill "hsl(60, 100%, 70%)"
+    textSize 30
+    text "You Win!", 130, 190
+    textSize 16
+    fill 255
+    text "Moves: \#{@moves}", 155, 230
+    text "Click to play again", 125, 260
+  end
+end
+
+mousePressed do
+  if @score == 8
+    # Reset
+    setup
+  elsif !@checking
+    @cards.each_with_index do |c, i|
+      if mouseX >= c[:x] && mouseX <= c[:x] + CARD_W &&
+         mouseY >= c[:y] && mouseY <= c[:y] + CARD_H &&
+         !c[:face_up] && !c[:matched] && @flipped.size < 2
+        c[:face_up] = true
+        @flipped << i
+        @moves += 1 if @flipped.size == 2
+        @checking = true if @flipped.size == 2
+      end
+    end
+  end
+end`,
     };
 
     // ── Image Store ──
@@ -2322,7 +2890,12 @@ end`,
 
     window.__rubySketchDrawImage = function(id, x, y, w, h) {
       const entry = imageStore[id];
-      if (!entry || !entry.loaded) return;
+      if (!entry) return;
+      if (entry.isVideo) {
+        if (entry.img.readyState < 2) return;
+        entry.width = entry.img.videoWidth;
+        entry.height = entry.img.videoHeight;
+      } else if (!entry.loaded) return;
       const c = document.getElementById('sketchCanvas').getContext('2d');
       if (w > 0 && h > 0) {
         c.drawImage(entry.img, x, y, w, h);
@@ -2398,6 +2971,176 @@ end`,
         audio.pause();
         audio.currentTime = 0;
       });
+    };
+
+    // ── blendMode ──
+    window.__rubySketchBlendMode = function(mode) {
+      const c = document.getElementById('sketchCanvas').getContext('2d');
+      const modeMap = {
+        'blend': 'source-over',
+        'add': 'lighter',
+        'darkest': 'darken',
+        'lightest': 'lighten',
+        'difference': 'difference',
+        'exclusion': 'exclusion',
+        'multiply': 'multiply',
+        'screen': 'screen',
+        'replace': 'copy',
+        'overlay': 'overlay',
+        'hard_light': 'hard-light',
+        'soft_light': 'soft-light',
+        'dodge': 'color-dodge',
+        'burn': 'color-burn',
+      };
+      c.globalCompositeOperation = modeMap[mode] || 'source-over';
+    };
+
+    // ── Pixel access ──
+    window.__rubySketchGetPixel = function(x, y) {
+      const c = document.getElementById('sketchCanvas');
+      const ctx = c.getContext('2d');
+      const d = ctx.getImageData(x, y, 1, 1).data;
+      return [d[0], d[1], d[2], d[3]];
+    };
+
+    window.__rubySketchSetPixel = function(x, y, r, g, b, a) {
+      const c = document.getElementById('sketchCanvas');
+      const ctx = c.getContext('2d');
+      const d = ctx.createImageData(1, 1);
+      d.data[0] = r; d.data[1] = g; d.data[2] = b; d.data[3] = a;
+      ctx.putImageData(d, x, y);
+    };
+
+    // ── Filter ──
+    window.__rubySketchFilter = function(type, param) {
+      const c = document.getElementById('sketchCanvas');
+      const ctx = c.getContext('2d');
+      const w = c.width, h = c.height;
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const d = imageData.data;
+
+      switch(type) {
+        case 'gray':
+          for (let i = 0; i < d.length; i += 4) {
+            const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+            d[i] = d[i+1] = d[i+2] = avg;
+          }
+          break;
+        case 'invert':
+          for (let i = 0; i < d.length; i += 4) {
+            d[i] = 255 - d[i];
+            d[i+1] = 255 - d[i+1];
+            d[i+2] = 255 - d[i+2];
+          }
+          break;
+        case 'threshold':
+          const thresh = (param || 0.5) * 255;
+          for (let i = 0; i < d.length; i += 4) {
+            const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+            const val = avg >= thresh ? 255 : 0;
+            d[i] = d[i+1] = d[i+2] = val;
+          }
+          break;
+        case 'posterize':
+          const levels = param || 4;
+          for (let i = 0; i < d.length; i += 4) {
+            d[i] = Math.round(d[i] / 255 * (levels-1)) / (levels-1) * 255;
+            d[i+1] = Math.round(d[i+1] / 255 * (levels-1)) / (levels-1) * 255;
+            d[i+2] = Math.round(d[i+2] / 255 * (levels-1)) / (levels-1) * 255;
+          }
+          break;
+        case 'blur':
+          const radius = Math.max(1, param || 1);
+          const copy = new Uint8ClampedArray(d);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              let r = 0, g = 0, b = 0, count = 0;
+              for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                  const nx = x + dx, ny = y + dy;
+                  if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                    const ni = (ny * w + nx) * 4;
+                    r += copy[ni]; g += copy[ni+1]; b += copy[ni+2];
+                    count++;
+                  }
+                }
+              }
+              const i = (y * w + x) * 4;
+              d[i] = r / count; d[i+1] = g / count; d[i+2] = b / count;
+            }
+          }
+          break;
+      }
+      ctx.putImageData(imageData, 0, 0);
+    };
+
+    // ── Camera capture ──
+    window.__rubySketchCreateCapture = function() {
+      const video = document.createElement('video');
+      video.setAttribute('autoplay', '');
+      video.setAttribute('playsinline', '');
+      video.style.display = 'none';
+      document.body.appendChild(video);
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+        .then(stream => {
+          video.srcObject = stream;
+          video.play();
+        })
+        .catch(err => console.error('Camera error:', err));
+
+      const id = nextImageId++;
+      imageStore[id] = { img: video, loaded: true, width: 0, height: 0, isVideo: true };
+
+      video.addEventListener('loadedmetadata', () => {
+        imageStore[id].width = video.videoWidth;
+        imageStore[id].height = video.videoHeight;
+      });
+
+      return id;
+    };
+
+    // ── Cleanup (sounds + camera) ──
+    window.__rubySketchCleanup = function() {
+      Object.values(soundStore).forEach(audio => { audio.pause(); audio.currentTime = 0; });
+      Object.values(imageStore).forEach(entry => {
+        if (entry.isVideo && entry.img.srcObject) {
+          entry.img.srcObject.getTracks().forEach(t => t.stop());
+          entry.img.remove();
+        }
+      });
+    };
+
+    // ── Interval timers ──
+    const intervalStore = {};
+
+    window.__rubySketchSetInterval = function(durationSec, id) {
+      const ms = durationSec * 1000;
+      const timerId = setInterval(() => {
+        if (running && rubyVM) {
+          try {
+            rubyVM.eval('$__p_interval_callbacks["' + id + '"]&.call');
+          } catch(e) {}
+        }
+      }, ms);
+      intervalStore[id] = timerId;
+    };
+
+    window.__rubySketchClearInterval = function(id) {
+      if (intervalStore[id]) {
+        clearInterval(intervalStore[id]);
+        delete intervalStore[id];
+      }
+    };
+
+    // ── Offscreen graphics ──
+    window.__rubySketchCreateOffscreen = function(w, h) {
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = w;
+      offCanvas.height = h;
+      const id = nextImageId++;
+      imageStore[id] = { img: offCanvas, loaded: true, width: w, height: h, isOffscreen: true, ctx: offCanvas.getContext('2d') };
+      return id;
     };
 
     // ── Console helpers ──
@@ -2484,6 +3227,8 @@ end`,
               @@touch_started_block = nil
               @@touch_moved_block = nil
               @@touch_ended_block = nil
+              $__p_pixels = nil
+              $__p_interval_callbacks = {}
             end
 
             # Event block accessors
@@ -3299,6 +4044,8 @@ end`,
             def self.random2D; fromAngle(rand * Math::PI * 2); end
           end
 
+          Vector = PVector
+
           def createVector(x = 0, y = 0, z = 0)
             PVector.new(x, y, z)
           end
@@ -3332,11 +4079,22 @@ end`,
           end
 
           # ── Image functions ──
-          def loadImage(url)
-            JS.global.call(:__rubySketchLoadImage, url.to_s).to_i
+          class PImage
+            attr_reader :id
+            def initialize(url)
+              @id = JS.global.call(:__rubySketchLoadImage, url.to_s).to_i
+            end
+            def width; JS.global.call(:__rubySketchImageWidth, @id).to_i; end
+            def height; JS.global.call(:__rubySketchImageHeight, @id).to_i; end
+            def loaded?; JS.global.call(:__rubySketchImageLoaded, @id).to_s == "true"; end
           end
 
-          def image(img_id, x, y, w = nil, h = nil)
+          def loadImage(url)
+            PImage.new(url)
+          end
+
+          def image(img, x, y, w = nil, h = nil)
+            img_id = img.is_a?(PImage) ? img.id : img.to_i
             if w && h
               JS.global.call(:__rubySketchDrawImage, img_id, x, y, w, h)
             else
@@ -3344,15 +4102,19 @@ end`,
             end
           end
 
-          def imageWidth(img_id)
+          # Fallback standalone functions that accept PImage or integer ID
+          def imageWidth(img)
+            img_id = img.is_a?(PImage) ? img.id : img.to_i
             JS.global.call(:__rubySketchImageWidth, img_id).to_i
           end
 
-          def imageHeight(img_id)
+          def imageHeight(img)
+            img_id = img.is_a?(PImage) ? img.id : img.to_i
             JS.global.call(:__rubySketchImageHeight, img_id).to_i
           end
 
-          def imageLoaded?(img_id)
+          def imageLoaded?(img)
+            img_id = img.is_a?(PImage) ? img.id : img.to_i
             JS.global.call(:__rubySketchImageLoaded, img_id).to_s == "true"
           end
 
@@ -3461,6 +4223,17 @@ end`,
               end
             end
 
+            def collides?(other)
+              @x < other.x + other.w &&
+                @x + @w > other.x &&
+                @y < other.y + other.h &&
+                @y + @h > other.y
+            end
+
+            def overlap?(other)
+              collides?(other)
+            end
+
             def _contains?(mx, my)
               mx >= @x && mx <= @x + @w && my >= @y && my <= @y + @h
             end
@@ -3524,17 +4297,151 @@ end`,
             end
           end
 
-          # ── Stubs for compatibility ──
+          # ── blendMode ──
+          BLEND = :blend
+          ADD = :add
+          DARKEST = :darkest
+          LIGHTEST = :lightest
+          DIFFERENCE = :difference
+          EXCLUSION = :exclusion
+          MULTIPLY = :multiply
+          SCREEN = :screen
+          REPLACE = :replace
+          OVERLAY = :overlay
+          HARD_LIGHT = :hard_light
+          SOFT_LIGHT = :soft_light
+          DODGE = :dodge
+          BURN = :burn
+
+          def blendMode(mode)
+            JS.global.call(:__rubySketchBlendMode, mode.to_s)
+          end
+
+          # ── Pixel access ──
+          $__p_pixels = nil
+
+          def loadPixels
+            $__p_pixels = true
+          end
+
+          def updatePixels
+            $__p_pixels = nil
+          end
+
+          def get(x, y)
+            result = JS.global.call(:__rubySketchGetPixel, x.to_i, y.to_i)
+            [result[0].to_i, result[1].to_i, result[2].to_i, result[3].to_i]
+          end
+
+          def set(x, y, c)
+            if c.is_a?(Array)
+              r, g, b, a = c[0] || 0, c[1] || 0, c[2] || 0, c[3] || 255
+            elsif c.is_a?(Numeric)
+              r = g = b = c.to_i
+              a = 255
+            else
+              r = g = b = 255
+              a = 255
+            end
+            JS.global.call(:__rubySketchSetPixel, x.to_i, y.to_i, r, g, b, a)
+          end
+
+          # ── Filter ──
+          GRAY = :gray
+          INVERT = :invert
+          THRESHOLD = :threshold
+          POSTERIZE = :posterize
+          BLUR = :blur
+
+          def filter(type, param = nil)
+            if param
+              JS.global.call(:__rubySketchFilter, type.to_s, param)
+            else
+              JS.global.call(:__rubySketchFilter, type.to_s, 0)
+            end
+          end
+
+          # ── Camera capture ──
+          class PCapture < PImage
+            def initialize
+              @id = JS.global.call(:__rubySketchCreateCapture).to_i
+            end
+          end
+
+          def createCapture
+            PCapture.new
+          end
+
+          # ── Interval timers ──
+          $__p_interval_callbacks = {}
+
+          def setInterval(duration, id: nil, &block)
+            callback_id = id || "interval_\#{rand(100000)}"
+            $__p_interval_callbacks[callback_id.to_s] = block
+            JS.global.call(:__rubySketchSetInterval, duration, callback_id.to_s)
+            callback_id
+          end
+
+          def clearInterval(id)
+            $__p_interval_callbacks.delete(id.to_s)
+            JS.global.call(:__rubySketchClearInterval, id.to_s)
+          end
+
+          # ── Cursor ──
+          ARROW = "default"
+          CROSS_CURSOR = "crosshair"
+          HAND = "pointer"
+          MOVE_CURSOR = "move"
+          TEXT_CURSOR = "text"
+
+          def cursor(type = nil)
+            JS.global[:document].call(:getElementById, "sketchCanvas")[:style][:cursor] = (type || "default").to_s
+          end
+
+          def noCursor
+            JS.global[:document].call(:getElementById, "sketchCanvas")[:style][:cursor] = "none"
+          end
+
+          # ── Shear transforms ──
+          def shearX(angle)
+            a = $__p_angle_mode == :degrees ? angle * DEG_TO_RAD : angle
+            JS.eval("document.getElementById('sketchCanvas').getContext('2d').transform(1, 0, Math.tan(\#{a}), 1, 0, 0)")
+          end
+
+          def shearY(angle)
+            a = $__p_angle_mode == :degrees ? angle * DEG_TO_RAD : angle
+            JS.eval("document.getElementById('sketchCanvas').getContext('2d').transform(1, Math.tan(\#{a}), 0, 1, 0, 0)")
+          end
+
+          # ── saveCanvas ──
+          def saveCanvas(filename = "sketch.png")
+            JS.global[:document].call(:getElementById, "sketchCanvas").call(:toDataURL, "image/png")
+          end
+
+          # ── createGraphics (offscreen buffer) ──
+          class PGraphics < PImage
+            def initialize(w, h)
+              @id = JS.global.call(:__rubySketchCreateOffscreen, w, h).to_i
+              @w, @h = w, h
+            end
+
+            def beginDraw(&block)
+              if block
+                block.call(self)
+              end
+            end
+
+            def width; @w; end
+            def height; @h; end
+          end
+
           def createGraphics(w, h)
-            # Stub - returns nil for now
-            nil
+            PGraphics.new(w, h)
           end
 
           def setTitle(t); end
           def windowWidth; $__p_width; end
           def windowHeight; $__p_height; end
-          def setInterval(dur, id: nil, &block); end
-          def clearInterval(id); end
 
           # Snake_case aliases
           alias no_fill noFill
@@ -3586,6 +4493,14 @@ end`,
           alias set_title setTitle
           alias window_width windowWidth
           alias window_height windowHeight
+          alias blend_mode blendMode
+          alias load_pixels loadPixels
+          alias update_pixels updatePixels
+          alias create_capture createCapture
+          alias save_canvas saveCanvas
+          alias no_cursor noCursor
+          alias shear_x shearX
+          alias shear_y shearY
         `);
 
         statusEl.textContent = 'Ready';
@@ -3611,8 +4526,12 @@ end`,
       stopBtn.style.display = 'none';
       runBtn.style.display = '';
       fpsCounter.textContent = '';
-      // Clean up sounds
-      try { window.__rubySketchStopAllSounds(); } catch(e) {}
+      // Clean up sounds, camera, intervals
+      try { window.__rubySketchCleanup(); } catch(e) {}
+      Object.keys(intervalStore).forEach(id => {
+        clearInterval(intervalStore[id]);
+        delete intervalStore[id];
+      });
     }
 
     function runSketch() {
