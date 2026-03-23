@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import type { HiraganaChar } from './hiraganaData'
+import { extractStrokePaths, getStrokeOutlines } from './strokeExtractor'
 
 interface Props {
   char: HiraganaChar
@@ -8,8 +9,8 @@ interface Props {
 
 // Canvas resolution
 const CANVAS_RES = 800
-// How close the user must trace to a stroke point (normalized 0-1)
-const HIT_RADIUS = 0.06
+// How close the user must trace to a stroke point (canvas pixels)
+const HIT_RADIUS_PX = 45
 // Min distance between tracked points to avoid jitter
 const MIN_MOVE = 2
 // Pen width for user drawing
@@ -30,6 +31,12 @@ export function TracingCanvas({ char, onComplete }: Props) {
   const strokeProgress = useRef<number[]>([])  // progress per stroke (0..1)
   const completedStrokes = useRef<Set<number>>(new Set())
 
+  // Cache extracted stroke paths (canvas-pixel coordinates) as state
+  // so drawGuide re-renders when paths are computed
+  const [extractedPaths, setExtractedPaths] = useState<number[][][] | null>(null)
+  // Also keep a ref for synchronous access in event handlers
+  const extractedPathsRef = useRef<number[][][] | null>(null)
+
   // Draw the guide character and grid
   const drawGuide = useCallback(() => {
     const canvas = guideCanvasRef.current
@@ -40,7 +47,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
     const size = CANVAS_RES
     ctx.clearRect(0, 0, size, size)
 
-    // Draw grid lines (田字格 - traditional practice grid)
+    // Draw grid lines
     ctx.strokeStyle = 'rgba(180, 150, 120, 0.45)'
     ctx.lineWidth = 2
 
@@ -48,7 +55,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
     const margin = size * 0.05
     ctx.strokeRect(margin, margin, size - margin * 2, size - margin * 2)
 
-    // Center cross (dashed) - more visible
+    // Center cross (dashed)
     ctx.setLineDash([10, 8])
     ctx.strokeStyle = 'rgba(180, 150, 120, 0.35)'
     ctx.lineWidth = 1.5
@@ -69,49 +76,32 @@ export function TracingCanvas({ char, onComplete }: Props) {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Draw the guide character using stroke data with smooth curves
+    // Draw the guide character using animCJK SVG outlines
     const area = size - margin * 2
-    const toX = (nx: number) => nx * area + margin
-    const toY = (ny: number) => ny * area + margin
-
-    ctx.save()
-    ctx.globalAlpha = GUIDE_OPACITY
-    ctx.strokeStyle = '#5a4a3a'
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.lineWidth = PEN_WIDTH * 2.2
-    for (const stroke of char.strokes) {
-      if (stroke.length < 2) continue
-      ctx.beginPath()
-      ctx.moveTo(toX(stroke[0][0]), toY(stroke[0][1]))
-      if (stroke.length === 2) {
-        // Simple line for 2-point strokes
-        ctx.lineTo(toX(stroke[1][0]), toY(stroke[1][1]))
-      } else {
-        // Catmull-Rom spline through control points for smooth curves
-        for (let i = 0; i < stroke.length - 1; i++) {
-          const p0 = i > 0 ? stroke[i - 1] : stroke[i]
-          const p1 = stroke[i]
-          const p2 = stroke[i + 1]
-          const p3 = i + 2 < stroke.length ? stroke[i + 2] : stroke[i + 1]
-
-          // Convert Catmull-Rom to cubic bezier control points
-          const cp1x = toX(p1[0] + (p2[0] - p0[0]) / 6)
-          const cp1y = toY(p1[1] + (p2[1] - p0[1]) / 6)
-          const cp2x = toX(p2[0] - (p3[0] - p1[0]) / 6)
-          const cp2y = toY(p2[1] - (p3[1] - p1[1]) / 6)
-          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, toX(p2[0]), toY(p2[1]))
-        }
+    const outlines = getStrokeOutlines(char.char, size)
+    if (outlines) {
+      ctx.save()
+      ctx.globalAlpha = GUIDE_OPACITY
+      ctx.fillStyle = '#5a4a3a'
+      const scale = area / 1024
+      ctx.setTransform(scale, 0, 0, scale, margin, margin)
+      for (const { path } of outlines) {
+        const p2d = new Path2D(path)
+        ctx.fill(p2d)
       }
-      ctx.stroke()
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.restore()
     }
-    ctx.restore()
+
+    // Use extracted paths for guide lines and stroke numbers
+    const paths = extractedPaths
+    if (!paths) return
 
     // Draw stroke order numbers at start of each stroke
-    char.strokes.forEach((stroke, idx) => {
+    paths.forEach((stroke, idx) => {
       if (stroke.length === 0) return
-      const startX = stroke[0][0] * (size - margin * 2) + margin
-      const startY = stroke[0][1] * (size - margin * 2) + margin
+      const startX = stroke[0][0]
+      const startY = stroke[0][1]
 
       // Circle with number
       const circleR = 14
@@ -143,9 +133,9 @@ export function TracingCanvas({ char, onComplete }: Props) {
       ctx.restore()
     })
 
-    // Draw stroke guide path for the current stroke (smooth curve)
-    if (currentStroke < char.strokes.length) {
-      const stroke = char.strokes[currentStroke]
+    // Draw stroke guide path for the current stroke
+    if (currentStroke < paths.length) {
+      const stroke = paths[currentStroke]
       if (stroke.length >= 2) {
         ctx.save()
         ctx.strokeStyle = 'rgba(232, 93, 58, 0.3)'
@@ -154,20 +144,20 @@ export function TracingCanvas({ char, onComplete }: Props) {
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
         ctx.beginPath()
-        ctx.moveTo(toX(stroke[0][0]), toY(stroke[0][1]))
+        ctx.moveTo(stroke[0][0], stroke[0][1])
         if (stroke.length === 2) {
-          ctx.lineTo(toX(stroke[1][0]), toY(stroke[1][1]))
+          ctx.lineTo(stroke[1][0], stroke[1][1])
         } else {
           for (let i = 0; i < stroke.length - 1; i++) {
             const p0 = i > 0 ? stroke[i - 1] : stroke[i]
             const p1 = stroke[i]
             const p2 = stroke[i + 1]
             const p3 = i + 2 < stroke.length ? stroke[i + 2] : stroke[i + 1]
-            const cp1x = toX(p1[0] + (p2[0] - p0[0]) / 6)
-            const cp1y = toY(p1[1] + (p2[1] - p0[1]) / 6)
-            const cp2x = toX(p2[0] - (p3[0] - p1[0]) / 6)
-            const cp2y = toY(p2[1] - (p3[1] - p1[1]) / 6)
-            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, toX(p2[0]), toY(p2[1]))
+            const cp1x = p1[0] + (p2[0] - p0[0]) / 6
+            const cp1y = p1[1] + (p2[1] - p0[1]) / 6
+            const cp2x = p2[0] - (p3[0] - p1[0]) / 6
+            const cp2y = p2[1] - (p3[1] - p1[1]) / 6
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2[0], p2[1])
           }
         }
         ctx.stroke()
@@ -176,8 +166,8 @@ export function TracingCanvas({ char, onComplete }: Props) {
         // Draw arrow at end to show direction
         const last = stroke[stroke.length - 1]
         const prev = stroke[stroke.length - 2]
-        const angle = Math.atan2(toY(last[1]) - toY(prev[1]), toX(last[0]) - toX(prev[0]))
-        const ex = toX(last[0]), ey = toY(last[1])
+        const angle = Math.atan2(last[1] - prev[1], last[0] - prev[0])
+        const ex = last[0], ey = last[1]
         ctx.fillStyle = 'rgba(232, 93, 58, 0.4)'
         ctx.beginPath()
         ctx.moveTo(ex, ey)
@@ -189,9 +179,9 @@ export function TracingCanvas({ char, onComplete }: Props) {
         ctx.restore()
       }
     }
-  }, [char, currentStroke])
+  }, [char, currentStroke, extractedPaths])
 
-  // Initialize canvases
+  // Initialize canvases and extract paths
   useEffect(() => {
     const guide = guideCanvasRef.current
     const draw = drawCanvasRef.current
@@ -206,13 +196,17 @@ export function TracingCanvas({ char, onComplete }: Props) {
     strokeProgress.current = new Array(char.strokes.length).fill(0)
     completedStrokes.current = new Set()
     setCurrentStroke(0)
+    setExtractedPaths(null)
+    extractedPathsRef.current = null
 
     // Clear draw canvas
     const drawCtx = draw.getContext('2d')
     if (drawCtx) drawCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES)
 
-    // Wait for fonts to load before drawing guide (ensures correct character rendering)
-    document.fonts.ready.then(() => drawGuide())
+    // Extract paths from animCJK data (no font dependency)
+    const paths = extractStrokePaths(char.char, '', CANVAS_RES, char.strokes)
+    extractedPathsRef.current = paths
+    setExtractedPaths(paths)
   }, [char])
 
   // Redraw guide when stroke changes
@@ -242,21 +236,17 @@ export function TracingCanvas({ char, onComplete }: Props) {
   }
 
   const checkStrokeProgress = (x: number, y: number) => {
-    const margin = CANVAS_RES * 0.05
-    const area = CANVAS_RES - margin * 2
-    const nx = (x - margin) / area  // normalized 0-1
-    const ny = (y - margin) / area
+    const paths = extractedPathsRef.current
+    if (!paths || currentStroke >= paths.length) return
 
-    if (currentStroke >= char.strokes.length) return
+    const stroke = paths[currentStroke]
+    const hitR = HIT_RADIUS_PX
 
-    const stroke = char.strokes[currentStroke]
-    const hitR = HIT_RADIUS
-
-    // Check proximity to stroke control points progressively
+    // Check proximity to extracted stroke points (canvas pixel coords)
     let maxHitIdx = -1
     for (let i = 0; i < stroke.length; i++) {
-      const dx = nx - stroke[i][0]
-      const dy = ny - stroke[i][1]
+      const dx = x - stroke[i][0]
+      const dy = y - stroke[i][1]
       const dist = Math.sqrt(dx * dx + dy * dy)
       if (dist < hitR) {
         maxHitIdx = i
