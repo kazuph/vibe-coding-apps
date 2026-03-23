@@ -51,10 +51,7 @@
     }
 
     .header-actions {
-      display: flex;
-      gap: 8px;
-      margin-left: auto;
-      align-items: center;
+      display: none;
     }
 
     .btn {
@@ -421,11 +418,6 @@
   <header>
     <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
     <h1>Ruby Sketch <span>WASM</span></h1>
-    <div class="header-actions">
-      <button id="runBtn" class="btn btn-run" disabled>▶ Run</button>
-      <button id="stopBtn" class="btn btn-stop" style="display:none;">■ Stop</button>
-      <span id="status" class="status loading">Loading ruby.wasm...</span>
-    </div>
   </header>
 
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -457,7 +449,12 @@
     <div class="canvas-panel">
       <div class="panel-header">
         <span>canvas</span>
-        <span id="fpsCounter" class="fps-counter"></span>
+        <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+          <span id="fpsCounter" class="fps-counter"></span>
+          <span id="status" class="status loading">Loading...</span>
+          <button id="runBtn" class="btn btn-run" disabled>▶ Run</button>
+          <button id="stopBtn" class="btn btn-stop" style="display:none;">■ Stop</button>
+        </div>
       </div>
       <div class="canvas-wrapper">
         <canvas id="sketchCanvas" width="400" height="400"></canvas>
