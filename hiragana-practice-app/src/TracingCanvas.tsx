@@ -5,6 +5,8 @@ import { extractStrokePaths, getStrokeOutlines } from './strokeExtractor'
 interface Props {
   char: HiraganaChar
   onComplete: () => void
+  onStrokeComplete?: (strokeIndex: number, totalStrokes: number) => void
+  onStrokeFailed?: () => void
 }
 
 const CANVAS_RES = 800
@@ -32,7 +34,7 @@ interface StrokeTraceState {
   currentFarStreak: number // Current streak of far points
 }
 
-export function TracingCanvas({ char, onComplete }: Props) {
+export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFailed }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const guideCanvasRef = useRef<HTMLCanvasElement>(null)
   const drawCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -541,6 +543,9 @@ export function TracingCanvas({ char, onComplete }: Props) {
       drawGuide()
       resetTraceState()
 
+      // Notify parent of stroke completion
+      onStrokeComplete?.(currentStroke, char.strokes.length)
+
       const next = currentStroke + 1
       if (next >= char.strokes.length) {
         onComplete()
@@ -552,6 +557,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
       // Failed - show feedback and clear drawing
       setStrokeFailed(true)
       triggerHint()
+      onStrokeFailed?.()
 
       // Clear the failed stroke drawing after a short delay
       setTimeout(() => {

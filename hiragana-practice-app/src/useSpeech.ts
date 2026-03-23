@@ -27,6 +27,18 @@ export function speakChar(char: string) {
   speak(char, 0.7)
 }
 
+export function speakStrokeComplete(strokeIndex: number, totalStrokes: number) {
+  if (totalStrokes <= 1) return // 1画の文字はspeakChar/speakPraiseに任せる
+  const num = strokeIndex + 1
+  speak(`${num}かくめ`, 1.0)
+}
+
+export function speakRetry() {
+  const phrases = ['もういちど！', 'おしい！', 'がんばって！', 'もういっかい！']
+  const phrase = phrases[Math.floor(Math.random() * phrases.length)]
+  speak(phrase, 1.0)
+}
+
 export function speakPraise() {
   const phrases = ['じょうず！', 'すごい！', 'できたね！', 'やったね！', 'かんぺき！']
   const phrase = phrases[Math.floor(Math.random() * phrases.length)]
