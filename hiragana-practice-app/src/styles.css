@@ -271,6 +271,37 @@ body {
   cursor: default;
 }
 
+/* Stroke score feedback */
+.stroke-score {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  padding: 8px 20px;
+  border-radius: 24px;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: inherit;
+  animation: scorePopIn 0.3s ease;
+  pointer-events: none;
+}
+
+.stroke-score.failed {
+  background: rgba(244, 67, 54, 0.9);
+  color: white;
+}
+
+.stroke-score.passed {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+}
+
+@keyframes scorePopIn {
+  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
 /* Bottom controls */
 .bottom-controls {
   display: flex;
