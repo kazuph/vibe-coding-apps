@@ -8,11 +8,29 @@ interface Props {
 }
 
 const CANVAS_RES = 800
-const HIT_RADIUS_PX = 45
+// Must start within this distance of stroke start point
+const START_RADIUS = 55
+// Must stay within this distance of stroke path
+const PATH_RADIUS = 50
+// Score threshold: average distance from path. Lower = stricter
+const SCORE_THRESHOLD = 35
+// Min distance between tracked points to avoid jitter
 const MIN_MOVE = 2
 const PEN_WIDTH = 18
 const GUIDE_OPACITY = 0.15
 const TRACED_OPACITY = 0.85
+// Minimum % of stroke path that must be covered
+const MIN_COVERAGE = 0.6
+
+interface StrokeTraceState {
+  started: boolean         // Did user start near the start point?
+  nextCheckpoint: number   // Next path point index to reach
+  distances: number[]      // Distance from path at each sample point
+  pointCount: number       // Number of sample points collected
+  totalDistance: number     // Sum of distances for average
+  maxConsecutiveFar: number // Max consecutive points far from path
+  currentFarStreak: number // Current streak of far points
+}
 
 export function TracingCanvas({ char, onComplete }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -22,17 +40,60 @@ export function TracingCanvas({ char, onComplete }: Props) {
   const isDrawing = useRef(false)
   const lastPos = useRef<{ x: number; y: number } | null>(null)
   const [currentStroke, setCurrentStroke] = useState(0)
-  const strokeProgress = useRef<number[]>([])
+  const traceState = useRef<StrokeTraceState>({
+    started: false, nextCheckpoint: 0, distances: [],
+    pointCount: 0, totalDistance: 0, maxConsecutiveFar: 0, currentFarStreak: 0,
+  })
   const completedStrokes = useRef<Set<number>>(new Set())
   const [isPlayingDemo, setIsPlayingDemo] = useState(false)
   const demoAnimRef = useRef<number | null>(null)
   const demoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [hintPulse, setHintPulse] = useState(false)
+  const [strokeScore, setStrokeScore] = useState<number | null>(null)
+  const [strokeFailed, setStrokeFailed] = useState(false)
 
   const [extractedPaths, setExtractedPaths] = useState<number[][][] | null>(null)
   const extractedPathsRef = useRef<number[][][] | null>(null)
 
-  // Draw a completed stroke outline with color
+  // Reset trace state for current stroke
+  const resetTraceState = useCallback(() => {
+    traceState.current = {
+      started: false, nextCheckpoint: 0, distances: [],
+      pointCount: 0, totalDistance: 0, maxConsecutiveFar: 0, currentFarStreak: 0,
+    }
+  }, [])
+
+  // Find closest distance from point to the stroke path
+  const distToPath = useCallback((x: number, y: number, stroke: number[][]): { dist: number; nearestIdx: number } => {
+    let minDist = Infinity
+    let nearestIdx = 0
+    for (let i = 0; i < stroke.length; i++) {
+      const dx = x - stroke[i][0]
+      const dy = y - stroke[i][1]
+      const d = Math.sqrt(dx * dx + dy * dy)
+      if (d < minDist) {
+        minDist = d
+        nearestIdx = i
+      }
+    }
+    // Also check segments between points for more accuracy
+    for (let i = 0; i < stroke.length - 1; i++) {
+      const ax = stroke[i][0], ay = stroke[i][1]
+      const bx = stroke[i + 1][0], by = stroke[i + 1][1]
+      const abx = bx - ax, aby = by - ay
+      const apx = x - ax, apy = y - ay
+      const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby)))
+      const px = ax + t * abx, py = ay + t * aby
+      const d = Math.sqrt((x - px) ** 2 + (y - py) ** 2)
+      if (d < minDist) {
+        minDist = d
+        nearestIdx = t < 0.5 ? i : i + 1
+      }
+    }
+    return { dist: minDist, nearestIdx }
+  }, [])
+
+  // Draw a completed stroke outline with color - clipped properly
   const drawCompletedStroke = useCallback((strokeIdx: number) => {
     const canvas = guideCanvasRef.current
     if (!canvas) return
@@ -47,6 +108,10 @@ export function TracingCanvas({ char, onComplete }: Props) {
 
     const scale = area / 1024
     ctx.save()
+    // Clip to the canvas drawing area to prevent overflow
+    ctx.beginPath()
+    ctx.rect(margin, margin, area, area)
+    ctx.clip()
     ctx.globalAlpha = 0.55
     ctx.fillStyle = '#4caf50'
     ctx.setTransform(scale, 0, 0, scale, margin, margin)
@@ -93,6 +158,9 @@ export function TracingCanvas({ char, onComplete }: Props) {
     const outlines = getStrokeOutlines(char.char, size)
     if (outlines) {
       ctx.save()
+      ctx.beginPath()
+      ctx.rect(margin, margin, area, area)
+      ctx.clip()
       ctx.globalAlpha = GUIDE_OPACITY
       ctx.fillStyle = '#5a4a3a'
       const scale = area / 1024
@@ -205,11 +273,13 @@ export function TracingCanvas({ char, onComplete }: Props) {
     draw.width = CANVAS_RES
     draw.height = CANVAS_RES
 
-    strokeProgress.current = new Array(char.strokes.length).fill(0)
     completedStrokes.current = new Set()
     setCurrentStroke(0)
     setExtractedPaths(null)
     extractedPathsRef.current = null
+    resetTraceState()
+    setStrokeScore(null)
+    setStrokeFailed(false)
 
     const drawCtx = draw.getContext('2d')
     if (drawCtx) drawCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES)
@@ -217,7 +287,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
     const paths = extractStrokePaths(char.char, '', CANVAS_RES, char.strokes)
     extractedPathsRef.current = paths
     setExtractedPaths(paths)
-  }, [char])
+  }, [char, resetTraceState])
 
   useEffect(() => {
     drawGuide()
@@ -233,10 +303,11 @@ export function TracingCanvas({ char, onComplete }: Props) {
     const drawCtx = drawCanvasRef.current?.getContext('2d')
     if (drawCtx) drawCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES)
 
-    // Reset completed for visual
     completedStrokes.current = new Set()
-    strokeProgress.current = new Array(char.strokes.length).fill(0)
+    resetTraceState()
     setCurrentStroke(0)
+    setStrokeScore(null)
+    setStrokeFailed(false)
 
     let strokeIdx = 0
     let pointIdx = 0
@@ -247,7 +318,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
         demoTimeoutRef.current = setTimeout(() => {
           if (drawCtx) drawCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES)
           completedStrokes.current = new Set()
-          strokeProgress.current = new Array(char.strokes.length).fill(0)
+          resetTraceState()
           setCurrentStroke(0)
         }, 800)
         return
@@ -284,7 +355,7 @@ export function TracingCanvas({ char, onComplete }: Props) {
     }
 
     demoAnimRef.current = requestAnimationFrame(animate)
-  }, [isPlayingDemo, char])
+  }, [isPlayingDemo, char, resetTraceState])
 
   useEffect(() => {
     return () => {
@@ -314,38 +385,16 @@ export function TracingCanvas({ char, onComplete }: Props) {
     }
   }
 
-  const checkStrokeProgress = (x: number, y: number) => {
-    const paths = extractedPathsRef.current
-    if (!paths || currentStroke >= paths.length) return
-
-    const stroke = paths[currentStroke]
-    const hitR = HIT_RADIUS_PX
-
-    let maxHitIdx = -1
-    for (let i = 0; i < stroke.length; i++) {
-      const dx = x - stroke[i][0]
-      const dy = y - stroke[i][1]
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      if (dist < hitR) {
-        maxHitIdx = i
-      }
-    }
-
-    if (maxHitIdx >= 0) {
-      const progress = (maxHitIdx + 1) / stroke.length
-      if (!strokeProgress.current[currentStroke] || progress > strokeProgress.current[currentStroke]) {
-        strokeProgress.current[currentStroke] = progress
-      }
-
-      if (maxHitIdx >= stroke.length - 1 && strokeProgress.current[currentStroke] > 0.5) {
-        completedStrokes.current.add(currentStroke)
-      }
-    }
-  }
-
   const triggerHint = useCallback(() => {
     setHintPulse(true)
     setTimeout(() => setHintPulse(false), 800)
+  }, [])
+
+  // Clear user drawing for current stroke (on failure)
+  const clearDrawCanvas = useCallback(() => {
+    const ctx = drawCanvasRef.current?.getContext('2d')
+    if (ctx) ctx.clearRect(0, 0, CANVAS_RES, CANVAS_RES)
+    // Redraw completed strokes' user lines (we only clear the canvas, completed outlines are on guide)
   }, [])
 
   const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
@@ -353,8 +402,40 @@ export function TracingCanvas({ char, onComplete }: Props) {
     if (isPlayingDemo) return
     const pos = getPos(e)
     if (!pos) return
+
+    const paths = extractedPathsRef.current
+    if (!paths || currentStroke >= paths.length) return
+
+    const stroke = paths[currentStroke]
+    if (stroke.length === 0) return
+
+    // Clear previous failure state
+    setStrokeFailed(false)
+    setStrokeScore(null)
+
+    // Check if starting near the start point
+    const dx = pos.x - stroke[0][0]
+    const dy = pos.y - stroke[0][1]
+    const distFromStart = Math.sqrt(dx * dx + dy * dy)
+
+    if (distFromStart > START_RADIUS) {
+      // Too far from start - show hint, don't start drawing
+      triggerHint()
+      return
+    }
+
+    // Valid start!
     isDrawing.current = true
     lastPos.current = pos
+    resetTraceState()
+    traceState.current.started = true
+    traceState.current.nextCheckpoint = 0
+
+    // Record first point distance
+    const { dist } = distToPath(pos.x, pos.y, stroke)
+    traceState.current.distances.push(dist)
+    traceState.current.pointCount = 1
+    traceState.current.totalDistance = dist
 
     const ctx = drawCanvasRef.current?.getContext('2d')
     if (ctx) {
@@ -365,21 +446,6 @@ export function TracingCanvas({ char, onComplete }: Props) {
       ctx.beginPath()
       ctx.moveTo(pos.x, pos.y)
     }
-
-    // Check if far from current stroke start → hint
-    const paths = extractedPathsRef.current
-    if (paths && currentStroke < paths.length) {
-      const stroke = paths[currentStroke]
-      if (stroke.length > 0) {
-        const dx = pos.x - stroke[0][0]
-        const dy = pos.y - stroke[0][1]
-        if (Math.sqrt(dx * dx + dy * dy) > HIT_RADIUS_PX * 3) {
-          triggerHint()
-        }
-      }
-    }
-
-    checkStrokeProgress(pos.x, pos.y)
   }
 
   const handleMove = (e: React.TouchEvent | React.MouseEvent) => {
@@ -388,10 +454,15 @@ export function TracingCanvas({ char, onComplete }: Props) {
     const pos = getPos(e)
     if (!pos || !lastPos.current) return
 
-    const dx = pos.x - lastPos.current.x
-    const dy = pos.y - lastPos.current.y
-    if (Math.sqrt(dx * dx + dy * dy) < MIN_MOVE) return
+    const moveDx = pos.x - lastPos.current.x
+    const moveDy = pos.y - lastPos.current.y
+    if (Math.sqrt(moveDx * moveDx + moveDy * moveDy) < MIN_MOVE) return
 
+    const paths = extractedPathsRef.current
+    if (!paths || currentStroke >= paths.length) return
+    const stroke = paths[currentStroke]
+
+    // Draw the line
     const ctx = drawCanvasRef.current?.getContext('2d')
     if (ctx) {
       ctx.lineTo(pos.x, pos.y)
@@ -401,7 +472,30 @@ export function TracingCanvas({ char, onComplete }: Props) {
     }
 
     lastPos.current = pos
-    checkStrokeProgress(pos.x, pos.y)
+
+    // Measure distance to path
+    const { dist, nearestIdx } = distToPath(pos.x, pos.y, stroke)
+    traceState.current.distances.push(dist)
+    traceState.current.pointCount++
+    traceState.current.totalDistance += dist
+
+    // Track consecutive far points
+    if (dist > PATH_RADIUS) {
+      traceState.current.currentFarStreak++
+      if (traceState.current.currentFarStreak > traceState.current.maxConsecutiveFar) {
+        traceState.current.maxConsecutiveFar = traceState.current.currentFarStreak
+      }
+    } else {
+      traceState.current.currentFarStreak = 0
+    }
+
+    // Update checkpoint: must advance forward (no skipping)
+    // Allow some tolerance: nearest point must be >= current checkpoint - 2
+    if (nearestIdx >= traceState.current.nextCheckpoint - 2) {
+      if (nearestIdx + 1 > traceState.current.nextCheckpoint) {
+        traceState.current.nextCheckpoint = nearestIdx + 1
+      }
+    }
   }
 
   const handleEnd = (e: React.TouchEvent | React.MouseEvent) => {
@@ -410,16 +504,64 @@ export function TracingCanvas({ char, onComplete }: Props) {
     isDrawing.current = false
     lastPos.current = null
 
-    if (completedStrokes.current.has(currentStroke)) {
+    const paths = extractedPathsRef.current
+    if (!paths || currentStroke >= paths.length) return
+    const stroke = paths[currentStroke]
+    const ts = traceState.current
+
+    if (!ts.started || ts.pointCount < 3) {
+      // Not enough data, ignore
+      resetTraceState()
+      return
+    }
+
+    // Calculate score
+    const avgDist = ts.totalDistance / ts.pointCount
+    const coverage = ts.nextCheckpoint / stroke.length
+    const reachedEnd = ts.nextCheckpoint >= stroke.length - 2
+
+    // Scoring: lower is better
+    // avgDist: how close to the path on average
+    // coverage: how much of the path was covered
+    const score = avgDist
+
+    // Pass conditions:
+    // 1. Must reach near the end of the stroke
+    // 2. Must cover enough of the path
+    // 3. Average distance must be under threshold
+    // 4. No excessive consecutive deviation
+    const passed = reachedEnd && coverage >= MIN_COVERAGE && score <= SCORE_THRESHOLD && ts.maxConsecutiveFar < 15
+
+    setStrokeScore(Math.round(score))
+
+    if (passed) {
+      // Success!
+      completedStrokes.current.add(currentStroke)
       drawCompletedStroke(currentStroke)
       drawGuide()
+      resetTraceState()
 
       const next = currentStroke + 1
       if (next >= char.strokes.length) {
         onComplete()
       } else {
         setCurrentStroke(next)
+        setStrokeScore(null)
       }
+    } else {
+      // Failed - show feedback and clear drawing
+      setStrokeFailed(true)
+      triggerHint()
+
+      // Clear the failed stroke drawing after a short delay
+      setTimeout(() => {
+        clearDrawCanvas()
+        // Redraw any previously completed strokes
+        // (they're on the guide canvas, so just clear draw canvas)
+        setStrokeFailed(false)
+        setStrokeScore(null)
+        resetTraceState()
+      }, 1000)
     }
   }
 
@@ -446,6 +588,12 @@ export function TracingCanvas({ char, onComplete }: Props) {
       >
         {isPlayingDemo ? '再生中…' : '▶ お手本'}
       </button>
+      {/* Score feedback */}
+      {strokeScore !== null && (
+        <div className={`stroke-score ${strokeFailed ? 'failed' : 'passed'}`}>
+          {strokeFailed ? 'もういちど！' : ''}
+        </div>
+      )}
       <div className="stroke-order-dots" style={{ position: 'absolute', bottom: 12, left: 0, right: 0, zIndex: 3 }}>
         {char.strokes.map((_, idx) => (
           <div

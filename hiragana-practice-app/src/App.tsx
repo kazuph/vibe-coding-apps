@@ -108,14 +108,8 @@ export default function App() {
       speakPraise()
     }
 
-    // Auto advance after 2.5s (longer to allow retry button use)
-    autoAdvanceTimer.current = setTimeout(() => {
-      setShowSuccess(false)
-      if (currentIndex < chars.length - 1) {
-        goTo(currentIndex + 1)
-      }
-    }, 2500)
-  }, [currentChar, currentIndex, chars.length, goTo, modeKey])
+    // No auto advance - user chooses via buttons
+  }, [currentChar, modeKey])
 
   const handleRetry = useCallback(() => {
     if (autoAdvanceTimer.current) {
