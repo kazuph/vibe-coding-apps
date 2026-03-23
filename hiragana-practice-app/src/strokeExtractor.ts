@@ -6,27 +6,33 @@
  * Returns median (centerline) paths and outline paths for each stroke.
  */
 
-import { hiraganaStrokeData } from './data/hiraganaStrokes'
+import { hiraganaStrokeData, type StrokeData } from './data/hiraganaStrokes'
+import { kanjiGrade1Data } from './data/kanjiGrade1'
+import { kanjiGrade2Data } from './data/kanjiGrade2'
+import { kanjiGrade3Data } from './data/kanjiGrade3'
+import { kanjiGrade4Data } from './data/kanjiGrade4'
+import { kanjiGrade5Data } from './data/kanjiGrade5'
+import { kanjiGrade6Data } from './data/kanjiGrade6'
 
-/**
- * Extract stroke center-line paths from animCJK data.
- * Coordinates are in animCJK's 1024x1024 space, scaled to canvasSize.
- *
- * @param char - The hiragana character
- * @param _font - Unused (kept for API compatibility)
- * @param canvasSize - Target canvas size in pixels
- * @param _strokeHints - Unused (kept for API compatibility)
- * @returns Array of strokes, each being an array of [x, y] points
- */
+// Merged lookup: hiragana/katakana first, then kanji by grade
+function findStrokeData(char: string): StrokeData | undefined {
+  return hiraganaStrokeData[char]
+    ?? kanjiGrade1Data[char]
+    ?? kanjiGrade2Data[char]
+    ?? kanjiGrade3Data[char]
+    ?? kanjiGrade4Data[char]
+    ?? kanjiGrade5Data[char]
+    ?? kanjiGrade6Data[char]
+}
+
 export function extractStrokePaths(
   char: string,
   _font: string,
   canvasSize: number,
   _strokeHints: number[][][],
 ): number[][][] {
-  const data = hiraganaStrokeData[char]
+  const data = findStrokeData(char)
   if (!data) {
-    // Fallback: return strokeHints mapped to canvas coordinates
     const margin = canvasSize * 0.05
     const area = canvasSize - margin * 2
     return _strokeHints.map(stroke =>
@@ -36,30 +42,23 @@ export function extractStrokePaths(
 
   const margin = canvasSize * 0.05
   const area = canvasSize - margin * 2
-
-  // animCJK uses 1024x1024 viewBox
   const scale = area / 1024
   const offsetX = margin
   const offsetY = margin
 
-  return data.strokes.map(stroke => {
-    // Transform median coordinates from 1024x1024 to canvas space
-    return stroke.median.map(([x, y]) => [
+  return data.strokes.map(stroke =>
+    stroke.median.map(([x, y]) => [
       x * scale + offsetX,
       y * scale + offsetY,
     ])
-  })
+  )
 }
 
-/**
- * Get SVG outline paths for a character (for rendering the guide character).
- * Returns paths in canvas coordinate space.
- */
 export function getStrokeOutlines(
   char: string,
   canvasSize: number,
 ): { path: string; transform: string }[] | null {
-  const data = hiraganaStrokeData[char]
+  const data = findStrokeData(char)
   if (!data) return null
 
   const margin = canvasSize * 0.05

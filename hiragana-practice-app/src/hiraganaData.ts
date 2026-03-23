@@ -1,13 +1,24 @@
-// Character metadata for hiragana and katakana
-// Stroke data comes from animCJK (see data/hiraganaStrokes.ts)
+// Character metadata for hiragana, katakana, and kanji
+// Stroke data comes from animCJK (see data/)
 
 import { hiraganaStrokeData } from './data/hiraganaStrokes'
+import { kanjiGrade1Data } from './data/kanjiGrade1'
+import { kanjiGrade2Data } from './data/kanjiGrade2'
+import { kanjiGrade3Data } from './data/kanjiGrade3'
+import { kanjiGrade4Data } from './data/kanjiGrade4'
+import { kanjiGrade5Data } from './data/kanjiGrade5'
+import { kanjiGrade6Data } from './data/kanjiGrade6'
+import { GRADE_1, GRADE_2, GRADE_3, GRADE_4, GRADE_5, GRADE_6, GRADE_LABELS, type GradeIndex } from './data/kanjiGrades'
+import type { StrokeData } from './data/hiraganaStrokes'
+
+export type { GradeIndex }
+export { GRADE_LABELS }
 
 export interface HiraganaChar {
   char: string
   romaji: string
   strokeCount: number
-  strokes: number[][][]  // placeholder for API compatibility
+  strokes: number[][][]
 }
 
 export interface GojuonRow {
@@ -15,7 +26,16 @@ export interface GojuonRow {
   chars: (HiraganaChar | null)[]
 }
 
-export type CharMode = 'hiragana' | 'katakana'
+export type CharMode = 'hiragana' | 'katakana' | 'kanji'
+
+const kanjiDataByGrade: Record<string, StrokeData>[] = [
+  kanjiGrade1Data,
+  kanjiGrade2Data,
+  kanjiGrade3Data,
+  kanjiGrade4Data,
+  kanjiGrade5Data,
+  kanjiGrade6Data,
+]
 
 function createChar(char: string, romaji: string): HiraganaChar {
   const data = hiraganaStrokeData[char]
@@ -26,6 +46,16 @@ function createChar(char: string, romaji: string): HiraganaChar {
   return { char, romaji, strokeCount, strokes }
 }
 
+function createKanjiChar(char: string, gradeData: Record<string, StrokeData>): HiraganaChar {
+  const data = gradeData[char]
+  const strokeCount = data ? data.strokes.length : 1
+  const strokes = data
+    ? data.strokes.map(s => s.median.map(([x, y]) => [x / 1024, y / 1024]))
+    : [[[0.5, 0.5]]]
+  return { char, romaji: '', strokeCount, strokes }
+}
+
+// Hiragana 50-on table
 export const gojuonTable: GojuonRow[] = [
   { label: 'あ行', chars: [createChar('あ', 'a'), createChar('い', 'i'), createChar('う', 'u'), createChar('え', 'e'), createChar('お', 'o')] },
   { label: 'か行', chars: [createChar('か', 'ka'), createChar('き', 'ki'), createChar('く', 'ku'), createChar('け', 'ke'), createChar('こ', 'ko')] },
@@ -39,6 +69,7 @@ export const gojuonTable: GojuonRow[] = [
   { label: 'わ行', chars: [createChar('わ', 'wa'), null, null, createChar('を', 'wo'), createChar('ん', 'n')] },
 ]
 
+// Katakana 50-on table
 export const katakanaGojuonTable: GojuonRow[] = [
   { label: 'ア行', chars: [createChar('ア', 'a'), createChar('イ', 'i'), createChar('ウ', 'u'), createChar('エ', 'e'), createChar('オ', 'o')] },
   { label: 'カ行', chars: [createChar('カ', 'ka'), createChar('キ', 'ki'), createChar('ク', 'ku'), createChar('ケ', 'ke'), createChar('コ', 'ko')] },
@@ -52,12 +83,37 @@ export const katakanaGojuonTable: GojuonRow[] = [
   { label: 'ワ行', chars: [createChar('ワ', 'wa'), null, null, createChar('ヲ', 'wo'), createChar('ン', 'n')] },
 ]
 
+// Build kanji grid for a given grade (8 columns)
+const KANJI_GRID_COLS = 8
+
+function buildKanjiGrid(gradeStr: string, gradeData: Record<string, StrokeData>): GojuonRow[] {
+  const chars = [...new Set(gradeStr)]
+  const rows: GojuonRow[] = []
+  for (let i = 0; i < chars.length; i += KANJI_GRID_COLS) {
+    const chunk = chars.slice(i, i + KANJI_GRID_COLS)
+    const rowChars: (HiraganaChar | null)[] = chunk.map(c => createKanjiChar(c, gradeData))
+    // Pad to KANJI_GRID_COLS
+    while (rowChars.length < KANJI_GRID_COLS) rowChars.push(null)
+    rows.push({ label: i === 0 ? '' : '', chars: rowChars })
+  }
+  return rows
+}
+
+const gradeStrings = [GRADE_1, GRADE_2, GRADE_3, GRADE_4, GRADE_5, GRADE_6]
+
+export function getKanjiTable(grade: GradeIndex): GojuonRow[] {
+  return buildKanjiGrid(gradeStrings[grade], kanjiDataByGrade[grade])
+}
+
+export function getKanjiChars(grade: GradeIndex): HiraganaChar[] {
+  const chars = [...new Set(gradeStrings[grade])]
+  return chars.map(c => createKanjiChar(c, kanjiDataByGrade[grade]))
+}
+
 function tableToChars(table: GojuonRow[]): HiraganaChar[] {
   return table.flatMap(row => row.chars).filter((c): c is HiraganaChar => c !== null)
 }
 
 export const allHiragana: HiraganaChar[] = tableToChars(gojuonTable)
 export const allKatakana: HiraganaChar[] = tableToChars(katakanaGojuonTable)
-
-// Default export for backward compatibility
 export const allChars = allHiragana

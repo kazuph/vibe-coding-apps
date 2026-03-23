@@ -101,6 +101,41 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
+/* Grade selector for kanji mode */
+.grade-selector {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px;
+  background: white;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.grade-btn {
+  padding: 4px 12px;
+  border: 1px solid #e0d8ce;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.grade-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.grade-btn:hover:not(.active) {
+  background: #f0ebe4;
+}
+
 .header-actions {
   display: flex;
   gap: 6px;
