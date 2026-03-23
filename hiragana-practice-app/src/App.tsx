@@ -77,6 +77,7 @@ export default function App() {
   const [successPraise, setSuccessPraise] = useState('')
   const [resetKey, setResetKey] = useState(0)
   const [soundOn, setSoundOn] = useState(true)
+  const [showRowSelector, setShowRowSelector] = useState(false)
 
   const modeKey = charMode === 'kanji' ? `kanji-${kanjiGrade}` : charMode
 
@@ -213,11 +214,16 @@ export default function App() {
     setCurrentIndex(0)
     setShowSuccess(false)
     setResetKey(k => k + 1)
+    // Auto-open character selector for free mode
+    if (pm === 'free') {
+      setShowSelector(true)
+    }
   }, [])
 
   const goBackToStart = useCallback(() => {
     setPracticeMode(null)
     setSelectedRow(null)
+    setShowRowSelector(false)
     setCurrentIndex(0)
     setShowSuccess(false)
   }, [])
@@ -352,7 +358,7 @@ export default function App() {
               </div>
             </button>
 
-            <button className="start-mode-card" onClick={() => setPracticeMode('row')}>
+            <button className="start-mode-card" onClick={() => setShowRowSelector(true)}>
               <div className="start-mode-icon">📖</div>
               <div>
                 <div className="start-mode-label">行をえらぶ</div>
@@ -369,18 +375,21 @@ export default function App() {
             </button>
           </div>
 
-          {practiceMode === 'row' && (
+          {showRowSelector && (
             <div className="row-select-overlay" onClick={(e) => {
-              if (e.target === e.currentTarget) setPracticeMode(null)
+              if (e.target === e.currentTarget) setShowRowSelector(false)
             }}>
               <div className="row-select-panel">
                 <div className="char-select-header">
                   <span className="char-select-title">行をえらぶ</span>
-                  <button className="char-select-close" onClick={() => setPracticeMode(null)}>✕</button>
+                  <button className="char-select-close" onClick={() => setShowRowSelector(false)}>✕</button>
                 </div>
                 <div className="row-select-grid">
                   {rowLabels.map(label => (
-                    <button key={label} className="row-select-btn" onClick={() => startPractice('row', label)}>
+                    <button key={label} className="row-select-btn" onClick={() => {
+                      setShowRowSelector(false)
+                      startPractice('row', label)
+                    }}>
                       {label}
                     </button>
                   ))}
