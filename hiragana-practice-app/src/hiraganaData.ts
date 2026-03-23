@@ -69,6 +69,15 @@ export const gojuonTable: GojuonRow[] = [
   { label: 'わ行', chars: [createChar('わ', 'wa'), null, null, createChar('を', 'wo'), createChar('ん', 'n')] },
 ]
 
+// Hiragana dakuon/handakuon
+export const dakuonTable: GojuonRow[] = [
+  { label: '濁音', chars: [createChar('が', 'ga'), createChar('ぎ', 'gi'), createChar('ぐ', 'gu'), createChar('げ', 'ge'), createChar('ご', 'go')] },
+  { label: '', chars: [createChar('ざ', 'za'), createChar('じ', 'ji'), createChar('ず', 'zu'), createChar('ぜ', 'ze'), createChar('ぞ', 'zo')] },
+  { label: '', chars: [createChar('だ', 'da'), createChar('ぢ', 'di'), createChar('づ', 'du'), createChar('で', 'de'), createChar('ど', 'do')] },
+  { label: '', chars: [createChar('ば', 'ba'), createChar('び', 'bi'), createChar('ぶ', 'bu'), createChar('べ', 'be'), createChar('ぼ', 'bo')] },
+  { label: '半濁音', chars: [createChar('ぱ', 'pa'), createChar('ぴ', 'pi'), createChar('ぷ', 'pu'), createChar('ぺ', 'pe'), createChar('ぽ', 'po')] },
+]
+
 // Katakana 50-on table
 export const katakanaGojuonTable: GojuonRow[] = [
   { label: 'ア行', chars: [createChar('ア', 'a'), createChar('イ', 'i'), createChar('ウ', 'u'), createChar('エ', 'e'), createChar('オ', 'o')] },
@@ -81,6 +90,15 @@ export const katakanaGojuonTable: GojuonRow[] = [
   { label: 'ヤ行', chars: [createChar('ヤ', 'ya'), null, createChar('ユ', 'yu'), null, createChar('ヨ', 'yo')] },
   { label: 'ラ行', chars: [createChar('ラ', 'ra'), createChar('リ', 'ri'), createChar('ル', 'ru'), createChar('レ', 're'), createChar('ロ', 'ro')] },
   { label: 'ワ行', chars: [createChar('ワ', 'wa'), null, null, createChar('ヲ', 'wo'), createChar('ン', 'n')] },
+]
+
+// Katakana dakuon/handakuon
+export const katakanaDakuonTable: GojuonRow[] = [
+  { label: '濁音', chars: [createChar('ガ', 'ga'), createChar('ギ', 'gi'), createChar('グ', 'gu'), createChar('ゲ', 'ge'), createChar('ゴ', 'go')] },
+  { label: '', chars: [createChar('ザ', 'za'), createChar('ジ', 'ji'), createChar('ズ', 'zu'), createChar('ゼ', 'ze'), createChar('ゾ', 'zo')] },
+  { label: '', chars: [createChar('ダ', 'da'), createChar('ヂ', 'di'), createChar('ヅ', 'du'), createChar('デ', 'de'), createChar('ド', 'do')] },
+  { label: '', chars: [createChar('バ', 'ba'), createChar('ビ', 'bi'), createChar('ブ', 'bu'), createChar('ベ', 'be'), createChar('ボ', 'bo')] },
+  { label: '半濁音', chars: [createChar('パ', 'pa'), createChar('ピ', 'pi'), createChar('プ', 'pu'), createChar('ペ', 'pe'), createChar('ポ', 'po')] },
 ]
 
 // Build kanji grid for a given grade (8 columns)
@@ -114,6 +132,6 @@ function tableToChars(table: GojuonRow[]): HiraganaChar[] {
   return table.flatMap(row => row.chars).filter((c): c is HiraganaChar => c !== null)
 }
 
-export const allHiragana: HiraganaChar[] = tableToChars(gojuonTable)
-export const allKatakana: HiraganaChar[] = tableToChars(katakanaGojuonTable)
+export const allHiragana: HiraganaChar[] = [...tableToChars(gojuonTable), ...tableToChars(dakuonTable)]
+export const allKatakana: HiraganaChar[] = [...tableToChars(katakanaGojuonTable), ...tableToChars(katakanaDakuonTable)]
 export const allChars = allHiragana

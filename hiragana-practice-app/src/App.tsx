@@ -1,22 +1,55 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   allHiragana, allKatakana,
   gojuonTable, katakanaGojuonTable,
+  dakuonTable, katakanaDakuonTable,
   getKanjiTable, getKanjiChars,
   GRADE_LABELS,
   type HiraganaChar, type CharMode, type GradeIndex,
 } from './hiraganaData'
 import { TracingCanvas } from './TracingCanvas'
 import { CharacterSelect } from './CharacterSelect'
+import { speakChar, speakPraise, isSpeechEnabled, toggleSpeech } from './useSpeech'
+
+const STORAGE_KEY = 'hiragana-practice-progress'
+
+function loadProgress(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveProgress(mode: string, chars: Set<string>) {
+  const data = loadProgress()
+  data[mode] = [...chars]
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+}
 
 export default function App() {
   const [mode, setMode] = useState<CharMode>('hiragana')
   const [kanjiGrade, setKanjiGrade] = useState<GradeIndex>(0)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showSelector, setShowSelector] = useState(false)
-  const [completedChars, setCompletedChars] = useState<Set<string>>(new Set())
+  const [completedChars, setCompletedChars] = useState<Set<string>>(() => {
+    const data = loadProgress()
+    const key = 'hiragana'
+    return new Set(data[key] || [])
+  })
   const [showSuccess, setShowSuccess] = useState(false)
+  const [successChar, setSuccessChar] = useState('')
+  const [successPraise, setSuccessPraise] = useState('')
   const [resetKey, setResetKey] = useState(0)
+  const [soundOn, setSoundOn] = useState(true)
+  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const modeKey = mode === 'kanji' ? `kanji-${kanjiGrade}` : mode
+
+  // Load completed chars when mode changes
+  useEffect(() => {
+    const data = loadProgress()
+    setCompletedChars(new Set(data[modeKey] || []))
+  }, [modeKey])
 
   const chars = useMemo(() => {
     if (mode === 'hiragana') return allHiragana
@@ -25,14 +58,18 @@ export default function App() {
   }, [mode, kanjiGrade])
 
   const table = useMemo(() => {
-    if (mode === 'hiragana') return gojuonTable
-    if (mode === 'katakana') return katakanaGojuonTable
+    if (mode === 'hiragana') return [...gojuonTable, ...dakuonTable]
+    if (mode === 'katakana') return [...katakanaGojuonTable, ...katakanaDakuonTable]
     return getKanjiTable(kanjiGrade)
   }, [mode, kanjiGrade])
 
   const currentChar = chars[Math.min(currentIndex, chars.length - 1)] || chars[0]
 
   const goTo = useCallback((index: number) => {
+    if (autoAdvanceTimer.current) {
+      clearTimeout(autoAdvanceTimer.current)
+      autoAdvanceTimer.current = null
+    }
     setCurrentIndex(index)
     setShowSuccess(false)
     setResetKey(k => k + 1)
@@ -53,15 +90,41 @@ export default function App() {
   }, [chars, goTo])
 
   const handleComplete = useCallback(() => {
-    setCompletedChars(prev => new Set(prev).add(currentChar.char))
+    const praiseList = ['じょうず！', 'すごい！', 'できたね！', 'やったね！', 'かんぺき！']
+    const praise = praiseList[Math.floor(Math.random() * praiseList.length)]
+
+    setCompletedChars(prev => {
+      const next = new Set(prev).add(currentChar.char)
+      saveProgress(modeKey, next)
+      return next
+    })
+    setSuccessChar(currentChar.char)
+    setSuccessPraise(praise)
     setShowSuccess(true)
-    setTimeout(() => {
+
+    // Speech
+    if (isSpeechEnabled()) {
+      speakChar(currentChar.char)
+      speakPraise()
+    }
+
+    // Auto advance after 2.5s (longer to allow retry button use)
+    autoAdvanceTimer.current = setTimeout(() => {
       setShowSuccess(false)
       if (currentIndex < chars.length - 1) {
         goTo(currentIndex + 1)
       }
-    }, 1500)
-  }, [currentChar, currentIndex, chars.length, goTo])
+    }, 2500)
+  }, [currentChar, currentIndex, chars.length, goTo, modeKey])
+
+  const handleRetry = useCallback(() => {
+    if (autoAdvanceTimer.current) {
+      clearTimeout(autoAdvanceTimer.current)
+      autoAdvanceTimer.current = null
+    }
+    setShowSuccess(false)
+    setResetKey(k => k + 1)
+  }, [])
 
   const handleReset = useCallback(() => {
     setShowSuccess(false)
@@ -84,6 +147,11 @@ export default function App() {
     setResetKey(k => k + 1)
   }, [])
 
+  const handleToggleSound = useCallback(() => {
+    const enabled = toggleSpeech()
+    setSoundOn(enabled)
+  }, [])
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -100,6 +168,9 @@ export default function App() {
           </button>
         </div>
         <div className="header-actions">
+          <button className="btn btn-icon-sm" onClick={handleToggleSound} title={soundOn ? '音声オフ' : '音声オン'}>
+            {soundOn ? '🔊' : '🔇'}
+          </button>
           <button className="btn btn-secondary" onClick={handleReset}>クリア</button>
           <button className="btn btn-primary" onClick={() => setShowSelector(true)}>
             {mode === 'kanji' ? '一覧' : '50音'}
@@ -131,10 +202,21 @@ export default function App() {
         />
 
         {showSuccess && (
-          <div className="success-overlay" onClick={() => setShowSuccess(false)}>
+          <div className="success-overlay">
             <div className="success-content">
-              <div className="success-char">{currentChar.char}</div>
-              <div className="success-text">じょうず！</div>
+              <div className="success-char">{successChar}</div>
+              <div className="success-text">{successPraise}</div>
+              <div className="success-buttons">
+                <button className="btn btn-retry" onClick={handleRetry}>
+                  もう一回
+                </button>
+                <button className="btn btn-next" onClick={() => {
+                  if (currentIndex < chars.length - 1) goTo(currentIndex + 1)
+                  else setShowSuccess(false)
+                }}>
+                  つぎへ ▶
+                </button>
+              </div>
             </div>
           </div>
         )}
