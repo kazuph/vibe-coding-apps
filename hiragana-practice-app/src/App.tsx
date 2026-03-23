@@ -2,7 +2,6 @@ import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   allHiragana, allKatakana,
   gojuonTable, katakanaGojuonTable,
-  dakuonTable, katakanaDakuonTable,
   getKanjiTable, getKanjiChars,
   GRADE_LABELS,
   type HiraganaChar, type CharMode, type GradeIndex, type GojuonRow,
@@ -39,10 +38,10 @@ function shuffle<T>(arr: T[]): T[] {
 
 function getRowLabels(charMode: CharMode): string[] {
   if (charMode === 'hiragana') {
-    return [...gojuonTable, ...dakuonTable].filter(r => r.label).map(r => r.label)
+    return gojuonTable.filter(r => r.label).map(r => r.label)
   }
   if (charMode === 'katakana') {
-    return [...katakanaGojuonTable, ...katakanaDakuonTable].filter(r => r.label).map(r => r.label)
+    return katakanaGojuonTable.filter(r => r.label).map(r => r.label)
   }
   return GRADE_LABELS.map(l => l)
 }
@@ -50,9 +49,9 @@ function getRowLabels(charMode: CharMode): string[] {
 function getRowChars(charMode: CharMode, rowLabel: string): HiraganaChar[] {
   let tables: GojuonRow[]
   if (charMode === 'hiragana') {
-    tables = [...gojuonTable, ...dakuonTable]
+    tables = gojuonTable
   } else if (charMode === 'katakana') {
-    tables = [...katakanaGojuonTable, ...katakanaDakuonTable]
+    tables = katakanaGojuonTable
   } else {
     return []
   }
@@ -102,8 +101,8 @@ export default function App() {
   }, [charMode, kanjiGrade, practiceMode, selectedRow, allCharsForMode])
 
   const table = useMemo(() => {
-    if (charMode === 'hiragana') return [...gojuonTable, ...dakuonTable]
-    if (charMode === 'katakana') return [...katakanaGojuonTable, ...katakanaDakuonTable]
+    if (charMode === 'hiragana') return gojuonTable
+    if (charMode === 'katakana') return katakanaGojuonTable
     return getKanjiTable(kanjiGrade)
   }, [charMode, kanjiGrade])
 
