@@ -7,172 +7,160 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .app-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             transition: all 0.3s ease;
         }
         .app-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
         }
-        .kids-card {
-            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
-        }
-        .face-card {
-            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-        }
-        .fitness-card {
-            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
-        }
-        .kanji-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .hiragana-card {
-            background: linear-gradient(135deg, #faf0e6 0%, #f5d5b8 100%);
-        }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500">
     <div class="container mx-auto px-4 py-8">
         <header class="text-center mb-12">
-            <h1 class="text-6xl font-bold text-white mb-4 animate-pulse">
-                🎨 Vibe Coding Apps 🎨
+            <h1 class="text-5xl font-bold text-white mb-4">
+                Vibe Coding Apps
             </h1>
             <p class="text-xl text-white opacity-90">
                 楽しく学べるウェブアプリケーション集
             </p>
         </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            <!-- Hiragana Practice App -->
-            <a href="./hiragana-practice/" class="app-card hiragana-card rounded-2xl p-8 text-center shadow-xl block no-underline">
-                <div class="text-6xl mb-4">✍️</div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-4">
-                    ひらがな書き順れんしゅう
-                </h2>
-                <p class="text-gray-700 mb-6">
-                    なぞって覚える！五十音すべてのひらがなの書き順を練習しよう
-                </p>
-                <span class="inline-block bg-orange-400 hover:bg-orange-300 text-white font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    れんしゅうする →
-                </span>
-            </a>
+        <!-- Apps Section -->
+        <section class="max-w-6xl mx-auto mb-12">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                <span>Apps</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-            <!-- Kids Learning App -->
-            <a href="./kids-learning/" class="app-card kids-card rounded-2xl p-8 text-center shadow-xl block no-underline">
-                <div class="text-6xl mb-4">🌈</div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-4">
-                    たのしくまなぼう！
-                </h2>
-                <p class="text-gray-700 mb-6">
-                    ひらがな・カタカナ・アルファベット・数字パズルで楽しく学習
-                </p>
-                <span class="inline-block bg-yellow-400 hover:bg-yellow-300 text-gray-800 font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    あそんでみる →
-                </span>
-            </a>
+                <!-- 1. ひらがな書き順れんしゅう (最新) -->
+                <a href="./hiragana-practice/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #faf0e6 0%, #f5d5b8 100%);">
+                    <div class="text-5xl mb-4">✍️</div>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-3">
+                        書き順れんしゅう
+                    </h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        ひらがな・カタカナ・小学校漢字1026字の書き順をなぞって練習
+                    </p>
+                    <span class="inline-block bg-orange-400 text-white text-sm font-bold py-2 px-5 rounded-full">
+                        れんしゅうする
+                    </span>
+                </a>
 
-            <!-- Face Crop App -->
-            <a href="./face-crop/" class="app-card face-card rounded-2xl p-8 text-center shadow-xl block no-underline">
-                <div class="text-6xl mb-4">📸</div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-4">
-                    Face Crop
-                </h2>
-                <p class="text-gray-700 mb-6">
-                    顔を自動検出して画像をクロップするツール
-                </p>
-                <span class="inline-block bg-blue-400 hover:bg-blue-300 text-white font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    試してみる →
-                </span>
-            </a>
+                <!-- 2. Ruby Sketch WASM -->
+                <a href="./ruby-sketch-wasm/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #e94560 0%, #16213e 100%);">
+                    <div class="text-5xl mb-4">💎</div>
+                    <h3 class="text-2xl font-bold text-white mb-3">
+                        Ruby Sketch WASM
+                    </h3>
+                    <p class="text-white opacity-90 text-sm mb-4">
+                        ブラウザでRubyクリエイティブコーディング！Processing風スケッチ
+                    </p>
+                    <span class="inline-block bg-white text-red-600 text-sm font-bold py-2 px-5 rounded-full">
+                        描いてみる
+                    </span>
+                </a>
 
-            <!-- Fitness Bike App -->
-            <a href="./fitness-bike/" class="app-card fitness-card rounded-2xl p-8 text-center shadow-xl block no-underline">
-                <div class="text-6xl mb-4">🚴‍♂️</div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-4">
-                    Fitness Bike
-                </h2>
-                <p class="text-gray-700 mb-6">
-                    Bluetooth対応フィットネスバイクコントローラー
-                </p>
-                <span class="inline-block bg-red-400 hover:bg-red-300 text-white font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    使ってみる →
-                </span>
-            </a>
+                <!-- 3. 漢字学習ゲーム -->
+                <a href="./kanji-learning/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <div class="text-5xl mb-4">📖</div>
+                    <h3 class="text-2xl font-bold text-white mb-3">
+                        漢字学習ゲーム
+                    </h3>
+                    <p class="text-white opacity-90 text-sm mb-4">
+                        小学校で習う漢字をマスターしよう！4択クイズで楽しく学習
+                    </p>
+                    <span class="inline-block bg-white text-purple-600 text-sm font-bold py-2 px-5 rounded-full">
+                        学習する
+                    </span>
+                </a>
 
-            <!-- Kanji Learning Game -->
-            <a href="./kanji-learning/" class="app-card kanji-card rounded-2xl p-8 text-center shadow-xl block no-underline">
-                <div class="text-6xl mb-4">📖</div>
-                <h2 class="text-3xl font-bold text-white mb-4">
-                    漢字学習ゲーム
-                </h2>
-                <p class="text-white opacity-90 mb-6">
-                    小学校で習う漢字をマスターしよう！4択クイズで楽しく学習
-                </p>
-                <span class="inline-block bg-white hover:bg-gray-100 text-purple-600 font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    学習する →
-                </span>
-            </a>
+                <!-- 5. たのしくまなぼう -->
+                <a href="./kids-learning/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);">
+                    <div class="text-5xl mb-4">🌈</div>
+                    <h3 class="text-2xl font-bold text-white mb-3">
+                        たのしくまなぼう！
+                    </h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        ひらがな・カタカナ・アルファベット・数字パズルで楽しく学習
+                    </p>
+                    <span class="inline-block bg-yellow-400 text-gray-800 text-sm font-bold py-2 px-5 rounded-full">
+                        あそんでみる
+                    </span>
+                </a>
 
-            <!-- Rubiks Cube Solver -->
-            <a href="./rubiks-cube/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
-                <div class="text-6xl mb-4">🎲</div>
-                <h2 class="text-3xl font-bold text-white mb-4">
-                    ルービックキューブソルバー
-                </h2>
-                <p class="text-white opacity-90 mb-6">
-                    3Dで学ぶ！ステップバイステップでキューブを解く
-                </p>
-                <span class="inline-block bg-white hover:bg-gray-100 text-pink-600 font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    解いてみる →
-                </span>
-            </a>
+                <!-- 6. Face Crop -->
+                <a href="./face-crop/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);">
+                    <div class="text-5xl mb-4">📸</div>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-3">
+                        Face Crop
+                    </h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        顔を自動検出して画像をクロップするツール
+                    </p>
+                    <span class="inline-block bg-blue-400 text-white text-sm font-bold py-2 px-5 rounded-full">
+                        試してみる
+                    </span>
+                </a>
 
-            <!-- Figure Skating Report -->
-            <a href="./figure-skating-report/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);">
-                <div class="text-6xl mb-4">⛸️</div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-4">
-                    フィギュアスケート理論
-                </h2>
-                <p class="text-gray-700 mb-6">
-                    動画と解説で学ぶスケート練習方法と理論の総合レポート
-                </p>
-                <span class="inline-block bg-white hover:bg-gray-100 text-blue-500 font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    読む →
-                </span>
-            </a>
+                <!-- 7. Fitness Bike -->
+                <a href="./fitness-bike/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);">
+                    <div class="text-5xl mb-4">🚴‍♂️</div>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-3">
+                        Fitness Bike
+                    </h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        Bluetooth対応フィットネスバイクコントローラー
+                    </p>
+                    <span class="inline-block bg-red-400 text-white text-sm font-bold py-2 px-5 rounded-full">
+                        使ってみる
+                    </span>
+                </a>
 
-            <!-- Ruby Sketch WASM -->
-            <a href="./ruby-sketch-wasm/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #e94560 0%, #16213e 100%);">
-                <div class="text-6xl mb-4">💎</div>
-                <h2 class="text-3xl font-bold text-white mb-4">
-                    Ruby Sketch WASM
-                </h2>
-                <p class="text-white opacity-90 mb-6">
-                    ブラウザでRubyクリエイティブコーディング！Processing風スケッチ
-                </p>
-                <span class="inline-block bg-white hover:bg-gray-100 text-red-600 font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    描いてみる →
-                </span>
-            </a>
+            </div>
+        </section>
 
-            <!-- Functional Programming Tutorial -->
-            <a href="./functional-programming-tutorial/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #0d9488 0%, #6366f1 100%);">
-                <div class="text-6xl mb-4">λ</div>
-                <h2 class="text-3xl font-bold text-white mb-4">
-                    関数型プログラミング
-                </h2>
-                <p class="text-white opacity-90 mb-6">
-                    MoonBit, Haskell, Elixir, TypeScriptで学ぶ関数型の世界
-                </p>
-                <span class="inline-block bg-white hover:bg-gray-100 text-teal-600 font-bold py-3 px-6 rounded-full transform hover:scale-105 transition-all duration-300">
-                    学ぶ →
-                </span>
-            </a>
-        </div>
+        <!-- Documents Section -->
+        <section class="max-w-6xl mx-auto mb-12">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                <span>Documents</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-        <footer class="text-center mt-12">
-            <p class="text-white opacity-75">
-                Made with ❤️ for fun and learning
+                <!-- フィギュアスケート理論 -->
+                <a href="./figure-skating-report/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);">
+                    <div class="text-5xl mb-4">⛸️</div>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-3">
+                        フィギュアスケート理論
+                    </h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        動画と解説で学ぶスケート練習方法と理論の総合レポート
+                    </p>
+                    <span class="inline-block bg-white text-blue-500 text-sm font-bold py-2 px-5 rounded-full">
+                        読む
+                    </span>
+                </a>
+
+                <!-- 関数型プログラミング -->
+                <a href="./functional-programming-tutorial/" class="app-card rounded-2xl p-8 text-center shadow-xl block no-underline" style="background: linear-gradient(135deg, #0d9488 0%, #6366f1 100%);">
+                    <div class="text-5xl mb-4">λ</div>
+                    <h3 class="text-2xl font-bold text-white mb-3">
+                        関数型プログラミング
+                    </h3>
+                    <p class="text-white opacity-90 text-sm mb-4">
+                        MoonBit, Haskell, Elixir, TypeScriptで学ぶ関数型の世界
+                    </p>
+                    <span class="inline-block bg-white text-teal-600 text-sm font-bold py-2 px-5 rounded-full">
+                        学ぶ
+                    </span>
+                </a>
+
+            </div>
+        </section>
+
+        <footer class="text-center mt-8">
+            <p class="text-white opacity-75 text-sm">
+                Made with love for fun and learning
             </p>
         </footer>
     </div>
