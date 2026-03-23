@@ -4959,17 +4959,21 @@ end`,
           return;
         }
         try {
-          rubyVM.eval('RubyVM::AbstractSyntaxTree.parse(' + JSON.stringify(code) + ')');
+          // Use eval with a wrapper that catches SyntaxError but doesn't execute
+          rubyVM.eval('RubyVM::InstructionSequence.compile(' + JSON.stringify(code) + ')');
           syntaxStatusEl.textContent = ' ✓';
           syntaxStatusEl.style.color = '#10b981';
-          // Clear syntax errors from console if previously shown
+          // Clear syntax errors from console
+          const existingErrors = consolePanel.querySelectorAll('.syntax-error-line');
+          existingErrors.forEach(el => el.remove());
         } catch(e) {
           const msg = e.message || '';
           if (msg.includes('syntax error') || msg.includes('SyntaxError')) {
-            // Extract line number and message
-            const lineMatch = msg.match(/\(eval\):(\d+):/);
+            // Extract line number: format is "eval:LINE:" or "<compiled>:LINE:"
+            const lineMatch = msg.match(/(?:eval|<compiled>):(\d+):/);
             const lineNum = lineMatch ? lineMatch[1] : '?';
-            const errorDetail = msg.split('\n')[0].replace(/.*syntax error,?\s*/, '').trim() || msg.split('\n')[0];
+            const errorDetail = msg.split('\n').find(l => l.includes('syntax error')) || msg.split('\n')[0];
+            const cleanError = errorDetail.replace(/.*syntax error,?\s*/, '').trim();
             syntaxStatusEl.textContent = ` ⚠ line ${lineNum}`;
             syntaxStatusEl.style.color = '#ef4444';
             // Show error detail in console (clear previous syntax errors first)
@@ -4977,7 +4981,7 @@ end`,
             existingSyntaxErrors.forEach(el => el.remove());
             const line = document.createElement('div');
             line.className = 'console-line error syntax-error-line';
-            line.textContent = `⚠ Syntax error (line ${lineNum}): ${errorDetail}`;
+            line.textContent = `⚠ Syntax error (line ${lineNum}): ${cleanError}`;
             consolePanel.appendChild(line);
             consolePanel.scrollTop = consolePanel.scrollHeight;
           } else {
