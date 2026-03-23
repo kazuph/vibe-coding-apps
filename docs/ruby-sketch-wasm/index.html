@@ -107,6 +107,7 @@
       display: flex;
       flex: 1;
       overflow: hidden;
+      min-height: 0;
     }
 
     /* ── Sidebar ── */
@@ -241,16 +242,20 @@
     .editor-panel {
       flex: 1;
       min-width: 0;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       border-right: 1px solid #0f3460;
+      order: 1;
     }
 
     .canvas-panel {
       flex: 1;
       min-width: 0;
+      min-height: 0;
       display: flex;
       flex-direction: column;
+      order: 2;
     }
 
     .panel-header {
@@ -280,6 +285,7 @@
     .editor-container {
       position: relative;
       flex: 1;
+      min-height: 0;
       overflow: hidden;
     }
 
@@ -383,8 +389,11 @@
       color: #666;
     }
 
-    /* ── Mobile ── */
-    @media (max-width: 768px) {
+    /*
+     * スタック表示: 狭い幅・縦長（スマホ・縦持ちタブレット・狭いウィンドウ）
+     * ソース（エディタ）を上、キャンバス＋コンソールを下に配置
+     */
+    @media (max-width: 900px), (max-aspect-ratio: 12/13) {
       .sidebar-toggle { display: block; }
 
       .sidebar {
@@ -410,10 +419,60 @@
 
       .sidebar-overlay.visible { display: block; }
 
-      .main-container { flex-direction: column; }
-      .editor-panel, .canvas-panel { width: 100%; flex: 1; }
-      .editor-panel { border-right: none; border-bottom: 1px solid #0f3460; }
-      .console-panel { height: 80px; }
+      .main-container {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .editor-panel {
+        width: 100%;
+        flex: 1 1 42%;
+        max-height: min(48vh, 360px);
+        min-height: 140px;
+        border-right: none;
+        border-bottom: 1px solid #0f3460;
+        order: 1;
+      }
+
+      .canvas-panel {
+        width: 100%;
+        flex: 1 1 58%;
+        min-height: 180px;
+        order: 2;
+      }
+
+      .canvas-wrapper {
+        min-height: 0;
+      }
+
+      canvas#sketchCanvas {
+        max-width: 100%;
+        width: auto !important;
+        height: auto !important;
+      }
+
+      .console-panel {
+        height: 72px;
+        flex-shrink: 0;
+      }
+
+      header {
+        flex-wrap: wrap;
+        row-gap: 6px;
+      }
+
+      header h1 {
+        font-size: 16px;
+      }
+
+      .header-actions .btn {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      .editor-run-hint {
+        display: none;
+      }
     }
   </style>
 </head>
@@ -446,7 +505,7 @@
           <span>editor.rb</span>
           <span class="current-example-name" id="currentExampleName">Hello World</span>
         </div>
-        <span style="font-size:11px;color:#555;">Ctrl+Enter to run<span id="syntaxStatus" class="syntax-status"></span></span>
+        <span style="font-size:11px;color:#555;"><span class="editor-run-hint">Ctrl+Enter to run</span><span id="syntaxStatus" class="syntax-status"></span></span>
       </div>
       <div class="editor-container">
         <pre id="editorHighlight" class="editor-highlight" aria-hidden="true"></pre>
@@ -498,6 +557,22 @@
     const editorHighlight = document.getElementById('editorHighlight');
     const syntaxStatusEl = document.getElementById('syntaxStatus');
 
+    const stackedLayoutMq = window.matchMedia('(max-width: 900px), (max-aspect-ratio: 12/13)');
+    function isStackedLayout() {
+      return stackedLayoutMq.matches;
+    }
+
+    /** CSS でキャンバス表示サイズが縮む場合、Ruby 側の座標系（バッファ解像度）に変換 */
+    function clientToCanvasXY(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const dw = rect.width || 1;
+      const dh = rect.height || 1;
+      return {
+        x: Math.round((clientX - rect.left) * (canvas.width / dw)),
+        y: Math.round((clientY - rect.top) * (canvas.height / dh)),
+      };
+    }
+
     let jsMousePressed = false;
     let jsMouseButton = 0;
 
@@ -507,9 +582,9 @@
 
     // ── Mouse/Key events on canvas ──
     canvas.addEventListener('mousemove', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      jsMouseX = Math.round(e.clientX - rect.left);
-      jsMouseY = Math.round(e.clientY - rect.top);
+      const p = clientToCanvasXY(e.clientX, e.clientY);
+      jsMouseX = p.x;
+      jsMouseY = p.y;
       if (running && rubyVM) {
         try {
           if (jsMousePressed) {
@@ -522,6 +597,9 @@
     });
 
     canvas.addEventListener('mousedown', (e) => {
+      const p = clientToCanvasXY(e.clientX, e.clientY);
+      jsMouseX = p.x;
+      jsMouseY = p.y;
       jsMousePressed = true;
       jsMouseButton = e.button === 0 ? 37 : e.button === 2 ? 39 : 0;
       if (running && rubyVM) {
@@ -569,14 +647,17 @@
     // ── Touch events on canvas ──
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
       const touch = e.touches[0];
-      jsMouseX = Math.round(touch.clientX - rect.left);
-      jsMouseY = Math.round(touch.clientY - rect.top);
+      const p = clientToCanvasXY(touch.clientX, touch.clientY);
+      jsMouseX = p.x;
+      jsMouseY = p.y;
       jsMousePressed = true;
       if (running && rubyVM) {
         try {
-          const touchData = Array.from(e.touches).map(t => `{x: ${Math.round(t.clientX - rect.left)}, y: ${Math.round(t.clientY - rect.top)}, id: ${t.identifier}}`).join(', ');
+          const touchData = Array.from(e.touches).map(t => {
+            const pt = clientToCanvasXY(t.clientX, t.clientY);
+            return `{x: ${pt.x}, y: ${pt.y}, id: ${t.identifier}}`;
+          }).join(', ');
           rubyVM.eval(`$__p_mouse_pressed = true; $__p_mouse_x = ${jsMouseX}; $__p_mouse_y = ${jsMouseY}; $__p_touches = [${touchData}]; Sketch.mouse_pressed_block&.call; Sketch.touch_started_block&.call`);
         } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
       }
@@ -584,13 +665,16 @@
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
       const touch = e.touches[0];
-      jsMouseX = Math.round(touch.clientX - rect.left);
-      jsMouseY = Math.round(touch.clientY - rect.top);
+      const p = clientToCanvasXY(touch.clientX, touch.clientY);
+      jsMouseX = p.x;
+      jsMouseY = p.y;
       if (running && rubyVM) {
         try {
-          const touchData = Array.from(e.touches).map(t => `{x: ${Math.round(t.clientX - rect.left)}, y: ${Math.round(t.clientY - rect.top)}, id: ${t.identifier}}`).join(', ');
+          const touchData = Array.from(e.touches).map(t => {
+            const pt = clientToCanvasXY(t.clientX, t.clientY);
+            return `{x: ${pt.x}, y: ${pt.y}, id: ${t.identifier}}`;
+          }).join(', ');
           rubyVM.eval(`$__p_mouse_x = ${jsMouseX}; $__p_mouse_y = ${jsMouseY}; $__p_touches = [${touchData}]; Sketch.mouse_dragged_block&.call; Sketch.touch_moved_block&.call`);
         } catch(err) { logConsole(`Event error: ${err.message}`, 'error'); }
       }
@@ -898,7 +982,7 @@
           const id = item.dataset.id;
           selectExample(id);
           // On mobile, close sidebar after selection
-          if (window.innerWidth <= 768) {
+          if (isStackedLayout()) {
             sidebar.classList.add('collapsed');
             sidebarOverlay.classList.remove('visible');
           }
@@ -5036,6 +5120,15 @@ end`,
     } else {
       selectExample('hello');
     }
+
+    function syncSidebarForLayout() {
+      if (isStackedLayout()) {
+        sidebar.classList.add('collapsed');
+        sidebarOverlay.classList.remove('visible');
+      }
+    }
+    syncSidebarForLayout();
+    stackedLayoutMq.addEventListener('change', syncSidebarForLayout);
 
     initRuby();
   </script>
