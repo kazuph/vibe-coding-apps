@@ -198,12 +198,12 @@ end
 Playwright による E2E テストが用意されています。
 
 ```bash
-# ローカルサーバー起動
+# ローカルサーバー起動（リポジトリルートから）
 python3 -m http.server 8765 -d docs/ruby-sketch-wasm/
 
-# テスト実行
+# テスト実行（playwright.config.ts の baseURL を使用）
 cd e2e/features/ruby-sketch-sidebar/
-npx playwright test sidebar.spec.ts
+npx playwright test --config=playwright.config.ts
 ```
 
 ## 技術スタック

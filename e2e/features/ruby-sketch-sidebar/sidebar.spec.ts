@@ -1,10 +1,8 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = 'http://localhost:8765';
-
 test.describe('Ruby Sketch WASM - Sidebar & Examples', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(BASE_URL);
+    await page.goto('/');
     // Wait for Ruby VM to load
     await page.waitForFunction(
       () => document.getElementById('status')?.textContent?.includes('Ready'),
@@ -12,17 +10,18 @@ test.describe('Ruby Sketch WASM - Sidebar & Examples', () => {
     );
   });
 
-  test('sidebar is visible with all 5 categories', async ({ page }) => {
+  test('sidebar is visible with all 6 categories', async ({ page }) => {
     const sidebar = page.locator('#sidebar');
     await expect(sidebar).toBeVisible();
 
     const categories = page.locator('.category-header');
-    await expect(categories).toHaveCount(5);
+    await expect(categories).toHaveCount(6);
 
     const categoryNames = await categories.allTextContents();
     expect(categoryNames.join(' ')).toContain('Basics');
     expect(categoryNames.join(' ')).toContain('Animation');
     expect(categoryNames.join(' ')).toContain('Interactive');
+    expect(categoryNames.join(' ')).toContain('Media');
     expect(categoryNames.join(' ')).toContain('Simulation');
     expect(categoryNames.join(' ')).toContain('Games');
   });
@@ -58,7 +57,7 @@ test.describe('Ruby Sketch WASM - Sidebar & Examples', () => {
     await expect(interactiveItems).not.toBeVisible();
   });
 
-  test('all 18 examples exist in sidebar', async ({ page }) => {
+  test('all 30 examples exist in sidebar', async ({ page }) => {
     // Expand all categories first
     const categories = page.locator('.category');
     for (let i = 0; i < await categories.count(); i++) {
@@ -69,7 +68,7 @@ test.describe('Ruby Sketch WASM - Sidebar & Examples', () => {
     }
 
     const items = page.locator('.example-item');
-    await expect(items).toHaveCount(18);
+    await expect(items).toHaveCount(30);
   });
 
   test('Flappy Bird runs without errors', async ({ page }) => {
