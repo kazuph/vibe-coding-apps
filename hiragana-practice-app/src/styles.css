@@ -54,7 +54,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 10px 16px;
   background: white;
   border-bottom: 1px solid rgba(0,0,0,0.06);
   flex-shrink: 0;
@@ -64,33 +64,25 @@ body {
   width: 100%;
 }
 
-.app-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.5px;
-  flex-shrink: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.header-left {
+  flex-shrink: 0;
 }
 
-/* Mode toggle (hiragana/katakana) */
+/* Mode toggle */
 .mode-toggle {
   display: flex;
   background: #f0ebe4;
-  border-radius: 8px;
-  padding: 2px;
+  border-radius: 12px;
+  padding: 3px;
   flex-shrink: 0;
 }
 
 .mode-btn {
-  padding: 5px 12px;
+  padding: 10px 18px;
   border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 10px;
+  font-size: 24px;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
@@ -104,11 +96,11 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-/* Grade selector for kanji mode */
+/* Grade selector */
 .grade-selector {
   display: flex;
-  gap: 4px;
-  padding: 4px 12px;
+  gap: 6px;
+  padding: 6px 16px;
   background: white;
   border-bottom: 1px solid rgba(0,0,0,0.06);
   overflow-x: auto;
@@ -116,10 +108,10 @@ body {
 }
 
 .grade-btn {
-  padding: 4px 12px;
+  padding: 8px 18px;
   border: 1px solid #e0d8ce;
-  border-radius: 16px;
-  font-size: 12px;
+  border-radius: 20px;
+  font-size: 22px;
   font-weight: 600;
   cursor: pointer;
   background: transparent;
@@ -141,7 +133,7 @@ body {
 
 .header-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
   flex-shrink: 0;
 }
@@ -149,14 +141,14 @@ body {
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
+  gap: 6px;
+  padding: 10px 18px;
   border: none;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: 12px;
+  font-size: 22px;
   white-space: nowrap;
   flex-shrink: 0;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
@@ -180,13 +172,25 @@ body {
   background: #e5ddd3;
 }
 
+.btn-back {
+  background: #f0ebe4;
+  color: var(--text-primary);
+  font-size: 22px;
+  padding: 10px 16px;
+  border-radius: 10px;
+}
+
+.btn-back:hover {
+  background: #e5ddd3;
+}
+
 .btn-icon {
-  padding: 6px 10px;
-  font-size: 18px;
+  padding: 8px 12px;
+  font-size: 24px;
   background: transparent;
   border: none;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 10px;
   transition: background 0.15s;
 }
 
@@ -195,13 +199,140 @@ body {
 }
 
 .btn-icon-sm {
-  padding: 4px 8px;
-  font-size: 16px;
+  padding: 6px 10px;
+  font-size: 22px;
   background: #f0ebe4;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
-/* Main content area - practice view */
+/* ==================== */
+/* Start screen         */
+/* ==================== */
+.start-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  gap: 16px;
+}
+
+.start-title {
+  font-size: 42px;
+  font-weight: 900;
+  color: var(--text-primary);
+  font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
+}
+
+.start-subtitle {
+  font-size: 24px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.start-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 400px;
+  margin-top: 12px;
+}
+
+.start-mode-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: white;
+  border: 2px solid #e8e0d6;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  font-family: inherit;
+}
+
+.start-mode-card:hover {
+  border-color: var(--accent);
+  background: #fff8f4;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+.start-mode-card:active {
+  transform: translateY(0);
+}
+
+.start-mode-icon {
+  font-size: 40px;
+  flex-shrink: 0;
+}
+
+.start-mode-label {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.start-mode-desc {
+  font-size: 20px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Row selection overlay */
+.row-select-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.row-select-panel {
+  background: white;
+  border-radius: 24px 24px 0 0;
+  width: 100%;
+  max-width: 500px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 24px 20px 36px;
+  animation: slideUp 0.3s ease;
+}
+
+.row-select-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.row-select-btn {
+  padding: 20px;
+  border: 2px solid #e8e0d6;
+  border-radius: 16px;
+  font-size: 28px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: all 0.15s;
+  font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
+}
+
+.row-select-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* ==================== */
+/* Practice view        */
+/* ==================== */
 .practice-area {
   flex: 1;
   display: flex;
@@ -216,8 +347,8 @@ body {
 /* Canvas container */
 .canvas-container {
   position: relative;
-  width: min(calc(100vw - 40px), calc(100vh - 180px), 600px);
-  height: min(calc(100vw - 40px), calc(100vh - 180px), 600px);
+  width: min(calc(100vw - 40px), calc(100vh - 200px), 600px);
+  height: min(calc(100vw - 40px), calc(100vh - 200px), 600px);
   max-width: calc(100vw - 40px);
   aspect-ratio: 1;
   background: white;
@@ -241,11 +372,11 @@ body {
   top: 8px;
   right: 8px;
   z-index: 3;
-  padding: 6px 12px;
+  padding: 10px 18px;
   border: none;
   border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 700;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.9);
   color: var(--accent);
@@ -278,9 +409,9 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;
-  padding: 8px 20px;
+  padding: 12px 28px;
   border-radius: 24px;
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
   font-family: inherit;
   animation: scorePopIn 0.3s ease;
@@ -307,18 +438,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 16px;
+  padding: 12px 16px;
   flex-shrink: 0;
 }
 
 .char-nav-btn {
-  width: 44px;
-  height: 44px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   border: 2px solid #e0d8ce;
   background: white;
-  font-size: 20px;
+  font-size: 28px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -339,18 +470,19 @@ body {
 }
 
 .current-char-display {
-  font-size: 28px;
+  font-size: 56px;
   font-weight: 900;
   color: var(--text-primary);
-  min-width: 60px;
+  min-width: 80px;
   text-align: center;
   font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
 }
 
 .stroke-info {
-  font-size: 12px;
+  font-size: 22px;
   color: var(--text-secondary);
   text-align: center;
+  font-weight: 600;
 }
 
 /* Character selection panel */
@@ -377,7 +509,7 @@ body {
   max-width: 600px;
   max-height: 85vh;
   overflow-y: auto;
-  padding: 20px 16px 32px;
+  padding: 24px 20px 36px;
   animation: slideUp 0.3s ease;
 }
 
@@ -394,17 +526,17 @@ body {
 }
 
 .char-select-title {
-  font-size: 18px;
+  font-size: 28px;
   font-weight: 700;
 }
 
 .char-select-close {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: none;
   background: #f0ebe4;
-  font-size: 18px;
+  font-size: 22px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -419,17 +551,17 @@ body {
 }
 
 .gojuon-row-label {
-  font-size: 11px;
+  font-size: 16px;
   color: var(--text-secondary);
-  font-weight: 600;
-  padding: 8px 4px 2px;
+  font-weight: 700;
+  padding: 10px 4px 4px;
   letter-spacing: 1px;
 }
 
 .gojuon-row {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
+  gap: 6px;
 }
 
 .gojuon-cell {
@@ -439,7 +571,7 @@ body {
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg-secondary);
   cursor: pointer;
   transition: all 0.15s;
@@ -464,23 +596,24 @@ body {
 .gojuon-cell.completed::after {
   content: '\2713';
   position: absolute;
-  top: 2px;
-  right: 4px;
-  font-size: 10px;
+  top: 3px;
+  right: 5px;
+  font-size: 14px;
   color: var(--success-color);
 }
 
 .gojuon-cell-char {
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
   line-height: 1;
   font-family: "Klee One", "Zen Kurenaido", "Noto Sans JP", serif;
 }
 
 .gojuon-cell-romaji {
-  font-size: 9px;
+  font-size: 13px;
   color: var(--text-secondary);
   margin-top: 2px;
+  font-weight: 600;
 }
 
 .gojuon-cell.active .gojuon-cell-romaji {
@@ -494,14 +627,14 @@ body {
 /* Stroke order indicator */
 .stroke-order-dots {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   justify-content: center;
   margin-top: 4px;
 }
 
 .stroke-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #e0d8ce;
   transition: background 0.3s;
@@ -553,7 +686,7 @@ body {
 }
 
 .success-text {
-  font-size: 22px;
+  font-size: 32px;
   font-weight: 700;
   color: var(--success-color);
   margin-top: 8px;
@@ -563,15 +696,15 @@ body {
   display: flex;
   gap: 12px;
   justify-content: center;
-  margin-top: 20px;
+  margin-top: 24px;
 }
 
 .btn-retry {
-  padding: 10px 24px;
+  padding: 16px 32px;
   background: #f0ebe4;
   color: var(--text-primary);
-  border-radius: 24px;
-  font-size: 16px;
+  border-radius: 28px;
+  font-size: 26px;
   font-weight: 700;
 }
 
@@ -580,11 +713,11 @@ body {
 }
 
 .btn-next {
-  padding: 10px 24px;
+  padding: 16px 32px;
   background: var(--accent);
   color: white;
-  border-radius: 24px;
-  font-size: 16px;
+  border-radius: 28px;
+  font-size: 26px;
   font-weight: 700;
 }
 
@@ -592,35 +725,12 @@ body {
   background: #d04e2e;
 }
 
-/* Pen thickness selector */
-.pen-thickness {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.pen-dot {
-  border-radius: 50%;
-  background: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 2px solid transparent;
-}
-
-.pen-dot.active {
-  border-color: var(--accent);
-}
-
-.pen-dot:hover {
-  opacity: 0.7;
-}
-
 /* License footer */
 .license-footer {
   text-align: center;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-secondary);
-  padding: 2px 8px 6px;
+  padding: 4px 8px 8px;
   flex-shrink: 0;
 }
 
@@ -629,17 +739,26 @@ body {
   text-decoration: underline;
 }
 
-/* Responsive */
+/* Responsive - small screens */
 @media (max-width: 450px) {
-  .app-header { padding: 6px 8px; gap: 4px; }
-  .app-title { font-size: 13px; }
-  .header-actions { gap: 4px; }
-  .btn { padding: 4px 8px; font-size: 11px; border-radius: 6px; }
-  .gojuon-cell-char { font-size: 20px; }
-  .bottom-controls { padding: 6px 10px; }
+  .app-header { padding: 8px 10px; gap: 6px; }
+  .mode-btn { padding: 6px 12px; font-size: 16px; }
+  .header-actions { gap: 6px; }
+  .btn { padding: 6px 12px; font-size: 16px; border-radius: 8px; }
+  .btn-back { font-size: 16px; padding: 6px 10px; }
+  .bottom-controls { padding: 8px 12px; }
+  .current-char-display { font-size: 40px; }
+  .stroke-info { font-size: 16px; }
   .success-char { font-size: 80px; }
+  .success-text { font-size: 24px; }
   .success-buttons { gap: 8px; }
-  .btn-retry, .btn-next { padding: 8px 18px; font-size: 14px; }
+  .btn-retry, .btn-next { padding: 12px 22px; font-size: 20px; }
+  .start-title { font-size: 28px; }
+  .start-subtitle { font-size: 18px; }
+  .start-mode-label { font-size: 20px; }
+  .start-mode-desc { font-size: 14px; }
+  .start-mode-icon { font-size: 32px; }
+  .demo-btn { font-size: 16px; padding: 6px 12px; }
 }
 
 @media (min-width: 768px) {
@@ -649,6 +768,13 @@ body {
     max-height: 80vh;
   }
   .char-select-overlay {
+    align-items: center;
+  }
+  .row-select-panel {
+    border-radius: 24px;
+    margin-bottom: 20px;
+  }
+  .row-select-overlay {
     align-items: center;
   }
 }
