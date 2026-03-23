@@ -1330,7 +1330,7 @@ draw do
     # Bird idle animation
     bird_display_y = 200 + Math.sin(@frame * 0.1) * 10
     textSize 30
-    text "\\u{1F414}", 185, bird_display_y
+    text "🐔", 185, bird_display_y
   else
     if !@game_over
       # Physics
@@ -1379,7 +1379,7 @@ draw do
 
     # Draw bird
     textSize 28
-    text "\\u{1F414}", 130, @bird_y.to_i
+    text "🐔", 130, @bird_y.to_i
 
     # Score
     fill 255
@@ -1572,18 +1572,18 @@ draw do
   # Draw enemies
   @enemies.each do |e|
     textSize 28
-    text "\\u{1F47E}", e[:x].to_i - 14, e[:y].to_i
+    text "👾", e[:x].to_i - 14, e[:y].to_i
   end
 
   # Draw player
   textSize 28
-  text "\\u{1F680}", @px.to_i - 14, @py.to_i
+  text "🚀", @px.to_i - 14, @py.to_i
 
   # HUD
   fill 255
   textSize 14
   text "SCORE: \#{@score}", 10, 20
-  text "\\u{2764}\\u{FE0F} x \#{@lives}", 330, 20
+  text "❤️ x \#{@lives}", 330, 20
 
   fill 150
   textSize 11
@@ -1743,7 +1743,7 @@ draw do
   fill 200
   textSize 14
   text "Score: \#{@score}", 10, 20
-  text "\\u{2764}\\u{FE0F} x \#{@lives}", 330, 20
+  text "❤️ x \#{@lives}", 330, 20
 
   if @state == :gameover
     fill "rgba(0,0,0,0.6)"
@@ -1870,7 +1870,7 @@ draw do
     fill 200
     textSize 14
     text "Score: \#{@score}", 10, 18
-    text "\\u{1F40D} \#{@snake.size}", 330, 18
+    text "🐍 \#{@snake.size}", 330, 18
   end
 end
 
@@ -1902,7 +1902,7 @@ end
 
 def draw_food
   textSize 16
-  text "\\u{1F34E}", @food[:x] * CELL + 2, @food[:y] * CELL + 16
+  text "🍎", @food[:x] * CELL + 2, @food[:y] * CELL + 16
 end
 
 keyPressed do
@@ -2221,7 +2221,7 @@ draw do
 
         if @board[r][c] == -1
           textSize 18
-          text "\\u{1F4A3}", x + 6, y + 22
+          text "💣", x + 6, y + 22
         elsif @board[r][c] > 0
           fill NUM_COLORS[@board[r][c]] || "white"
           noStroke
@@ -2242,7 +2242,7 @@ draw do
         if @flagged[r][c]
           noStroke
           textSize 16
-          text "\\u{1F6A9}", x + 6, y + 22
+          text "🚩", x + 6, y + 22
         end
       end
     end
@@ -2252,7 +2252,7 @@ draw do
   fill 200
   noStroke
   textSize 14
-  text "\\u{1F4A3} \#{@mines_left}", 10, 25
+  text "💣 \#{@mines_left}", 10, 25
   text "Click: reveal | Long-press: flag", 120, 25
 
   if @game_over
