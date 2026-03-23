@@ -1849,11 +1849,39 @@ end`,
 
       // ── Games ──
       flappy: `# Flappy Bird - Click or Space to flap!
+# --- Flappy Bird 専用（🐔）— 向き・回転は縦速度ベース。Danmaku の ROCKET_* / 矢印向きとは別実装 ---
 GRAVITY = 0.4
 FLAP_POWER = -6.5
 PIPE_SPEED = 2.5
 PIPE_GAP = 120
 PIPE_WIDTH = 50
+# 🐔 鳥絵文字: フォント由来で既に斜め（約45°）なのでベース回転は 0。右向きは X 反転のみ。
+# （以前は BIRD_ROT_RAD でさらに45°足して二重になっていた）
+BIRD_ROT_RAD = 0.0
+BIRD_FLIP_X = -1
+# 縦速度 @bird_vy に応じた首振り（vy<0 上昇→上向き、vy>0 落下→下向き）
+BIRD_VY_UP = -7.0
+BIRD_VY_DOWN = 9.0
+BIRD_TILT_UP = -Math::PI / 5.0
+BIRD_TILT_DOWN = Math::PI / 4.0
+
+def bird_tilt_from_vy(vy)
+  vy = vy.clamp(BIRD_VY_UP, BIRD_VY_DOWN)
+  t = (vy - BIRD_VY_UP) / (BIRD_VY_DOWN - BIRD_VY_UP)
+  BIRD_TILT_UP + t * (BIRD_TILT_DOWN - BIRD_TILT_UP)
+end
+
+# Flappy 専用（Danmaku のロケット描画とは別）
+def draw_bird_emoji(x, y, size, extra_rot = 0.0)
+  pushMatrix do
+    translate x, y
+    rotate BIRD_ROT_RAD + extra_rot
+    scale BIRD_FLIP_X, 1
+    textAlign :center, :center
+    textSize size
+    text "🐔", 0, 0
+  end
+end
 
 setup do
   size 400, 400
@@ -1888,10 +1916,11 @@ draw do
     textSize 16
     text "Click or Space to start", 100, 200
 
-    # Bird idle animation
-    bird_display_y = 200 + Math.sin(@frame * 0.1) * 10
-    textSize 30
-    text "🐔", 185, bird_display_y
+    # Bird idle animation（上下に漂う速度に合わせて首も振る）
+    bob = @frame * 0.1
+    bird_display_y = 200 + Math.sin(bob) * 10
+    idle_vy = Math.cos(bob) * 1.0
+    draw_bird_emoji 185, bird_display_y, 30, bird_tilt_from_vy(idle_vy * 6.0)
   else
     if !@game_over
       # Physics
@@ -1938,9 +1967,8 @@ draw do
       rect p[:x] - 3, p[:gap_y] + PIPE_GAP, PIPE_WIDTH + 6, 15
     end
 
-    # Draw bird
-    textSize 28
-    text "🐔", 130, @bird_y.to_i
+    # Draw bird（上昇中は上向き、落下中は下向き）
+    draw_bird_emoji 130, @bird_y.to_i, 28, bird_tilt_from_vy(@bird_vy)
 
     # Score
     fill 255
@@ -1986,6 +2014,10 @@ keyPressed do
 end`,
 
       danmaku: `# Danmaku Shooter - Arrow keys to move, auto-fire!
+# --- Danmaku Shooter 専用（🚀）— 弾は常に上向き。機体は移動方向に応じて回転しない（絵文字の見た目補正のみ）。Flappy とは別 ---
+# 🚀 絵文字補正 + 反時計回り約23°（-π/8 - 20° - 3°）
+ROCKET_ANGLE_BIAS = -Math::PI / 8.0 - 20.0 * Math::PI / 180.0 - 3.0 * Math::PI / 180.0
+
 setup do
   size 400, 400
   @px = 200.0
@@ -2136,9 +2168,14 @@ draw do
     text "👾", e[:x].to_i - 14, e[:y].to_i
   end
 
-  # Draw player
-  textSize 28
-  text "🚀", @px.to_i - 14, @py.to_i
+  # 🚀 移動に連動した回転はなし（上下キーでの追加傾きもなし）。ROCKET_ANGLE_BIAS のみ
+  pushMatrix do
+    translate @px, @py
+    rotate ROCKET_ANGLE_BIAS
+    textAlign :center, :center
+    textSize 28
+    text "🚀", 0, 0
+  end
 
   # HUD
   fill 255

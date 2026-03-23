@@ -86,6 +86,41 @@ test.describe('Ruby Sketch WASM - Sidebar & Examples', () => {
     await expect(status).toHaveText('Running');
   });
 
+  test('Flappy Bird actually paints canvas (pipes/ground/bird, not sky-only)', async ({ page }) => {
+    await page.click('.example-item[data-id="flappy"]');
+    await page.click('#runBtn');
+    await expect(page.locator('#status')).toHaveText('Running', { timeout: 60_000 });
+    await page.waitForTimeout(2000);
+
+    const consoleText = await page.locator('#consolePanel').textContent();
+    expect(consoleText).not.toMatch(/Runtime error|error/i);
+
+    // 空のまま／draw 失敗だと全面が空色に近いだけになる。緑の地面・パイプ・絵文字のいずれかで非空色ピクセルが出ること
+    await page.waitForFunction(
+      () => {
+        const el = document.getElementById('sketchCanvas');
+        if (!el || !(el instanceof HTMLCanvasElement)) return false;
+        const ctx = el.getContext('2d');
+        if (!ctx) return false;
+        const { width: w, height: h } = el;
+        const img = ctx.getImageData(0, 0, w, h).data;
+        const notSky = (i: number) => {
+          const r = img[i];
+          const g = img[i + 1];
+          const b = img[i + 2];
+          return Math.abs(r - 135) > 30 || Math.abs(g - 206) > 30 || Math.abs(b - 235) > 30;
+        };
+        let count = 0;
+        for (let i = 0; i < img.length; i += 4 * 8) {
+          if (notSky(i)) count++;
+          if (count > 100) return true;
+        }
+        return false;
+      },
+      { timeout: 30_000 }
+    );
+  });
+
   test('Danmaku Shooter runs without errors', async ({ page }) => {
     await page.click('.example-item[data-id="danmaku"]');
     await page.click('#runBtn');
