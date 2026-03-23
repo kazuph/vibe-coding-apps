@@ -4952,28 +4952,39 @@ end`,
     editor.addEventListener('input', () => {
       clearTimeout(syntaxCheckTimer);
       syntaxCheckTimer = setTimeout(() => {
-        if (!rubyVM) return;
+        if (!rubyVM || running) return;
         const code = editor.value;
         if (!code.trim()) {
           syntaxStatusEl.textContent = '';
           return;
         }
         try {
-          rubyVM.eval('begin; ' + 'RubyVM::AbstractSyntaxTree.parse(' + JSON.stringify(code) + '); rescue SyntaxError => e; raise e; end');
-          syntaxStatusEl.textContent = ' OK';
+          rubyVM.eval('RubyVM::AbstractSyntaxTree.parse(' + JSON.stringify(code) + ')');
+          syntaxStatusEl.textContent = ' ✓';
           syntaxStatusEl.style.color = '#10b981';
+          // Clear syntax errors from console if previously shown
         } catch(e) {
           const msg = e.message || '';
           if (msg.includes('syntax error') || msg.includes('SyntaxError')) {
-            syntaxStatusEl.textContent = ' Syntax Error';
+            // Extract line number and message
+            const lineMatch = msg.match(/\(eval\):(\d+):/);
+            const lineNum = lineMatch ? lineMatch[1] : '?';
+            const errorDetail = msg.split('\n')[0].replace(/.*syntax error,?\s*/, '').trim() || msg.split('\n')[0];
+            syntaxStatusEl.textContent = ` ⚠ line ${lineNum}`;
             syntaxStatusEl.style.color = '#ef4444';
+            // Show error detail in console (clear previous syntax errors first)
+            const existingSyntaxErrors = consolePanel.querySelectorAll('.syntax-error-line');
+            existingSyntaxErrors.forEach(el => el.remove());
+            const line = document.createElement('div');
+            line.className = 'console-line error syntax-error-line';
+            line.textContent = `⚠ Syntax error (line ${lineNum}): ${errorDetail}`;
+            consolePanel.appendChild(line);
+            consolePanel.scrollTop = consolePanel.scrollHeight;
           } else {
-            // Not a syntax error (e.g. NameError for RubyVM::AbstractSyntaxTree)
-            // Fall back to simpler check
             syntaxStatusEl.textContent = '';
           }
         }
-      }, 1500);
+      }, 1000);
     });
 
     // ── Init ──
