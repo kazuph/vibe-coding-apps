@@ -2477,6 +2477,10 @@ end`,
               $__p_ellipse_mode = :center
               $__p_shape_vertices = []
               $__p_touches = []
+              $__p_angle_mode = :radians
+              $__p_sprites = []
+              $__p_gravity_x = 0
+              $__p_gravity_y = 0
               @@touch_started_block = nil
               @@touch_moved_block = nil
               @@touch_ended_block = nil
@@ -2663,10 +2667,15 @@ end`,
             end
           end
 
-          def text(str, x, y)
+          def text(str, x, y, w = nil, h = nil)
             if $__p_fill
               $__canvas_ctx.fillStyle = $__p_fill_color
-              $__canvas_ctx.fillText(str.to_s, x, y)
+              if w && h
+                # Draw text centered in bounding box
+                $__canvas_ctx.fillText(str.to_s, x + w / 2.0, y + h / 2.0)
+              else
+                $__canvas_ctx.fillText(str.to_s, x, y)
+              end
             end
           end
 
@@ -2674,18 +2683,33 @@ end`,
             $__canvas_ctx.font = "\#{s}px monospace"
           end
 
-          def textAlign(align)
-            $__canvas_ctx.textAlign = align.to_s
+          def textAlign(h_align, v_align = nil)
+            case h_align
+            when :center, CENTER then $__canvas_ctx.textAlign = "center"
+            when :left, LEFT then $__canvas_ctx.textAlign = "left"
+            when :right, RIGHT then $__canvas_ctx.textAlign = "right"
+            else $__canvas_ctx.textAlign = h_align.to_s
+            end
+            if v_align
+              case v_align
+              when :center, CENTER then $__canvas_ctx.textBaseline = "middle"
+              when :top, UP then $__canvas_ctx.textBaseline = "top"
+              when :bottom, DOWN then $__canvas_ctx.textBaseline = "bottom"
+              else $__canvas_ctx.textBaseline = v_align.to_s
+              end
+            end
           end
 
           def arc(x, y, w, h, start_angle, stop_angle)
+            sa = $__p_angle_mode == :degrees ? start_angle * DEG_TO_RAD : start_angle
+            ea = $__p_angle_mode == :degrees ? stop_angle * DEG_TO_RAD : stop_angle
             rx = [w.to_f / 2, 0.001].max
             ry = [h.to_f / 2, 0.001].max
             $__canvas_ctx.save
             $__canvas_ctx.translate(x, y)
             $__canvas_ctx.scale(rx, ry)
             $__canvas_ctx.beginPath
-            $__canvas_ctx.arc(0, 0, 1, start_angle, stop_angle)
+            $__canvas_ctx.arc(0, 0, 1, sa, ea)
             $__canvas_ctx.restore
             if $__p_fill
               $__canvas_ctx.fillStyle = $__p_fill_color
@@ -2765,10 +2789,19 @@ end`,
           RIGHT = :right
           UP = :up
           DOWN = :down
+          DEGREES = :degrees
+          RADIANS = :radians
+
+          # ── angleMode ──
+          $__p_angle_mode = :radians
 
           # ── colorMode ──
           $__p_color_mode = :rgb
           $__p_color_max = [255.0, 255.0, 255.0, 255.0]
+
+          def angleMode(mode)
+            $__p_angle_mode = mode
+          end
 
           def colorMode(mode, max1 = nil, max2 = nil, max3 = nil, maxA = nil)
             $__p_color_mode = mode
@@ -2978,7 +3011,8 @@ end`,
           end
 
           def rotate(angle)
-            $__canvas_ctx.rotate(angle)
+            a = $__p_angle_mode == :degrees ? angle * DEG_TO_RAD : angle
+            $__canvas_ctx.rotate(a)
           end
 
           def scale(x, y = x)
@@ -3116,6 +3150,28 @@ end`,
             u1 = rand
             u2 = rand
             Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math::PI * u2)
+          end
+
+          # Processing-compatible random()
+          def random(*args)
+            case args.size
+            when 0
+              rand
+            when 1
+              a = args[0]
+              if a.is_a?(Numeric)
+                rand * a.to_f
+              elsif a.is_a?(Array)
+                a.sample
+              else
+                rand
+              end
+            when 2
+              low, high = args[0].to_f, args[1].to_f
+              low + rand * (high - low)
+            else
+              rand
+            end
           end
 
           # ── Mouse events ──
@@ -3318,6 +3374,168 @@ end`,
             JS.global.call(:__rubySketchPlayTone, freq, duration, type.to_s, volume)
           end
 
+          # ── Sprite class (RubySketch compatible) ──
+          class Sprite
+            attr_accessor :x, :y, :w, :h, :z, :vx, :vy, :angle
+            attr_accessor :dynamic, :restitution, :density, :friction
+            attr_reader :shape
+
+            def initialize(x = 0, y = 0, w = 0, h = 0, shape: nil)
+              @x, @y, @w, @h = x.to_f, y.to_f, w.to_f, h.to_f
+              @z = 0
+              @vx, @vy = 0.0, 0.0
+              @angle = 0.0
+              @dynamic = false
+              @restitution = 0.5
+              @density = 1.0
+              @friction = 0.3
+              @shape = shape
+              @draw_block = nil
+              @update_block = nil
+              @mouse_pressed_block = nil
+              @mouse_released_block = nil
+              @mouse_moved_block = nil
+              @mouse_dragged_block = nil
+              @mouse_clicked_block = nil
+            end
+
+            def pos; createVector(@x, @y); end
+            def pos=(v)
+              if v.is_a?(Array)
+                @x, @y = v[0].to_f, v[1].to_f
+              else
+                @x, @y = v.x.to_f, v.y.to_f
+              end
+            end
+
+            def left; @x; end
+            def right; @x + @w; end
+            def top; @y; end
+            def bottom; @y + @h; end
+
+            def right=(v); @x = v - @w; end
+            def bottom=(v); @y = v - @h; end
+
+            def width; @w; end
+            def height; @h; end
+
+            def mouseX; $__p_mouse_x - @x; end
+            def mouseY; $__p_mouse_y - @y; end
+            def pmouseX; $__p_pmouse_x - @x; end
+            def pmouseY; $__p_pmouse_y - @y; end
+            def mouseButton; $__p_mouse_button; end
+            def mousePressed?; $__p_mouse_pressed; end
+
+            def draw(&block); @draw_block = block if block; end
+            def update(&block); @update_block = block if block; end
+            def mousePressed(&block); @mouse_pressed_block = block if block; end
+            def mouseReleased(&block); @mouse_released_block = block if block; end
+            def mouseMoved(&block); @mouse_moved_block = block if block; end
+            def mouseDragged(&block); @mouse_dragged_block = block if block; end
+            def mouseClicked(&block); @mouse_clicked_block = block if block; end
+
+            def _update
+              @update_block&.call
+              if @dynamic
+                @vy += ($__p_gravity_y || 0) / 60.0
+                @vx += ($__p_gravity_x || 0) / 60.0
+                @x += @vx / 60.0
+                @y += @vy / 60.0
+              end
+            end
+
+            def _draw
+              pushMatrix do
+                translate @x, @y
+                if @angle != 0
+                  translate @w / 2.0, @h / 2.0
+                  rotate @angle
+                  translate(-@w / 2.0, -@h / 2.0)
+                end
+                if @draw_block
+                  default_draw = -> { rect 0, 0, @w, @h }
+                  @draw_block.call(&default_draw)
+                else
+                  rect 0, 0, @w, @h
+                end
+              end
+            end
+
+            def _contains?(mx, my)
+              mx >= @x && mx <= @x + @w && my >= @y && my <= @y + @h
+            end
+
+            def _handle_mouse_pressed
+              @mouse_pressed_block&.call if _contains?($__p_mouse_x, $__p_mouse_y)
+            end
+
+            def _handle_mouse_released
+              @mouse_released_block&.call if _contains?($__p_mouse_x, $__p_mouse_y)
+            end
+
+            def _handle_mouse_clicked
+              @mouse_clicked_block&.call if _contains?($__p_mouse_x, $__p_mouse_y)
+            end
+          end
+
+          # Sprite helper functions
+          $__p_sprites = []
+          $__p_gravity_x = 0
+          $__p_gravity_y = 0
+
+          def createSprite(x = 0, y = 0, w = 100, h = 100, shape: nil)
+            sp = Sprite.new(x, y, w, h, shape: shape)
+            $__p_sprites << sp
+            sp
+          end
+
+          def addSprite(sp)
+            $__p_sprites << sp unless $__p_sprites.include?(sp)
+          end
+
+          def removeSprite(sp)
+            $__p_sprites.delete(sp)
+          end
+
+          def sprite(*sprites)
+            sprites.flatten.each do |sp|
+              sp._update
+              sp._draw
+            end
+          end
+
+          def gravity(x, y)
+            $__p_gravity_x = x.to_f
+            $__p_gravity_y = y.to_f
+          end
+
+          # Shape classes for physics (basic)
+          class Circle
+            attr_reader :x, :y, :radius
+            def initialize(x, y, radius)
+              @x, @y, @radius = x.to_f, y.to_f, radius.to_f
+            end
+          end
+
+          class RectShape
+            attr_reader :x, :y, :w, :h
+            def initialize(x, y, w, h)
+              @x, @y, @w, @h = x.to_f, y.to_f, w.to_f, h.to_f
+            end
+          end
+
+          # ── Stubs for compatibility ──
+          def createGraphics(w, h)
+            # Stub - returns nil for now
+            nil
+          end
+
+          def setTitle(t); end
+          def windowWidth; $__p_width; end
+          def windowHeight; $__p_height; end
+          def setInterval(dur, id: nil, &block); end
+          def clearInterval(id); end
+
           # Snake_case aliases
           alias no_fill noFill
           alias no_stroke noStroke
@@ -3359,6 +3577,15 @@ end`,
           alias image_loaded? imageLoaded?
           alias load_sound loadSound
           alias play_tone playTone
+          alias angle_mode angleMode
+          alias create_sprite createSprite
+          alias add_sprite addSprite
+          alias remove_sprite removeSprite
+          alias text_align textAlign
+          alias create_graphics createGraphics
+          alias set_title setTitle
+          alias window_width windowWidth
+          alias window_height windowHeight
         `);
 
         statusEl.textContent = 'Ready';
