@@ -2416,13 +2416,13 @@ mousePressed do
   @filter_idx = (@filter_idx + 1) % FILTERS.size
 end`,
 
-      delay_camera: `# Delay Camera - ghostly time-delayed webcam
-DELAY_FRAMES = 30
+      delay_camera: `# Delay Camera - see yourself from 1 second ago!
+DELAY = 30  # frames of delay (~1 sec at 30fps)
 
 setup do
   size 400, 400
   @cam = createCapture
-  @frames = []
+  @buffer = []  # stores snapshot image IDs
 end
 
 draw do
@@ -2431,34 +2431,42 @@ draw do
     fill 200
     textSize 16
     text "Delay Camera", 140, 180
-    text "Shows you from 1 second ago!", 80, 210
+    text "See yourself from 1 second ago!", 70, 210
   else
-    # Current frame (small, top-right)
-    image @cam, 280, 10, 110, 80
+    # Capture current frame as snapshot
+    snap = captureFrame(@cam, 400, 400)
+    if snap
+      @buffer << snap
 
-    # Delayed frame (main)
-    if @frames.size >= DELAY_FRAMES
-      # Draw oldest frame as main
-      # Since we can't store canvas snapshots easily,
-      # we show the live feed with a ghostly overlay effect
-      background 0, 30
-      image @cam, 0, 0, width, height
+      # Show delayed frame (or live if buffer not full)
+      if @buffer.size > DELAY
+        old_snap = @buffer.shift
+        image old_snap, 0, 0, width, height
+        deleteImage(old_snap)
+      else
+        image @cam, 0, 0, width, height
+      end
 
-      # Ghost effect overlay
-      fill "rgba(0, 0, 30, 0.1)"
-      rect 0, 0, width, height
+      # Live preview (small, top-right)
+      image @cam, 280, 10, 110, 80
+
+      # Border around live preview
+      noFill
+      stroke 255
+      strokeWeight 2
+      rect 280, 10, 110, 80
+      noStroke
+
+      # HUD
+      fill "rgba(0,0,0,0.5)"
+      noStroke
+      rect 0, 370, 400, 30
+      fill 255
+      textSize 12
+      text "Main: \#{DELAY} frames ago  |  Top-right: LIVE", 60, 390
     else
       image @cam, 0, 0, width, height
     end
-
-    @frames << frameCount
-    @frames.shift if @frames.size > DELAY_FRAMES
-
-    # HUD
-    fill 255
-    textSize 12
-    text "Live", 320, 100
-    text "Delay: \#{DELAY_FRAMES} frames", 10, 20
   end
 end`,
 
@@ -3137,6 +3145,23 @@ end`,
     };
 
     // ── Offscreen graphics ──
+    // ── Video frame buffer for delay camera ──
+    const frameBuffer = [];
+    window.__rubySketchCaptureFrame = function(videoId, w, h) {
+      const entry = imageStore[videoId];
+      if (!entry || !entry.isVideo || entry.img.readyState < 2) return -1;
+      const snap = document.createElement('canvas');
+      snap.width = w; snap.height = h;
+      snap.getContext('2d').drawImage(entry.img, 0, 0, w, h);
+      const id = nextImageId++;
+      imageStore[id] = { img: snap, loaded: true, width: w, height: h, isSnapshot: true };
+      return id;
+    };
+
+    window.__rubySketchDeleteImage = function(id) {
+      delete imageStore[id];
+    };
+
     window.__rubySketchCreateOffscreen = function(w, h) {
       const offCanvas = document.createElement('canvas');
       offCanvas.width = w;
@@ -4373,6 +4398,17 @@ end`,
 
           def createCapture
             PCapture.new
+          end
+
+          def captureFrame(cam, w = 400, h = 400)
+            img_id = cam.is_a?(PImage) ? cam.id : cam.to_i
+            snap_id = JS.global.call(:__rubySketchCaptureFrame, img_id, w, h).to_i
+            snap_id > 0 ? snap_id : nil
+          end
+
+          def deleteImage(img_id)
+            id = img_id.is_a?(PImage) ? img_id.id : img_id.to_i
+            JS.global.call(:__rubySketchDeleteImage, id)
           end
 
           # ── Interval timers ──
