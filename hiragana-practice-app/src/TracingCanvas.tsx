@@ -14,23 +14,23 @@ const CANVAS_RES = 800
 
 // --- All thresholds as ratios of CANVAS_RES ---
 // Must start within this % of canvas size from stroke start
-const START_RADIUS_RATIO = 0.07       // 7% = 56px on 800px canvas
+const START_RADIUS_RATIO = 0.08       // 8% = 64px on 800px canvas
 // Must stay within this % of canvas size from stroke path
-const PATH_RADIUS_RATIO = 0.06        // 6% = 48px
+const PATH_RADIUS_RATIO = 0.08        // 8% = 64px
 // Average distance score threshold as % of canvas
-const SCORE_THRESHOLD_RATIO = 0.04    // 4% = 32px
+const SCORE_THRESHOLD_RATIO = 0.06    // 6% = 48px
 // End point: must reach within this % of canvas from stroke end
-const END_RADIUS_RATIO = 0.08         // 8% = 64px
+const END_RADIUS_RATIO = 0.10         // 10% = 80px
 
 // --- Ratio-based pass conditions ---
 // Must cover at least this % of the stroke path sequentially
-const MIN_COVERAGE = 0.9
+const MIN_COVERAGE = 0.75
 // Max % of sample points that can be consecutively far from path
-const MAX_FAR_STREAK_RATIO = 0.25     // 25% of total samples
+const MAX_FAR_STREAK_RATIO = 0.35     // 35% of total samples
 // Minimum sample points (prevents tap-through)
-const MIN_SAMPLE_POINTS = 8
+const MIN_SAMPLE_POINTS = 5
 // Max forward jump in checkpoint as % of stroke length (prevents skipping ahead)
-const MAX_CHECKPOINT_JUMP_RATIO = 0.15 // can advance at most 15% per sample
+const MAX_CHECKPOINT_JUMP_RATIO = 0.30 // can advance at most 30% per sample
 
 const MIN_MOVE = 2
 const PEN_WIDTH = 18
