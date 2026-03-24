@@ -344,11 +344,28 @@ body {
   position: relative;
 }
 
+/* Tracing wrapper: toolbar + canvas */
+.tracing-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Toolbar above canvas */
+.tracing-toolbar {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: min(calc(100vw - 40px), 600px);
+}
+
 /* Canvas container */
 .canvas-container {
   position: relative;
-  width: min(calc(100vw - 40px), calc(100vh - 200px), 600px);
-  height: min(calc(100vw - 40px), calc(100vh - 200px), 600px);
+  width: min(calc(100vw - 40px), calc(100vh - 240px), 600px);
+  height: min(calc(100vw - 40px), calc(100vh - 240px), 600px);
   max-width: calc(100vw - 40px);
   aspect-ratio: 1;
   background: white;
@@ -366,68 +383,72 @@ body {
   touch-action: none;
 }
 
-/* Top buttons container */
-.canvas-top-buttons {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 3;
-  display: flex;
-  gap: 6px;
-}
-
 /* Demo button */
 .demo-btn {
-  padding: 8px 14px;
+  padding: 6px 14px;
   border: none;
   border-radius: 20px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.9);
+  background: white;
   color: var(--accent);
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
   transition: all 0.15s;
   font-family: inherit;
-  backdrop-filter: blur(4px);
 }
+
+.demo-btn:hover:not(:disabled) { background: var(--accent); color: white; }
+.demo-btn.playing { background: var(--accent); color: white; opacity: 0.7; cursor: default; }
+.demo-btn:disabled { cursor: default; }
 
 /* Guide zones button */
 .guide-btn {
-  padding: 8px 14px;
+  padding: 6px 14px;
   border: none;
   border-radius: 20px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.9);
+  background: white;
   color: var(--text-secondary);
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
   transition: all 0.15s;
   font-family: inherit;
-  backdrop-filter: blur(4px);
 }
 
-.guide-btn.active {
-  background: var(--accent);
-  color: white;
+.guide-btn.active { background: var(--accent); color: white; }
+
+/* Debug button */
+.debug-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 20px;
+  font-size: 16px;
+  cursor: pointer;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  transition: all 0.15s;
 }
 
-.demo-btn:hover:not(:disabled) {
-  background: var(--accent);
-  color: white;
+.debug-btn.active { background: #333; }
+
+/* Debug info panel */
+.debug-panel {
+  margin-top: 6px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-family: monospace;
+  line-height: 1.5;
+  width: 100%;
+  max-width: min(calc(100vw - 40px), 600px);
 }
 
-.demo-btn.playing {
-  background: var(--accent);
-  color: white;
-  opacity: 0.7;
-  cursor: default;
-}
-
-.demo-btn:disabled {
-  cursor: default;
-}
+.debug-panel.pass { background: #e8f5e9; color: #2e7d32; }
+.debug-panel.fail { background: #fce4ec; color: #c62828; }
+.debug-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.debug-reasons { margin-top: 4px; font-weight: 700; }
 
 /* Stroke score feedback */
 .stroke-score {
