@@ -364,14 +364,15 @@ body {
 /* Canvas container */
 .canvas-container {
   position: relative;
-  width: min(calc(100vw - 40px), calc(100vh - 240px), 600px);
-  height: min(calc(100vw - 40px), calc(100vh - 240px), 600px);
+  width: min(calc(100vw - 40px), calc(100dvh - 240px), 600px);
+  height: min(calc(100vw - 40px), calc(100dvh - 240px), 600px);
   max-width: calc(100vw - 40px);
   aspect-ratio: 1;
   background: white;
   border-radius: 16px;
   box-shadow: var(--card-shadow);
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .canvas-container canvas {
@@ -922,4 +923,49 @@ body {
   .row-select-overlay {
     align-items: center;
   }
+}
+
+/* Landscape: horizontal layout */
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-container { overflow-y: auto; }
+  .practice-area {
+    flex-direction: row;
+    padding: 2px 8px;
+    gap: 8px;
+  }
+  .tracing-wrapper {
+    flex-direction: row;
+    gap: 4px;
+    align-items: flex-start;
+  }
+  .tracing-toolbar {
+    flex-direction: column;
+    width: auto;
+    max-width: none;
+  }
+  .canvas-container {
+    width: min(calc(100dvh - 120px), calc(100vw - 200px), 400px);
+    height: min(calc(100dvh - 120px), calc(100vw - 200px), 400px);
+  }
+  .bottom-controls {
+    padding: 4px 8px;
+    gap: 8px;
+  }
+  .char-nav-btn { width: 44px; height: 44px; font-size: 20px; }
+  .current-char-display { font-size: 36px; }
+  .stroke-info { font-size: 14px; }
+  .app-header { padding: 4px 10px; }
+  .mode-btn { padding: 4px 10px; font-size: 16px; }
+  .btn { padding: 4px 10px; font-size: 14px; }
+  .success-char { font-size: 60px; }
+  .success-text { font-size: 18px; }
+  .btn-retry, .btn-next { padding: 8px 16px; font-size: 18px; }
+  .license-footer { padding: 2px 8px 4px; font-size: 10px; }
+  .start-screen { padding: 10px; gap: 8px; }
+  .start-title { font-size: 28px; }
+  .start-modes { gap: 6px; }
+  .start-mode-card { padding: 12px 16px; }
+  .start-mode-icon { font-size: 28px; }
+  .start-mode-label { font-size: 20px; }
+  .start-mode-desc { font-size: 14px; }
 }
