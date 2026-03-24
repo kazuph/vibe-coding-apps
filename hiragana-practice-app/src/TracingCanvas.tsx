@@ -389,19 +389,15 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
             <div key={idx} className={`stroke-dot${completedStrokes.current.has(idx) ? ' completed' : idx === currentStroke ? ' current' : ''}`} />
           ))}
         </div>
+        {/* Debug overlay inside canvas - no layout shift */}
+        {showDebug && debugInfo && (
+          <div className={`debug-overlay ${debugInfo.passed ? 'pass' : 'fail'}`}>
+            <div className="debug-title">{debugInfo.passed ? '✅ OK' : '❌ NG'}</div>
+            <div>cov:{(debugInfo.coverage * 100).toFixed(0)}%/{(debugInfo.coverageReq * 100).toFixed(0)}% {debugInfo.coverage >= debugInfo.coverageReq ? '✅' : '❌'} dist:{debugInfo.avgDist.toFixed(0)}/{debugInfo.avgDistReq.toFixed(0)} {debugInfo.avgDist <= debugInfo.avgDistReq ? '✅' : '❌'}</div>
+            <div>far:{(debugInfo.farStreak * 100).toFixed(0)}%/{(debugInfo.farStreakReq * 100).toFixed(0)}% {debugInfo.farStreak < debugInfo.farStreakReq ? '✅' : '❌'} n:{debugInfo.samples}/{debugInfo.samplesReq} {debugInfo.samples >= debugInfo.samplesReq ? '✅' : '❌'}</div>
+          </div>
+        )}
       </div>
-
-      {/* Debug info panel */}
-      {showDebug && debugInfo && (
-        <div className={`debug-panel ${debugInfo.passed ? 'pass' : 'fail'}`}>
-          <div className="debug-title">{debugInfo.passed ? '✅ OK' : '❌ NG'}</div>
-          <div>カバレッジ: {(debugInfo.coverage * 100).toFixed(0)}% (要{(debugInfo.coverageReq * 100).toFixed(0)}%) {debugInfo.coverage >= debugInfo.coverageReq ? '✅' : '❌'}</div>
-          <div>平均距離: {debugInfo.avgDist.toFixed(0)}px (上限{debugInfo.avgDistReq.toFixed(0)}px) {debugInfo.avgDist <= debugInfo.avgDistReq ? '✅' : '❌'}</div>
-          <div>逸脱率: {(debugInfo.farStreak * 100).toFixed(0)}% (上限{(debugInfo.farStreakReq * 100).toFixed(0)}%) {debugInfo.farStreak < debugInfo.farStreakReq ? '✅' : '❌'}</div>
-          <div>サンプル数: {debugInfo.samples} (最低{debugInfo.samplesReq}) {debugInfo.samples >= debugInfo.samplesReq ? '✅' : '❌'}</div>
-          {debugInfo.reasons.length > 0 && <div className="debug-reasons">{debugInfo.reasons.join(' / ')}</div>}
-        </div>
-      )}
     </div>
   )
 }
