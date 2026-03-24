@@ -23,6 +23,7 @@ const MIN_COVERAGE = 0.65             // 65% of path covered sequentially
 const MAX_FAR_STREAK_RATIO = 0.40     // 40% of samples can be far
 const MIN_SAMPLE_POINTS = 4
 const MAX_CHECKPOINT_JUMP_RATIO = 0.40 // 40% jump allowed per sample
+const MAX_LENGTH_RATIO = 1.20         // user drawn length must be <= 120% of ideal
 
 const MIN_MOVE = 2
 const PEN_WIDTH = 18
@@ -43,6 +44,9 @@ interface StrokeTraceState {
   currentFarStreak: number
   lastX: number
   lastY: number
+  userDrawLength: number   // total distance user's finger traveled
+  prevMoveX: number
+  prevMoveY: number
 }
 
 interface DebugInfo {
@@ -54,8 +58,9 @@ interface DebugInfo {
   farStreakReq: number
   samples: number
   samplesReq: number
+  lengthRatio: number
+  lengthReq: number
   passed: boolean
-  reasons: string[]
 }
 
 export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFailed, onDemoPlay }: Props) {
@@ -69,7 +74,7 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
   const traceState = useRef<StrokeTraceState>({
     started: false, nextCheckpoint: 0,
     pointCount: 0, totalDistance: 0, maxConsecutiveFar: 0, currentFarStreak: 0,
-    lastX: 0, lastY: 0,
+    lastX: 0, lastY: 0, userDrawLength: 0, prevMoveX: 0, prevMoveY: 0,
   })
   const completedStrokes = useRef<Set<number>>(new Set())
   const [isPlayingDemo, setIsPlayingDemo] = useState(false)
@@ -88,7 +93,7 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
     traceState.current = {
       started: false, nextCheckpoint: 0,
       pointCount: 0, totalDistance: 0, maxConsecutiveFar: 0, currentFarStreak: 0,
-      lastX: 0, lastY: 0,
+      lastX: 0, lastY: 0, userDrawLength: 0, prevMoveX: 0, prevMoveY: 0,
     }
   }, [])
 
@@ -284,6 +289,8 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
     const { dist } = distToPath(pos.x, pos.y, stroke)
     traceState.current.pointCount = 1; traceState.current.totalDistance = dist
     traceState.current.lastX = pos.x; traceState.current.lastY = pos.y
+    traceState.current.prevMoveX = pos.x; traceState.current.prevMoveY = pos.y
+    traceState.current.userDrawLength = 0
     const ctx = drawCanvasRef.current?.getContext('2d')
     if (ctx) { ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = PEN_WIDTH
       ctx.strokeStyle = `rgba(45, 32, 22, ${TRACED_OPACITY})`; ctx.beginPath(); ctx.moveTo(pos.x, pos.y) }
@@ -300,6 +307,10 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
     if (ctx) { ctx.lineTo(pos.x, pos.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(pos.x, pos.y) }
     lastPos.current = pos
     traceState.current.lastX = pos.x; traceState.current.lastY = pos.y
+    // Accumulate user draw length
+    const segDx = pos.x - traceState.current.prevMoveX, segDy = pos.y - traceState.current.prevMoveY
+    traceState.current.userDrawLength += Math.sqrt(segDx * segDx + segDy * segDy)
+    traceState.current.prevMoveX = pos.x; traceState.current.prevMoveY = pos.y
 
     const { dist, nearestIdx } = distToPath(pos.x, pos.y, stroke)
     traceState.current.pointCount++; traceState.current.totalDistance += dist
@@ -324,26 +335,31 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
     const coverage = ts.nextCheckpoint / stroke.length
     const farStreakRatio = ts.pointCount > 0 ? ts.maxConsecutiveFar / ts.pointCount : 0
 
-    // Check end point distance using saved last position
+    // End point distance
     const endPoint = stroke[stroke.length - 1]
     const endDist = Math.sqrt((ts.lastX - endPoint[0]) ** 2 + (ts.lastY - endPoint[1]) ** 2)
     const reachedEnd = endDist <= END_RADIUS
 
-    const reasons: string[] = []
-    if (coverage < MIN_COVERAGE) reasons.push(`カバレッジ不足 ${(coverage * 100).toFixed(0)}% < ${(MIN_COVERAGE * 100).toFixed(0)}%`)
-    if (!reachedEnd) reasons.push(`終点未到達 距離${endDist.toFixed(0)}px > ${END_RADIUS.toFixed(0)}px`)
-    if (avgDist > SCORE_THRESHOLD) reasons.push(`平均距離超過 ${avgDist.toFixed(0)}px > ${SCORE_THRESHOLD.toFixed(0)}px`)
-    if (farStreakRatio >= MAX_FAR_STREAK_RATIO) reasons.push(`逸脱過多 ${(farStreakRatio * 100).toFixed(0)}% >= ${(MAX_FAR_STREAK_RATIO * 100).toFixed(0)}%`)
+    // Stroke length comparison: ideal path length vs user drawn length
+    let idealLength = 0
+    for (let i = 1; i < stroke.length; i++) {
+      const sdx = stroke[i][0] - stroke[i - 1][0], sdy = stroke[i][1] - stroke[i - 1][1]
+      idealLength += Math.sqrt(sdx * sdx + sdy * sdy)
+    }
+    const lengthRatio = idealLength > 0 ? ts.userDrawLength / idealLength : 1
+    const lengthOk = lengthRatio <= MAX_LENGTH_RATIO
 
-    const passed = coverage >= MIN_COVERAGE && reachedEnd && avgDist <= SCORE_THRESHOLD && farStreakRatio < MAX_FAR_STREAK_RATIO
+    const passed = coverage >= MIN_COVERAGE && reachedEnd && avgDist <= SCORE_THRESHOLD && farStreakRatio < MAX_FAR_STREAK_RATIO && lengthOk
 
+    // Always show debug info when debug mode is on (both success and failure)
     if (showDebug) {
       setDebugInfo({
         coverage, coverageReq: MIN_COVERAGE,
         avgDist, avgDistReq: SCORE_THRESHOLD,
         farStreak: farStreakRatio, farStreakReq: MAX_FAR_STREAK_RATIO,
         samples: ts.pointCount, samplesReq: MIN_SAMPLE_POINTS,
-        passed, reasons,
+        lengthRatio, lengthReq: MAX_LENGTH_RATIO,
+        passed,
       })
     }
 
@@ -353,7 +369,8 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
       onStrokeComplete?.(currentStroke, char.strokes.length)
       const next = currentStroke + 1
       if (next >= char.strokes.length) { onComplete() }
-      else { setCurrentStroke(next); setDebugInfo(null) }
+      else { setCurrentStroke(next) }
+      // Don't clear debugInfo on success - keep it visible
     } else {
       setStrokeFailed(true); triggerHint(); onStrokeFailed?.()
       setTimeout(() => { clearDrawCanvas(); setStrokeFailed(false); resetTraceState() }, showDebug ? 3000 : 1000)
@@ -389,19 +406,15 @@ export function TracingCanvas({ char, onComplete, onStrokeComplete, onStrokeFail
             <div key={idx} className={`stroke-dot${completedStrokes.current.has(idx) ? ' completed' : idx === currentStroke ? ' current' : ''}`} />
           ))}
         </div>
+        {/* Debug overlay inside canvas - no layout shift */}
+        {showDebug && debugInfo && (
+          <div className={`debug-overlay ${debugInfo.passed ? 'pass' : 'fail'}`}>
+            <div className="debug-title">{debugInfo.passed ? '✅ 合格' : '❌ 不合格'}</div>
+            <div>網羅:{(debugInfo.coverage * 100).toFixed(0)}%/{(debugInfo.coverageReq * 100).toFixed(0)}%{debugInfo.coverage >= debugInfo.coverageReq ? '✅' : '❌'} 距離:{debugInfo.avgDist.toFixed(0)}/{debugInfo.avgDistReq.toFixed(0)}{debugInfo.avgDist <= debugInfo.avgDistReq ? '✅' : '❌'}</div>
+            <div>逸脱:{(debugInfo.farStreak * 100).toFixed(0)}%/{(debugInfo.farStreakReq * 100).toFixed(0)}%{debugInfo.farStreak < debugInfo.farStreakReq ? '✅' : '❌'} 長比:{(debugInfo.lengthRatio * 100).toFixed(0)}%/{(debugInfo.lengthReq * 100).toFixed(0)}%{debugInfo.lengthRatio <= debugInfo.lengthReq ? '✅' : '❌'}</div>
+          </div>
+        )}
       </div>
-
-      {/* Debug info panel */}
-      {showDebug && debugInfo && (
-        <div className={`debug-panel ${debugInfo.passed ? 'pass' : 'fail'}`}>
-          <div className="debug-title">{debugInfo.passed ? '✅ OK' : '❌ NG'}</div>
-          <div>カバレッジ: {(debugInfo.coverage * 100).toFixed(0)}% (要{(debugInfo.coverageReq * 100).toFixed(0)}%) {debugInfo.coverage >= debugInfo.coverageReq ? '✅' : '❌'}</div>
-          <div>平均距離: {debugInfo.avgDist.toFixed(0)}px (上限{debugInfo.avgDistReq.toFixed(0)}px) {debugInfo.avgDist <= debugInfo.avgDistReq ? '✅' : '❌'}</div>
-          <div>逸脱率: {(debugInfo.farStreak * 100).toFixed(0)}% (上限{(debugInfo.farStreakReq * 100).toFixed(0)}%) {debugInfo.farStreak < debugInfo.farStreakReq ? '✅' : '❌'}</div>
-          <div>サンプル数: {debugInfo.samples} (最低{debugInfo.samplesReq}) {debugInfo.samples >= debugInfo.samplesReq ? '✅' : '❌'}</div>
-          {debugInfo.reasons.length > 0 && <div className="debug-reasons">{debugInfo.reasons.join(' / ')}</div>}
-        </div>
-      )}
     </div>
   )
 }

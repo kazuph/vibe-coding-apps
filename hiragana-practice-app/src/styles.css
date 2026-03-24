@@ -433,22 +433,24 @@ body {
 
 .debug-btn.active { background: #333; }
 
-/* Debug info panel */
-.debug-panel {
-  margin-top: 6px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 13px;
+/* Debug overlay - inside canvas-container, doesn't affect layout */
+.debug-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 4px;
+  right: 4px;
+  z-index: 15;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 11px;
   font-family: monospace;
-  line-height: 1.5;
-  width: 100%;
-  max-width: min(calc(100vw - 40px), 600px);
+  line-height: 1.4;
+  pointer-events: none;
 }
 
-.debug-panel.pass { background: #e8f5e9; color: #2e7d32; }
-.debug-panel.fail { background: #fce4ec; color: #c62828; }
-.debug-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-.debug-reasons { margin-top: 4px; font-weight: 700; }
+.debug-overlay.pass { background: rgba(232, 245, 233, 0.92); color: #2e7d32; }
+.debug-overlay.fail { background: rgba(252, 228, 236, 0.92); color: #c62828; }
+.debug-title { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
 
 /* Stroke score feedback */
 .stroke-score {

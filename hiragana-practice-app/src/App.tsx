@@ -11,8 +11,28 @@ import { CharacterSelect } from './CharacterSelect'
 import { speak, speakChar, speakPraise, speakStrokeComplete, speakRetry, isSpeechEnabled, toggleSpeech } from './useSpeech'
 
 const STORAGE_KEY = 'hiragana-practice-progress'
+const STATE_KEY = 'hiragana-practice-state'
 
 type PracticeMode = null | 'free' | 'row' | 'random' | 'progress'
+
+interface SavedState {
+  charMode: CharMode
+  kanjiGrade: number
+  practiceMode: PracticeMode
+  selectedRow: string | null
+  currentIndex: number
+}
+
+function loadState(): SavedState | null {
+  try {
+    const raw = localStorage.getItem(STATE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+function saveState(state: SavedState) {
+  localStorage.setItem(STATE_KEY, JSON.stringify(state))
+}
 
 function loadProgress(): Record<string, string[]> {
   try {
@@ -61,11 +81,12 @@ function getRowChars(charMode: CharMode, rowLabel: string): HiraganaChar[] {
 }
 
 export default function App() {
-  const [charMode, setCharMode] = useState<CharMode>('hiragana')
-  const [kanjiGrade, setKanjiGrade] = useState<GradeIndex>(0)
-  const [practiceMode, setPracticeMode] = useState<PracticeMode>(null)
-  const [selectedRow, setSelectedRow] = useState<string | null>(null)
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const saved = useMemo(() => loadState(), [])
+  const [charMode, setCharMode] = useState<CharMode>(saved?.charMode || 'hiragana')
+  const [kanjiGrade, setKanjiGrade] = useState<GradeIndex>((saved?.kanjiGrade ?? 0) as GradeIndex)
+  const [practiceMode, setPracticeMode] = useState<PracticeMode>(saved?.practiceMode ?? null)
+  const [selectedRow, setSelectedRow] = useState<string | null>(saved?.selectedRow ?? null)
+  const [currentIndex, setCurrentIndex] = useState(saved?.currentIndex ?? 0)
   const [showSelector, setShowSelector] = useState(false)
   const [completedChars, setCompletedChars] = useState<Set<string>>(() => {
     const data = loadProgress()
@@ -79,6 +100,11 @@ export default function App() {
   const [showRowSelector, setShowRowSelector] = useState(false)
 
   const modeKey = charMode === 'kanji' ? `kanji-${kanjiGrade}` : charMode
+
+  // Persist state on change
+  useEffect(() => {
+    saveState({ charMode, kanjiGrade, practiceMode, selectedRow, currentIndex })
+  }, [charMode, kanjiGrade, practiceMode, selectedRow, currentIndex])
 
   useEffect(() => {
     const data = loadProgress()
