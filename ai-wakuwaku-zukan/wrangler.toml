@@ -20,7 +20,6 @@ preview_bucket_name = "wakuwaku-zukan-images"
 
 [dev]
 port = 8887
-remote = true
 
 [site]
 bucket = "./dist"
