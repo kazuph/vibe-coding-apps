@@ -13,6 +13,7 @@ type Bindings = {
   GEMINI_API_KEY: string
   BASIC_AUTH_USER: string
   BASIC_AUTH_PASSWORD: string
+  DISABLE_AUTH: string
   __STATIC_CONTENT: KVNamespace
 }
 
@@ -72,13 +73,20 @@ function transformImageRow(row: any) {
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// Basic認証 (全リクエストに適用)
+// Basic認証 (本番のみ。DISABLE_AUTH=true でスキップ)
 app.use('*', async (c, next) => {
-  const authMiddleware = basicAuth({
-    username: c.env.BASIC_AUTH_USER,
-    password: c.env.BASIC_AUTH_PASSWORD,
-  })
-  return authMiddleware(c, next)
+  if (c.env.DISABLE_AUTH === 'true') {
+    await next()
+    return
+  }
+  if (c.env.BASIC_AUTH_USER && c.env.BASIC_AUTH_PASSWORD) {
+    const authMiddleware = basicAuth({
+      username: c.env.BASIC_AUTH_USER,
+      password: c.env.BASIC_AUTH_PASSWORD,
+    })
+    return authMiddleware(c, next)
+  }
+  await next()
 })
 
 app.use('*', async (c, next) => {
