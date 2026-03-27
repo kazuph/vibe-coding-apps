@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
-    "dev:client": "vite --port 5173 --strictPort",
-    "dev:server": "wrangler dev src/index.tsx --port 8787 --env-file .env",
+    "dev:client": "vite --port 5273 --strictPort",
+    "dev:server": "wrangler dev src/index.tsx",
     "build": "vite build && wrangler deploy --dry-run --outdir=dist_worker",
     "deploy": "vite build && wrangler deploy",
     "cf-typegen": "wrangler types"
