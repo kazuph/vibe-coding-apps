@@ -11,10 +11,16 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "wakuwaku-zukan-db"
 database_id = "2c01b05f-71cb-4789-a9eb-218c997e97c8"
+preview_database_id = "2c01b05f-71cb-4789-a9eb-218c997e97c8"
 
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "wakuwaku-zukan-images"
+preview_bucket_name = "wakuwaku-zukan-images"
+
+[dev]
+port = 8887
+remote = true
 
 [site]
 bucket = "./dist"
