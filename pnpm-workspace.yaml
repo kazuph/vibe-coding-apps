@@ -1,0 +1,23 @@
+packages:
+  - "ai-wakuwaku-zukan"
+  - "codraw"
+  - "face-crop-app"
+  - "fitness-bike-node-ble-tui"
+  - "fitness-bike-webbluetooth/react-app"
+  - "hiragana-practice-app"
+  - "kanji-learning-game"
+  - "lesson-booking"
+  - "tools/agentos-dev"
+  - "tui-twitter-client"
+
+onlyBuiltDependencies:
+  - "@abandonware/noble"
+  - "@parcel/watcher"
+  - "@sandbox-agent/cli-darwin-arm64"
+  - "better-sqlite3"
+  - "cbor-extract"
+  - "esbuild"
+  - "koffi"
+  - "protobufjs"
+  - "sharp"
+  - "workerd"

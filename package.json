@@ -1,0 +1,15 @@
+{
+  "name": "vibe-coding-apps",
+  "private": true,
+  "packageManager": "pnpm@10.18.3",
+  "scripts": {
+    "dev:agentos": "pnpm --filter @kazuph/agentos-dev run dev",
+    "start:agentos": "pnpm --filter @kazuph/agentos-dev run start",
+    "build:agentos": "pnpm --filter @kazuph/agentos-dev run build",
+    "check:agentos": "pnpm --filter @kazuph/agentos-dev run check",
+    "doctor:agentos": "pnpm --filter @kazuph/agentos-dev run doctor",
+    "smoke:agentos": "pnpm --filter @kazuph/agentos-dev run smoke",
+    "agentos:list-projects": "pnpm --filter @kazuph/agentos-dev run list-projects",
+    "agentos:open": "pnpm --filter @kazuph/agentos-dev run open"
+  }
+}

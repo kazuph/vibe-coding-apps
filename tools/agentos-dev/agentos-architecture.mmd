@@ -1,0 +1,32 @@
+flowchart TB
+    Dev["Developer / CLI"] --> Root["root pnpm scripts"]
+    Root --> Runtime["tools/agentos-dev"]
+    Runtime --> Manager["RivetKit server<br/>agentOS manager :6420"]
+
+    subgraph Control["Control Plane"]
+        Manager --> Registry["registry.ts"]
+        Registry --> State["Persistent actor state<br/>.agentos-dev/rivetkit"]
+        Registry --> Workspace["workspaceVm"]
+        Registry --> Sandbox["codingSandbox"]
+    end
+
+    subgraph WorkspacePlane["workspaceVm"]
+        Workspace --> Pi["pi session"]
+        Workspace --> RepoMount["/mnt/repo<br/>read-only monorepo mount"]
+        Workspace --> Scratch["/mnt/workspace<br/>read-write scratch"]
+        Workspace --> Toolkits["Host toolkits<br/>repo / git"]
+    end
+
+    subgraph SandboxPlane["codingSandbox"]
+        Sandbox --> Provider["sandbox-agent local provider :2468"]
+        Provider --> Agents["codex / claude / opencode / amp"]
+    end
+
+    Toolkits --> Projects["Detected projects<br/>lesson-booking / codraw / hiragana-practice-app ..."]
+    RepoMount --> Projects
+    Pi --> Projects
+
+    OpenCmd["pnpm agentos:open -- --project <name>"] --> Manager
+    OpenCmd --> Pi
+
+    ListCmd["pnpm agentos:list-projects"] --> Toolkits

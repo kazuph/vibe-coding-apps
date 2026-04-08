@@ -24,6 +24,9 @@ export const ja = {
   done: 'できたよ！',
   retry: 'もういちど',
   viewGallery: 'ずかんを みる',
+  albumLabel: 'アルバム',
+  goingToAlbum: 'この ずかんに はいりそう',
+  generatedForAlbum: 'この ずかんに つくったよ',
 
   // Gallery
   galleryTitle: 'みんなの ずかん',

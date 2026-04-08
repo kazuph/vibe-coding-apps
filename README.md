@@ -106,6 +106,28 @@ Web Bluetooth APIを使用したフィットネスバイク制御アプリケー
 - **本格運用版**: 各アプリケーションは個別にCloudflare WorkersまたはPagesにデプロイ
 - **デプロイコマンド**: 各プロジェクトディレクトリ内で`npm run deploy`または`pnpm run deploy`
 
+## 🧠 agentOS Hybrid Dev Runtime
+
+このリポジトリには、開発オーケストレーション専用の `agentOS + sandbox-agent` ランタイムを `tools/agentos-dev/` に追加しています。root は `pnpm-workspace` 対応済みです。
+
+- root の `package.json` と `pnpm-workspace.yaml` は monorepo 管理とこの開発ランタイムの導線です
+- 既存アプリの install / build / deploy を root に集約する意図はありません
+- 既存プロジェクトの作業手順は、引き続き各ディレクトリ直下の `package.json` / lockfile を正として扱ってください
+
+よく使うコマンド:
+
+```bash
+pnpm doctor:agentos
+pnpm dev:agentos
+pnpm smoke:agentos
+pnpm agentos:list-projects
+pnpm agentos:open -- --project lesson-booking
+```
+
+`agentos:open` は既定で `workspaceVm + pi` を使うので、そのままで各 project を agentOS 上に開けます。`sandbox-agent` 側を使いたいときだけ `--surface sandbox --agent <name>` を足してください。
+
+詳しくは [tools/agentos-dev/README.md](./tools/agentos-dev/README.md) を参照してください。
+
 ## ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。 

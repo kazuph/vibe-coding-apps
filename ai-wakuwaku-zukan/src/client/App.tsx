@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, BookOpen, Sparkles, RefreshCw, Trash2, Home, Star, X, ChevronDown, Volume2 } from 'lucide-react';
 import { useLocale } from './hooks/useLocale';
 import { useTTS, type TTSSpeed } from './hooks/useTTS';
@@ -38,7 +38,7 @@ const App = () => {
   const [transcript, setTranscript] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedItem, setGeneratedItem] = useState<GalleryItem | null>(null);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -140,8 +140,8 @@ const App = () => {
       });
       if (!res.ok) throw new Error('Generation failed');
 
-      const data = await res.json();
-      setGeneratedImage(data.imageUrl);
+      const data = await res.json() as GalleryItem;
+      setGeneratedItem(data);
       setGallery(prev => [data, ...prev]);
 
       const catRes = await fetch('/api/categories');
@@ -258,13 +258,37 @@ const App = () => {
     return 'en-US';
   };
 
-  // ヘルパー: displayNameの実際の言語を返す
-  const displayNameLang = (item: GalleryItem): string => {
-    return detectLang(displayName(item));
-  };
-
   // ヘルパー: カテゴリ名を言語に応じて取得
   const catName = (cat: Category) => isJa ? cat.name : (cat.nameEn || cat.name);
+
+  const estimateAlbumCategory = (promptText: string): Category | null => {
+    const normalized = promptText.trim().toLowerCase();
+    if (!normalized) return null;
+
+    const keywordMap: Array<[string, string[]]> = [
+      ['どうぶつ', ['ぞう', 'ねこ', 'いぬ', 'うさぎ', 'ぱんだ', 'きりん', 'らいおん', 'くま', 'ぺんぎん', 'さる']],
+      ['のりもの', ['くるま', 'でんしゃ', 'ひこうき', 'ばす', 'ふね', 'じてんしゃ', 'しょうぼうしゃ', 'ぱとかー']],
+      ['たべもの', ['りんご', 'いちご', 'ばなな', 'ぱん', 'けーき', 'らーめん', 'すし', 'かれー']],
+      ['むし', ['むし', 'ちょうちょ', 'かぶとむし', 'くわがた', 'とんぼ', 'あり']],
+      ['おはな', ['はな', 'さくら', 'ひまわり', 'ちゅーりっぷ', 'たんぽぽ']],
+      ['しぜん', ['やま', 'うみ', 'にじ', 'たいよう', 'つき', 'ほし']],
+      ['うちゅう', ['うちゅう', 'ろけっと', 'ちきゅう', 'かせい', 'ぎんが']],
+      ['がっこう', ['えんぴつ', 'のーと', 'らんどせる', 'つくえ', 'がっこう']],
+    ];
+
+    for (const [categoryName, keywords] of keywordMap) {
+      if (keywords.some((keyword) => normalized.includes(keyword))) {
+        return categories.find((category) => category.name === categoryName) ?? null;
+      }
+    }
+
+    return categories.find((category) => category.name === 'その他') ?? null;
+  };
+
+  const albumLabel = (categoryName?: string | null) => {
+    if (!categoryName) return isJa ? '...' : '...';
+    return isJa ? `${categoryName}の ずかん` : categoryName;
+  };
 
   // ヘルパー: カテゴリ名をIDから取得
   const catNameById = (item: GalleryItem) => {
@@ -557,10 +581,15 @@ const App = () => {
                   type="text"
                   placeholder={t.inputPlaceholder}
                   value={transcript}
-                  onChange={(e) => setTranscript(e.target.value)}
+                  onChange={(e) => {
+                    setTranscript(e.target.value);
+                    if (generatedItem) setGeneratedItem(null);
+                  }}
                   disabled={isGenerating || isRecording}
                   className="flex-1 px-4 py-3 rounded-full border-2 border-stone-200 focus:border-stone-400 focus:outline-none text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   onKeyDown={(e) => {
+                    const nativeEvent = e.nativeEvent as KeyboardEvent & { isComposing?: boolean; keyCode?: number };
+                    if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
                     if (e.key === 'Enter' && transcript.trim() && !isGenerating) generateImage(transcript);
                   }}
                 />
@@ -572,23 +601,30 @@ const App = () => {
                   {t.createBtn}
                 </button>
               </div>
-            </div>
-
-            {transcript && (
-              <div className="bg-white p-8 rounded-[2rem] border-2 border-stone-100 w-full text-center shadow-sm">
-                <p className="text-2xl font-bold mb-6 text-stone-800">「{transcript}」</p>
-                {!isGenerating && (
-                  <div className="flex gap-3 justify-center">
-                    <button onClick={() => setTranscript('')} className="bg-stone-100 text-stone-500 px-6 py-3 rounded-full font-bold text-sm hover:bg-stone-200">
+              {transcript.trim() && !isGenerating && (
+                <div className="mt-4 rounded-[2rem] border border-stone-200 bg-white px-5 py-4 shadow-sm">
+                  <p className="text-sm font-bold uppercase tracking-[0.2em] text-stone-400">{t.albumLabel}</p>
+                  <p className="mt-2 text-sm text-stone-500">{t.goingToAlbum}</p>
+                  <div className="mt-1 flex items-center justify-between gap-4">
+                    <p className="text-xl font-bold text-stone-800">
+                      {albumLabel(catName(estimateAlbumCategory(transcript) ?? categories.find((category) => category.name === 'その他') ?? {
+                        id: -1,
+                        name: 'その他',
+                        nameEn: 'Others',
+                        icon: '📦',
+                        isDefault: false,
+                      }))}
+                    </p>
+                    <button
+                      onClick={() => setTranscript('')}
+                      className="bg-stone-100 text-stone-500 px-5 py-2 rounded-full font-bold text-sm hover:bg-stone-200 shrink-0"
+                    >
                       {t.wrongInput}
                     </button>
-                    <button onClick={() => generateImage(transcript)} className="bg-stone-800 text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-stone-900 shadow-md">
-                      {t.createAction}
-                    </button>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
 
             {isGenerating && (
               <div className="flex flex-col items-center gap-4 py-8">
@@ -597,15 +633,23 @@ const App = () => {
               </div>
             )}
 
-            {generatedImage && !isGenerating && (
+            {generatedItem && !isGenerating && (
               <div className="w-full animate-in zoom-in duration-500">
-                <Card className="p-2 overflow-hidden border-stone-200 bg-white">
-                  <img src={generatedImage} alt="Generated" className="w-full h-auto rounded-2xl shadow-inner" />
+                <Card className="p-3 overflow-hidden border-stone-200 bg-white">
+                  <div className="px-3 pt-3 text-center">
+                    <p className="text-sm font-bold uppercase tracking-[0.2em] text-stone-400">{t.albumLabel}</p>
+                    <p className="mt-2 text-sm text-stone-500">{t.generatedForAlbum}</p>
+                    <p className="mt-1 text-2xl font-bold text-stone-800">{albumLabel(catNameById(generatedItem))}</p>
+                  </div>
+                  <div className="px-3 pt-5 pb-3 text-center">
+                    <p className="text-3xl font-bold text-stone-800">「{generatedItem.prompt}」</p>
+                  </div>
+                  <img src={generatedItem.imageUrl} alt={generatedItem.prompt} className="w-full h-auto rounded-2xl shadow-inner" />
                   <div className="p-6 text-center">
                     <p className="font-bold text-xl text-stone-800 mb-2">{t.done}</p>
                     <div className="flex justify-center gap-4 mt-4">
                       <button
-                        onClick={() => { setGeneratedImage(null); setTranscript(''); }}
+                        onClick={() => { setGeneratedItem(null); setTranscript(''); }}
                         className="bg-stone-100 text-stone-600 px-6 py-2 rounded-full font-bold text-sm flex items-center gap-2 hover:bg-stone-200"
                       >
                         <RefreshCw size={16} /> {t.retry}
@@ -763,57 +807,28 @@ const App = () => {
               <h3 className="text-2xl font-bold text-stone-800">{displayName(detailModal.item)}</h3>
               <TTSButton text={displayName(detailModal.item)} lang={detectLang(displayName(detailModal.item))} size="lg" />
             </div>
-          </div>
-
-          {/* 読み方セクション */}
-          <div className="mx-6 mb-4 bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm">
-            <div className="px-4 py-3 border-b border-stone-100 bg-stone-50">
-              <span className="text-sm font-bold text-stone-500">{t.readings}</span>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-base font-semibold text-stone-500">
+              {detailModal.item.nameHiragana && detailModal.item.nameHiragana !== displayName(detailModal.item) && (
+                <span className="rounded-full bg-white px-3 py-1.5 border border-stone-200">
+                  {detailModal.item.nameHiragana}
+                </span>
+              )}
+              {detailModal.item.nameKatakana && detailModal.item.nameKatakana !== detailModal.item.nameHiragana && (
+                <span className="rounded-full bg-white px-3 py-1.5 border border-stone-200">
+                  {detailModal.item.nameKatakana}
+                </span>
+              )}
+              {detailModal.item.nameEn && detailModal.item.nameEn !== displayName(detailModal.item) && (
+                <span className="rounded-full bg-white px-3 py-1.5 border border-stone-200">
+                  {detailModal.item.nameEn}
+                </span>
+              )}
+              {detailModal.item.nameRomaji && (
+                <span className="rounded-full bg-white px-3 py-1.5 border border-stone-200 lowercase">
+                  {detailModal.item.nameRomaji}
+                </span>
+              )}
             </div>
-
-            {/* ひらがな */}
-            {detailModal.item.nameHiragana && (
-              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
-                <div>
-                  <span className="text-sm font-bold text-stone-400">{t.hiragana}</span>
-                  <p className="text-stone-800 text-lg">{detailModal.item.nameHiragana}</p>
-                </div>
-                <TTSButton text={detailModal.item.nameHiragana} lang="ja-JP" />
-              </div>
-            )}
-
-            {/* カタカナ */}
-            {detailModal.item.nameKatakana && (
-              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
-                <div>
-                  <span className="text-sm font-bold text-stone-400">{t.katakana}</span>
-                  <p className="text-stone-800 text-lg">{detailModal.item.nameKatakana}</p>
-                </div>
-                <TTSButton text={detailModal.item.nameKatakana} lang="ja-JP" />
-              </div>
-            )}
-
-            {/* ローマ字 */}
-            {detailModal.item.nameRomaji && (
-              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
-                <div>
-                  <span className="text-sm font-bold text-stone-400">{t.romaji}</span>
-                  <p className="text-stone-800 text-lg">{detailModal.item.nameRomaji}</p>
-                </div>
-                <TTSButton text={detailModal.item.nameRomaji} lang="en-US" />
-              </div>
-            )}
-
-            {/* 英語 */}
-            {detailModal.item.nameEn && (
-              <div className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <span className="text-sm font-bold text-stone-400">{t.english}</span>
-                  <p className="text-stone-800 text-lg">{detailModal.item.nameEn}</p>
-                </div>
-                <TTSButton text={detailModal.item.nameEn} lang="en-US" />
-              </div>
-            )}
           </div>
 
           {/* 説明セクション */}
@@ -827,6 +842,7 @@ const App = () => {
                 <TTSButton
                   text={(isJa ? detailModal.item.descriptionJa : detailModal.item.descriptionEn)!}
                   lang={detectLang((isJa ? detailModal.item.descriptionJa : detailModal.item.descriptionEn) || '')}
+                  size="lg"
                 />
               </div>
             )}

@@ -24,6 +24,9 @@ export const en = {
   done: 'All done!',
   retry: 'Try again',
   viewGallery: 'View gallery',
+  albumLabel: 'Album',
+  goingToAlbum: 'This will likely go into',
+  generatedForAlbum: 'Created for this album',
 
   // Gallery
   galleryTitle: 'My Picture Book',
