@@ -10,6 +10,8 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "doctor": "tsx src/doctor.ts",
     "smoke": "tsx src/smoke.ts",
+    "sync-pi": "tsx src/sync-pi-config.ts",
+    "verify-pi": "tsx src/verify-pi.ts",
     "list-projects": "tsx src/list-projects.ts",
     "open": "tsx src/open-project.ts"
   },

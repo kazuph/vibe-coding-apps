@@ -10,10 +10,13 @@ import { local } from "rivetkit/sandbox/local";
 
 import {
   AGENTOS_PORT,
+  PI_AGENT_ROOT,
   REPO_ROOT,
   SANDBOX_AGENT_LOG,
   SANDBOX_AGENT_PORT,
   TOOL_ROOT,
+  VM_PI_AGENT_PATH,
+  VM_PI_AGENT_ROOT_PATH,
   VM_REPO_PATH,
   VM_WORKSPACE_PATH,
   WRITABLE_WORKSPACE_ROOT,
@@ -25,11 +28,13 @@ import { gitToolkit, repoToolkit } from "./toolkits.js";
 
 function formatRepoInstructions(): string {
   const writableHost = toPosixPath(path.relative(REPO_ROOT, WRITABLE_WORKSPACE_ROOT));
+  const piHost = toPosixPath(path.relative(REPO_ROOT, PI_AGENT_ROOT));
 
   return [
     "This VM is attached to the vibe-coding-apps monorepo.",
     `Read the repository from ${VM_REPO_PATH}. Treat it as source-of-truth and read-only unless the user explicitly asks for file changes through host tools or sandbox sessions.`,
     `Use ${VM_WORKSPACE_PATH} for scratch files, generated patches, and temporary outputs. This path persists on the host at ${writableHost}.`,
+    `Pi global config is mounted at ${VM_PI_AGENT_PATH} and ${VM_PI_AGENT_ROOT_PATH}. It persists on the host at ${piHost}.`,
     "Prefer the host toolkits named repo and git for project discovery, script execution, and repository inspection.",
     "When a project needs a full coding agent such as Codex or Claude Code, hand off to the codingSandbox actor instead of assuming the agent is installed inside agentOS.",
   ].join("\n");
@@ -57,6 +62,20 @@ const workspaceVm = agentOs({
         path: VM_WORKSPACE_PATH,
         driver: createHostDirBackend({
           hostPath: WRITABLE_WORKSPACE_ROOT,
+          readOnly: false,
+        }),
+      },
+      {
+        path: VM_PI_AGENT_PATH,
+        driver: createHostDirBackend({
+          hostPath: PI_AGENT_ROOT,
+          readOnly: false,
+        }),
+      },
+      {
+        path: VM_PI_AGENT_ROOT_PATH,
+        driver: createHostDirBackend({
+          hostPath: PI_AGENT_ROOT,
           readOnly: false,
         }),
       },

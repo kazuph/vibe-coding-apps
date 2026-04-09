@@ -9,7 +9,12 @@
     "check:agentos": "pnpm --filter @kazuph/agentos-dev run check",
     "doctor:agentos": "pnpm --filter @kazuph/agentos-dev run doctor",
     "smoke:agentos": "pnpm --filter @kazuph/agentos-dev run smoke",
+    "sync:pi": "pnpm --filter @kazuph/agentos-dev run sync-pi",
+    "verify:pi": "pnpm --filter @kazuph/agentos-dev run verify-pi",
     "agentos:list-projects": "pnpm --filter @kazuph/agentos-dev run list-projects",
-    "agentos:open": "pnpm --filter @kazuph/agentos-dev run open"
+    "agentos:open": "pnpm --filter @kazuph/agentos-dev run open",
+    "dev:vibe-local-pyodide": "pnpm --filter @kazuph/vibe-local-pyodide run dev",
+    "build:vibe-local-pyodide": "pnpm --filter @kazuph/vibe-local-pyodide run build",
+    "check:vibe-local-pyodide": "pnpm --filter @kazuph/vibe-local-pyodide run check"
   }
 }

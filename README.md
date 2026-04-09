@@ -118,15 +118,32 @@ Web Bluetooth APIを使用したフィットネスバイク制御アプリケー
 
 ```bash
 pnpm doctor:agentos
+pnpm sync:pi
 pnpm dev:agentos
 pnpm smoke:agentos
 pnpm agentos:list-projects
 pnpm agentos:open -- --project lesson-booking
+pnpm verify:pi -- --project ai-wakuwaku-zukan
 ```
 
 `agentos:open` は既定で `workspaceVm + pi` を使うので、そのままで各 project を agentOS 上に開けます。`sandbox-agent` 側を使いたいときだけ `--surface sandbox --agent <name>` を足してください。
 
 詳しくは [tools/agentos-dev/README.md](./tools/agentos-dev/README.md) を参照してください。
+
+## 🐍 vibe-local Pyodide Browser Core
+
+`vibe-local-pyodide/` は、`ochyai/vibe-local` の思想をブラウザ向けに切り出した第一段階の app です。CLI/TUI や `subprocess` は持ち込まず、`Pyodide + React + SQLite(sql.js)` で session と transcript を持続しつつ、OpenAI 互換 API に接続します。
+
+よく使うコマンド:
+
+```bash
+pnpm dev:vibe-local-pyodide
+pnpm check:vibe-local-pyodide
+pnpm build:vibe-local-pyodide
+pnpm --filter @kazuph/vibe-local-pyodide run test:e2e
+```
+
+この app は将来 `agentOS actor` に載せる前提で、まず browser core を独立検証するための土台です。
 
 ## ライセンス
 

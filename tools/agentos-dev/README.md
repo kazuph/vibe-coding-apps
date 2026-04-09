@@ -19,6 +19,7 @@
 
 ```bash
 pnpm doctor:agentos
+pnpm sync:pi
 pnpm dev:agentos
 ```
 
@@ -40,6 +41,7 @@ project を開く:
 pnpm agentos:open -- --project lesson-booking
 pnpm agentos:open -- --project codraw
 pnpm agentos:open -- --project codraw --surface sandbox --agent codex
+pnpm verify:pi -- --project ai-wakuwaku-zukan
 ```
 
 ## 環境変数
@@ -53,3 +55,10 @@ pnpm agentos:open -- --project codraw --surface sandbox --agent codex
 
 - repo: `/mnt/repo` -> monorepo root, read-only
 - workspace: `/mnt/workspace` -> `tools/agentos-dev/.agentos-dev/workspace`, read-write
+- pi agent home: `/home/user/.pi/agent` -> `tools/agentos-dev/.agentos-dev/pi-agent`, read-write
+
+## Pi config sync
+
+- `pnpm sync:pi` は `~/.config/opencode/config.json` を読んで Pi 用の `models.json` / `settings.json` を生成します
+- `lmstudio` provider が見つかり、かつ `http://127.0.0.1:1234/v1/models` が応答すれば、その loaded model を Pi の default にします
+- Pi の default model は `tools/agentos-dev/.agentos-dev/pi-agent/settings.json` に保存されます
