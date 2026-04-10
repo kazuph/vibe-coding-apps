@@ -131,7 +131,18 @@ test.describe("vibe-local browser core", () => {
         timeout: 60_000,
       })
       .toBeGreaterThan(0);
-    await expect(page.locator(".message-bubble.role-assistant").last()).not.toContainText(/^$/);
+    const latestAssistantBubble = page.locator(".message-bubble.role-assistant").last();
+    await expect(latestAssistantBubble).not.toContainText(/^$/);
+    await expect(latestAssistantBubble.getByText(/Used tools/)).toBeVisible({
+      timeout: 60_000,
+    });
+    await latestAssistantBubble.locator(".tool-trace-disclosure summary").click();
+    await expect
+      .poll(async () => await latestAssistantBubble.locator(".tool-trace-item").count(), {
+        timeout: 60_000,
+      })
+      .toBeGreaterThan(0);
+    await expect(latestAssistantBubble.locator(".tool-trace-command code").first()).toBeVisible();
     await expect(page.getByText(/agentOS coding agent が .* tool を使って応答しました。/)).toBeVisible({
       timeout: 60_000,
     });

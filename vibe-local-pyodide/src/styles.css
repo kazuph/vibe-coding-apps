@@ -626,6 +626,123 @@ button {
   word-break: break-word;
 }
 
+.tool-trace-disclosure {
+  margin-top: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(94, 70, 54, 0.08);
+  background: rgba(247, 242, 236, 0.82);
+  overflow: hidden;
+}
+
+.tool-trace-disclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #5e4a3e;
+}
+
+.tool-trace-disclosure summary span:last-child {
+  color: #836856;
+  font-weight: 600;
+}
+
+.tool-trace-disclosure[open] summary {
+  border-bottom: 1px solid rgba(94, 70, 54, 0.08);
+}
+
+.tool-trace-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px 0;
+  font-size: 0.78rem;
+  color: #826756;
+}
+
+.tool-trace-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 251, 247, 0.94);
+  border: 1px solid rgba(94, 70, 54, 0.08);
+}
+
+.tool-trace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tool-trace-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tool-trace-status.is-completed {
+  background: rgba(226, 245, 233, 0.96);
+  color: #22663e;
+}
+
+.tool-trace-status.is-failed,
+.tool-trace-status.is-rejected {
+  background: rgba(255, 230, 230, 0.96);
+  color: #9d2e2e;
+}
+
+.tool-trace-status.is-approval_required {
+  background: rgba(255, 241, 219, 0.98);
+  color: #9a5a1c;
+}
+
+.tool-trace-command {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool-trace-command span {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a6e5d;
+}
+
+.tool-trace-command code {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(245, 238, 231, 0.92);
+  font-family:
+    "SF Mono",
+    "Menlo",
+    "Monaco",
+    monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-trace-preview {
+  font-size: 0.84rem;
+  color: #624d40;
+}
+
 .markdown-body {
   color: inherit;
 }
@@ -766,5 +883,11 @@ button {
 
   .slider-labels {
     grid-template-columns: 1fr;
+  }
+
+  .tool-trace-disclosure summary,
+  .tool-trace-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

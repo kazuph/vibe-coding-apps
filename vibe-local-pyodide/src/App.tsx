@@ -45,6 +45,7 @@ import type {
   HydratedState,
   ProjectInfo,
   ProjectInfoDetails,
+  SessionMode,
   ToolExecutionTrace,
 } from "./types";
 
@@ -105,7 +106,110 @@ function getClosestMaxTokenPresetIndex(value: number) {
   }, 0);
 }
 
+type AgentRunArtifactLog = {
+  createdAt: string;
+  executionMode: SessionMode | "read-only";
+  finalResponse: string;
+  id: string;
+  prompt: string;
+  selectedProject: string;
+  toolCalls: ToolExecutionTrace[];
+};
+
 type PendingUserMessage = ChatMessage & { sessionId: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toCompactText(value: string, maxLength = 140) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > maxLength ? `${compact.slice(0, maxLength)}…` : compact;
+}
+
+function summarizeToolNames(toolCalls: ToolExecutionTrace[]) {
+  const names = Array.from(new Set(toolCalls.map((toolCall) => toolCall.name)));
+  return names.length > 0 ? names.join(", ") : "none";
+}
+
+function formatToolCommand(trace: ToolExecutionTrace) {
+  const input = isRecord(trace.input) ? trace.input : {};
+  const pathValue = typeof input.path === "string" ? input.path : "";
+  const projectValue = typeof input.project === "string" ? input.project : "";
+  const scriptValue = typeof input.script === "string" ? input.script : "";
+  const queryValue = typeof input.query === "string" ? input.query : "";
+  const maxEntriesValue =
+    typeof input.maxEntries === "number" || typeof input.maxEntries === "string"
+      ? String(input.maxEntries)
+      : "";
+
+  if (typeof input.command === "string" && input.command.trim()) {
+    return input.command.trim();
+  }
+
+  switch (trace.name) {
+    case "listProjects":
+      return "listProjects";
+    case "projectInfo":
+      return `projectInfo ${projectValue || "(directory)"}`;
+    case "listFiles":
+      return `listFiles ${pathValue || "."}${maxEntriesValue ? ` --maxEntries ${maxEntriesValue}` : ""}`;
+    case "searchCode":
+      return `searchCode ${queryValue || "(query)"}`;
+    case "readFile":
+      return `readFile ${pathValue || "(path)"}`;
+    case "writeFile":
+      return `writeFile ${pathValue || "(path)"}`;
+    case "replaceInFile":
+      return `replaceInFile ${pathValue || "(path)"}`;
+    case "gitStatus":
+      return "git branch --show-current && git status --short";
+    case "gitDiffStat":
+      return "git diff --stat";
+    case "runScript":
+      return `pnpm --dir ${projectValue || "(directory)"} run ${scriptValue || "(script)"}`;
+    default: {
+      const summary = summarizeToolInput(input);
+      return summary === "入力なし" ? trace.name : `${trace.name} ${toCompactText(summary, 100)}`;
+    }
+  }
+}
+
+function parseAgentRunArtifactLog(artifact: {
+  createdAt: string;
+  id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+}) {
+  if (artifact.kind !== "agent_run") {
+    return null;
+  }
+  const payload = artifact.payload;
+  if (
+    typeof payload.finalResponse !== "string" ||
+    typeof payload.prompt !== "string" ||
+    typeof payload.selectedProject !== "string" ||
+    !Array.isArray(payload.toolCalls)
+  ) {
+    return null;
+  }
+
+  return {
+    id: artifact.id,
+    createdAt: artifact.createdAt,
+    executionMode:
+      payload.executionMode === "plan" ||
+      payload.executionMode === "act" ||
+      payload.executionMode === "yolo" ||
+      payload.executionMode === "read-only"
+        ? payload.executionMode
+        : "act",
+    finalResponse: payload.finalResponse,
+    prompt: payload.prompt,
+    selectedProject: payload.selectedProject,
+    toolCalls: payload.toolCalls as ToolExecutionTrace[],
+  } satisfies AgentRunArtifactLog;
+}
 
 export default function App() {
   const chatLogRef = useRef<HTMLDivElement | null>(null);
@@ -322,6 +426,33 @@ export default function App() {
   const pendingApprovals = (activeSession?.approvals ?? []).filter((approval) => approval.status === "pending");
   const activeTask = activeSession?.task ?? null;
   const activeMode = activeSession?.session.mode ?? "plan";
+  const toolLogsByMessageId = useMemo(() => {
+    const byMessageId = new Map<string, AgentRunArtifactLog>();
+    if (!activeSession) {
+      return byMessageId;
+    }
+
+    const assistantMessages = activeSession.messages.filter((message) => message.role === "assistant");
+    const artifacts = activeSession.artifacts
+      .map(parseAgentRunArtifactLog)
+      .filter((artifact): artifact is AgentRunArtifactLog => artifact !== null)
+      .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+
+    let nextAssistantIndex = 0;
+    for (const artifact of artifacts) {
+      for (let index = nextAssistantIndex; index < assistantMessages.length; index += 1) {
+        const message = assistantMessages[index];
+        if (message.content !== artifact.finalResponse) {
+          continue;
+        }
+        byMessageId.set(message.id, artifact);
+        nextAssistantIndex = index + 1;
+        break;
+      }
+    }
+
+    return byMessageId;
+  }, [activeSession]);
 
   function formatToolCalls(toolCalls: ToolExecutionTrace[]) {
     return toolCalls.flatMap((toolCall, index) => [
@@ -1074,6 +1205,45 @@ export default function App() {
                   ) : (
                     <p>{message.content}</p>
                   )}
+                  {message.role === "assistant" && toolLogsByMessageId.has(message.id) ? (
+                    <details className="tool-trace-disclosure">
+                      <summary>
+                        <span>Used tools</span>
+                        <span>
+                          {toolLogsByMessageId.get(message.id)?.toolCalls.length ?? 0}
+                          {" · "}
+                          {summarizeToolNames(toolLogsByMessageId.get(message.id)?.toolCalls ?? [])}
+                        </span>
+                      </summary>
+                      <div className="tool-trace-meta">
+                        <span>Mode: {toolLogsByMessageId.get(message.id)?.executionMode}</span>
+                        <span>
+                          Directory: {toolLogsByMessageId.get(message.id)?.selectedProject || "(not selected)"}
+                        </span>
+                      </div>
+                      <div className="tool-trace-list">
+                        {toolLogsByMessageId.get(message.id)?.toolCalls.map((trace, index) => (
+                          <article key={`${message.id}-${trace.name}-${index}`} className="tool-trace-item">
+                            <div className="tool-trace-head">
+                              <strong>
+                                #{index + 1} {trace.name}
+                              </strong>
+                              <span className={`tool-trace-status is-${trace.status}`}>{trace.status}</span>
+                            </div>
+                            <div className="tool-trace-command">
+                              <span>Command</span>
+                              <code>{formatToolCommand(trace)}</code>
+                            </div>
+                            <p className="tool-trace-preview">
+                              {trace.error
+                                ? `error: ${trace.error}`
+                                : toCompactText(trace.outputPreview || "No output preview.")}
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    </details>
+                  ) : null}
                 </article>
               ))
             )}
