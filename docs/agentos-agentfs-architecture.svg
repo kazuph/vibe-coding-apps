@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="860" viewBox="0 0 1320 860" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1320" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8F3EC"/>
+      <stop offset="1" stop-color="#FFFDF9"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#B7A58E" flood-opacity="0.18"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#6C5B4B"/>
+    </marker>
+    <style>
+      .title { font: 700 38px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; fill:#2D241E; }
+      .subtitle { font: 500 18px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; fill:#6B5B4D; }
+      .h { font: 700 24px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; fill:#2D241E; }
+      .b { font: 500 18px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; fill:#3D342D; }
+      .s { font: 500 16px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; fill:#5A4D42; }
+      .mono { font: 600 15px ui-monospace,SFMono-Regular,Menlo,monospace; fill:#473C33; }
+    </style>
+  </defs>
+
+  <rect width="1320" height="860" fill="url(#bg)"/>
+
+  <text x="60" y="78" class="title">agentOS + AgentFS の自然な役割分担</text>
+  <text x="60" y="112" class="subtitle">結論: agentOS の actor DB を置き換えるより、AgentFS を作業用 filesystem として併用する方が自然</text>
+
+  <g filter="url(#shadow)">
+    <rect x="60" y="160" width="560" height="610" rx="28" fill="#FFF8F0" stroke="#E3D8C7" stroke-width="2"/>
+    <text x="92" y="210" class="h">A. agentOS だけで持つ場合</text>
+    <text x="92" y="242" class="s">小さくまとまるが、作業ファイル / 監査 / snapshot が actor DB に寄りすぎる</text>
+
+    <rect x="100" y="290" width="480" height="130" rx="22" fill="#FFFDF9" stroke="#D9C7AF" stroke-width="2"/>
+    <text x="126" y="332" class="h">Browser / CLI</text>
+    <text x="126" y="365" class="b">chat / plan-act / approve / parallel-run</text>
+    <text x="126" y="392" class="s">同じ actor を Web と CLI が共有</text>
+
+    <path d="M340 420 L340 470" stroke="#6C5B4B" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="100" y="470" width="480" height="180" rx="22" fill="#F9EFE2" stroke="#D9C7AF" stroke-width="2"/>
+    <text x="126" y="512" class="h">agentOS actor</text>
+    <text x="126" y="545" class="b">session / transcript / approvals / sub-agent 状態</text>
+    <text x="126" y="575" class="b">tool orchestration / permissions / agent-to-agent</text>
+    <text x="126" y="607" class="mono">SQLite = actor の内部状態置き場</text>
+
+    <path d="M340 650 L340 700" stroke="#6C5B4B" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="160" y="700" width="360" height="44" rx="16" fill="#2D241E"/>
+    <text x="180" y="729" class="mono" fill="#FFF7EF">actor-local SQLite only</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="700" y="160" width="560" height="610" rx="28" fill="#FFF8F0" stroke="#E3D8C7" stroke-width="2"/>
+    <text x="732" y="210" class="h">B. agentOS + AgentFS を併用する場合</text>
+    <text x="732" y="242" class="s">おすすめ。agentOS は司令塔、AgentFS は作業机と監査ログになる</text>
+
+    <rect x="740" y="290" width="480" height="120" rx="22" fill="#FFFDF9" stroke="#D9C7AF" stroke-width="2"/>
+    <text x="766" y="332" class="h">Browser / CLI</text>
+    <text x="766" y="365" class="b">同じ UI / CLI から agentOS actor を叩く</text>
+
+    <path d="M980 410 L980 458" stroke="#6C5B4B" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="740" y="458" width="480" height="120" rx="22" fill="#F9EFE2" stroke="#D9C7AF" stroke-width="2"/>
+    <text x="766" y="500" class="h">agentOS actor</text>
+    <text x="766" y="532" class="b">session / transcript / approvals / parallel orchestration</text>
+    <text x="766" y="560" class="mono">SQLite = orchestration metadata</text>
+
+    <path d="M860 578 L820 648" stroke="#6C5B4B" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M1100 578 L1140 648" stroke="#6C5B4B" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="730" y="648" width="220" height="86" rx="20" fill="#FFFDF9" stroke="#D9C7AF" stroke-width="2"/>
+    <text x="754" y="686" class="h">AgentFS</text>
+    <text x="754" y="715" class="b">files / kv / tool history</text>
+
+    <rect x="1010" y="648" width="220" height="86" rx="20" fill="#FFFDF9" stroke="#D9C7AF" stroke-width="2"/>
+    <text x="1034" y="686" class="h">Sandbox / host tools</text>
+    <text x="1034" y="715" class="b">build / test / shell / heavy jobs</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="60" y="792" width="1200" height="42" rx="18" fill="#2D241E"/>
+    <text x="84" y="820" class="b" fill="#FFF7EF">意味が大きいのは「複数エージェントが別々の作業ファイルを安全に持ち、しかも履歴・snapshot・監査を残せる」点。置き換えより分担が本筋。</text>
+  </g>
+</svg>

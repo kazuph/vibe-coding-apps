@@ -63,6 +63,7 @@ button {
 .brand-card,
 .sidebar-section,
 .settings-panel,
+.coding-panel,
 .chat-panel {
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(94, 70, 54, 0.08);
@@ -108,6 +109,26 @@ button {
   gap: 12px;
   font-size: 0.95rem;
   font-weight: 700;
+}
+
+.section-head > div:first-child {
+  min-width: 0;
+}
+
+.section-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.panel-intro,
+.panel-summary {
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #7d6250;
 }
 
 .status-copy,
@@ -237,13 +258,15 @@ button {
   padding: 22px;
 }
 
-.settings-grid {
+.settings-grid,
+.coding-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
-.settings-grid label {
+.settings-grid label,
+.coding-grid label {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -252,6 +275,8 @@ button {
 }
 
 .settings-grid input,
+.coding-grid input,
+.coding-grid select,
 .settings-grid textarea,
 .composer textarea {
   width: 100%;
@@ -267,11 +292,15 @@ button {
 }
 
 .settings-grid input,
+.coding-grid input,
+.coding-grid select,
 .settings-grid textarea {
   padding: 14px 16px;
 }
 
 .settings-grid input:focus,
+.coding-grid input:focus,
+.coding-grid select:focus,
 .settings-grid textarea:focus,
 .composer textarea:focus {
   border-color: rgba(63, 48, 40, 0.22);
@@ -280,6 +309,103 @@ button {
 
 .wide-field {
   grid-column: 1 / -1;
+}
+
+.coding-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+}
+
+.tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.project-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(251, 247, 242, 0.92);
+  border: 1px solid rgba(93, 68, 51, 0.1);
+}
+
+.project-summary strong {
+  font-size: 0.95rem;
+}
+
+.project-summary span {
+  color: #8b6f5a;
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.tool-result-list,
+.tool-output,
+.file-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(252, 248, 244, 0.98);
+  border: 1px solid rgba(94, 70, 54, 0.08);
+}
+
+.tool-result-list code,
+.tool-output pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family:
+    "SF Mono",
+    "Menlo",
+    "Monaco",
+    monospace;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.search-result-button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.search-result-button code {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 14px;
+  transition: background 140ms ease;
+}
+
+.search-result-button:hover code {
+  background: rgba(245, 238, 231, 0.9);
+}
+
+.file-editor {
+  min-height: 320px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid rgba(94, 70, 54, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 251, 247, 0.96);
+  color: inherit;
+  resize: vertical;
+  outline: none;
+  font-family:
+    "SF Mono",
+    "Menlo",
+    "Monaco",
+    monospace;
+  font-size: 0.84rem;
+  line-height: 1.6;
 }
 
 .chat-panel {

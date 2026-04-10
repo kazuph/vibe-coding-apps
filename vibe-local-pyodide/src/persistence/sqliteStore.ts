@@ -254,8 +254,10 @@ export class SqliteSessionStore {
           createdAt: toIso(createdAt),
           updatedAt: toIso(updatedAt),
         },
+        approvals: [],
         messages: messagesBySession.get(sessionId) ?? [],
         artifacts: artifactsBySession.get(sessionId) ?? [],
+        subAgents: [],
       };
     });
   }

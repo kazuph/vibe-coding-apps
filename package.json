@@ -9,6 +9,8 @@
     "check:agentos": "pnpm --filter @kazuph/agentos-dev run check",
     "doctor:agentos": "pnpm --filter @kazuph/agentos-dev run doctor",
     "smoke:agentos": "pnpm --filter @kazuph/agentos-dev run smoke",
+    "dev:vibe-local-agentos": "bash tools/agentos-dev/scripts/dev-vibe-local-agentos.sh",
+    "vibe-local:cli": "pnpm --filter @kazuph/agentos-dev run vibe-local-cli --",
     "sync:pi": "pnpm --filter @kazuph/agentos-dev run sync-pi",
     "verify:pi": "pnpm --filter @kazuph/agentos-dev run verify-pi",
     "agentos:list-projects": "pnpm --filter @kazuph/agentos-dev run list-projects",

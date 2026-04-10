@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 
 import react from "@vitejs/plugin-react";
+import { createClient } from "rivetkit/client";
 import type { Connect } from "vite";
 import { defineConfig } from "vite";
 
@@ -30,6 +31,33 @@ type OpenCodeConfig = {
   >;
 };
 
+type AgentosPayload = {
+  settings?: {
+    apiKey: string;
+    baseUrl: string;
+    maxTokens: number;
+    model: string;
+    systemPrompt: string;
+    temperature: number;
+  };
+  maxResults?: number;
+  path?: string;
+  project?: string;
+  prompt?: string;
+  sessionId?: string;
+  selectedProject?: string;
+  role?: "assistant" | "system" | "user";
+  title?: string;
+  content?: string;
+  model?: string;
+  mode?: "plan" | "act";
+  script?: string;
+  timeoutMs?: number;
+  decision?: "approve" | "reject";
+  approvalId?: string;
+  prompts?: string[];
+};
+
 function json(
   res: Parameters<Connect.NextHandleFunction>[1],
   status: number,
@@ -47,6 +75,17 @@ async function readRequestBody(req: Connect.IncomingMessage) {
   }
 
   return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+function createAgentosClient() {
+  const endpoint = process.env.AGENTOS_ENDPOINT ?? "http://127.0.0.1:6420";
+  return createClient(endpoint) as any;
+}
+
+async function callVibeLocalAction<T>(action: string, ...args: unknown[]) {
+  const client = createAgentosClient();
+  const handle = client.vibeLocal.getOrCreate(["browser-core"]);
+  return (await handle[action](...args)) as T;
 }
 
 function createOpenAiProxyMiddleware(): Connect.NextHandleFunction {
@@ -93,6 +132,289 @@ function createOpenAiProxyMiddleware(): Connect.NextHandleFunction {
         });
       }
       return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/agentos/health") {
+      try {
+        const payload = await callVibeLocalAction<{ sessions: unknown[] }>("hydrate");
+        json(res, 200, {
+          ok: true,
+          sessionCount: payload.sessions.length,
+        });
+      } catch (error) {
+        json(res, 503, {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/agentos/hydrate") {
+      try {
+        const payload = await callVibeLocalAction<{ sessions: unknown[] }>("hydrate");
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/coding/projects") {
+      try {
+        const payload = await callVibeLocalAction("listProjects");
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/coding/project") {
+      try {
+        const project = url.searchParams.get("project");
+        if (!project) {
+          json(res, 400, { error: "Missing project query parameter." });
+          return;
+        }
+        const payload = await callVibeLocalAction("projectInfo", project);
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/coding/git/status") {
+      try {
+        const payload = await callVibeLocalAction("gitStatus");
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/coding/git/diff") {
+      try {
+        const payload = await callVibeLocalAction("gitDiffStat");
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/coding/search") {
+      try {
+        const query = url.searchParams.get("query");
+        if (!query?.trim()) {
+          json(res, 400, { error: "Missing query parameter." });
+          return;
+        }
+        const maxResults = Number.parseInt(url.searchParams.get("maxResults") ?? "20", 10);
+        const payload = await callVibeLocalAction("searchCode", query, maxResults);
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/coding/file") {
+      try {
+        const filePath = url.searchParams.get("path");
+        if (!filePath?.trim()) {
+          json(res, 400, { error: "Missing path query parameter." });
+          return;
+        }
+        const payload = await callVibeLocalAction("readFile", filePath);
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/__vibe_local/agentos/export") {
+      try {
+        const sessionId = url.searchParams.get("sessionId");
+        if (!sessionId) {
+          json(res, 400, { error: "Missing sessionId query parameter." });
+          return;
+        }
+        const payload = await callVibeLocalAction("exportSession", sessionId);
+        json(res, 200, payload);
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      (url.pathname.startsWith("/__vibe_local/agentos/") ||
+        url.pathname.startsWith("/__vibe_local/coding/"))
+    ) {
+      const raw = await readRequestBody(req);
+      const payload = (raw ? JSON.parse(raw) : {}) as AgentosPayload;
+
+      try {
+        if (url.pathname === "/__vibe_local/agentos/session") {
+          json(res, 200, await callVibeLocalAction("createSession", payload.title ?? ""));
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/agentos/session/config") {
+          if (!payload.sessionId || !payload.model || !payload.mode) {
+            json(res, 400, { error: "sessionId, model, and mode are required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "setSessionConfig",
+              payload.sessionId,
+              payload.model,
+              payload.mode,
+            ),
+          );
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/agentos/session/message") {
+          if (!payload.sessionId || !payload.role || payload.content === undefined) {
+            json(res, 400, { error: "sessionId, role, and content are required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "appendMessage",
+              payload.sessionId,
+              payload.role,
+              payload.content,
+            ),
+          );
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/agentos/session/compact") {
+          if (!payload.sessionId) {
+            json(res, 400, { error: "sessionId is required." });
+            return;
+          }
+          json(res, 200, await callVibeLocalAction("compactSession", payload.sessionId));
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/agentos/session/agent-run") {
+          if (!payload.sessionId || !payload.prompt || !payload.settings) {
+            json(res, 400, { error: "sessionId, prompt, and settings are required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "runAgentTurn",
+              payload.sessionId,
+              payload.prompt,
+              payload.settings,
+              payload.selectedProject ?? "",
+            ),
+          );
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/agentos/session/approval") {
+          if (!payload.sessionId || !payload.approvalId || !payload.decision) {
+            json(res, 400, { error: "sessionId, approvalId, and decision are required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "approveToolCall",
+              payload.sessionId,
+              payload.approvalId,
+              payload.decision,
+            ),
+          );
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/agentos/session/sub-agents") {
+          if (!payload.sessionId || !payload.settings || !payload.prompts?.length) {
+            json(res, 400, { error: "sessionId, settings, and prompts are required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "runParallelAgentTasks",
+              payload.sessionId,
+              payload.prompts,
+              payload.settings,
+              payload.selectedProject ?? "",
+            ),
+          );
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/coding/run-script") {
+          if (!payload.project || !payload.script) {
+            json(res, 400, { error: "project and script are required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "runScript",
+              payload.project,
+              payload.script,
+              payload.timeoutMs ?? 120_000,
+            ),
+          );
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/coding/file") {
+          const filePath = payload.path ?? "";
+          if (!filePath.trim() || payload.content === undefined) {
+            json(res, 400, { error: "path and content are required." });
+            return;
+          }
+          json(res, 200, await callVibeLocalAction("writeFile", filePath, payload.content));
+          return;
+        }
+      } catch (error) {
+        json(res, 503, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
     }
 
     if (req.method === "GET" && url.pathname === "/__vibe_local/models") {

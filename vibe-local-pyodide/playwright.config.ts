@@ -16,10 +16,18 @@ export default defineConfig({
     trace: "retain-on-failure",
     video: "retain-on-failure",
   },
-  webServer: {
-    command: "pnpm dev",
-    port: 5274,
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "pnpm --filter @kazuph/agentos-dev run start",
+      url: "http://127.0.0.1:6420",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: "pnpm dev",
+      url: "http://localhost:5274",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
 });
