@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   Bot,
   Database,
@@ -12,6 +13,8 @@ import {
 } from "lucide-react";
 
 import {
+  continueSubAgentFromBrowser,
+  continueAgentTaskFromBrowser,
   decideApprovalFromBrowser,
   fetchGitDiffStat,
   fetchGitStatus,
@@ -40,6 +43,41 @@ import type {
 
 const DEFAULT_STATUS = "Pyodide core を初期化しています…";
 
+function MarkdownText({ children }: { children: string }) {
+  return (
+    <div className="markdown-body">
+      <ReactMarkdown>{children}</ReactMarkdown>
+    </div>
+  );
+}
+
+function summarizeToolInput(input: Record<string, unknown>) {
+  const entries = Object.entries(input);
+  if (entries.length === 0) {
+    return "入力なし";
+  }
+
+  return entries
+    .map(([key, value]) => {
+      if (typeof value === "string") {
+        const compact = value.replace(/\s+/g, " ").trim();
+        return `${key}: ${compact.length > 120 ? `${compact.slice(0, 120)}…` : compact}`;
+      }
+      return `${key}: ${JSON.stringify(value)}`;
+    })
+    .join("\n");
+}
+
+function renderToolTraceSummary(trace: ToolExecutionTrace) {
+  return [
+    `${trace.name} [${trace.status}]`,
+    summarizeToolInput((trace.input ?? {}) as Record<string, unknown>),
+    trace.error ? `error: ${trace.error}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function downloadJson(filename: string, payload: unknown) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json;charset=utf-8",
@@ -64,7 +102,8 @@ export default function App() {
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelChoices, setModelChoices] = useState<string[]>([]);
   const [streamingText, setStreamingText] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [codingPanelOpen, setCodingPanelOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<BackendSettings | null>(null);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
@@ -81,6 +120,7 @@ export default function App() {
   const [parallelPromptsDraft, setParallelPromptsDraft] = useState(
     "README.md を読んで repo の要点を3行でまとめる\n--\nvibe-local-pyodide の scripts を見て check/build/test を短く整理する",
   );
+  const [parallelExecutionMode, setParallelExecutionMode] = useState<"act" | "plan" | "read-only">("read-only");
 
   async function refreshProjects(nextProject?: string) {
     if (sessionStore.mode !== "agentos") return;
@@ -110,6 +150,30 @@ export default function App() {
     setSelectedSessionId(selected);
   }
 
+  async function syncSettingsModel(store: SessionStore, nextSettings: BackendSettings) {
+    if (!nextSettings.baseUrl.trim()) {
+      return nextSettings;
+    }
+
+    try {
+      const models = await fetchModels(nextSettings);
+      setModelChoices(models);
+      if (models.length === 0 || models.includes(nextSettings.model.trim())) {
+        return nextSettings;
+      }
+
+      const corrected = {
+        ...nextSettings,
+        model: models[0],
+      };
+      await store.saveSettings(corrected);
+      setStatus(`利用可能なモデルに合わせて ${models[0]} に切り替えました。`);
+      return corrected;
+    } catch {
+      return nextSettings;
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -132,17 +196,22 @@ export default function App() {
         }
         const nextStore = (await agentosStore.isAvailable()) ? agentosStore : localStore;
         if (cancelled) return;
-        const hydratedState =
+        let hydratedState =
           nextStore.mode === "agentos"
             ? {
                 ...(await nextStore.getHydratedState()),
                 settings: next.settings,
               }
             : await nextStore.getHydratedState();
+        const syncedSettings = await syncSettingsModel(nextStore, hydratedState.settings);
+        hydratedState = {
+          ...hydratedState,
+          settings: syncedSettings,
+        };
         if (cancelled) return;
         setSessionStore(nextStore);
         setHydrated(hydratedState);
-        setSettingsDraft(hydratedState.settings);
+        setSettingsDraft(syncedSettings);
         setSelectedSessionId(hydratedState.sessions[0]?.session.id ?? null);
         setStatus((current) =>
           current === DEFAULT_STATUS
@@ -233,6 +302,7 @@ export default function App() {
   const activeSession = sessions.find((entry) => entry.session.id === selectedSessionId) ?? null;
   const settings = settingsDraft ?? hydrated?.settings ?? null;
   const pendingApprovals = (activeSession?.approvals ?? []).filter((approval) => approval.status === "pending");
+  const activeTask = activeSession?.task ?? null;
 
   function formatToolCalls(toolCalls: ToolExecutionTrace[]) {
     return toolCalls.flatMap((toolCall, index) => [
@@ -248,6 +318,7 @@ export default function App() {
     return [
       `Approval ${approval.id}`,
       `${approval.toolName} [${approval.status}]`,
+      approval.subAgentId ? `sub-agent: ${approval.subAgentId}` : "",
       JSON.stringify(approval.input, null, 2),
       approval.outputPreview,
       approval.error ? `error: ${approval.error}` : "",
@@ -334,7 +405,7 @@ export default function App() {
       setStatus("モデル一覧を取得しています…");
       const models = await fetchModels(settings);
       setModelChoices(models);
-      if (!settings.model && models[0]) {
+      if (models[0] && (!settings.model || !models.includes(settings.model))) {
         const next = { ...settings, model: models[0] };
         setSettingsDraft(next);
         await sessionStore.saveSettings(next);
@@ -348,13 +419,19 @@ export default function App() {
     }
   }
 
-  async function handleApprovalDecision(approvalId: string, decision: "approve" | "reject") {
+  async function handleApprovalDecision(
+    approvalId: string,
+    decision: "approve" | "reject",
+    continueAfter = false,
+  ) {
     if (!activeSession) return;
     await withToolExecution(decision === "approve" ? "Approve tool" : "Reject tool", async () => {
       const result = await decideApprovalFromBrowser({
         sessionId: activeSession.session.id,
         approvalId,
         decision,
+        continueAfter,
+        settings: continueAfter ? settings ?? undefined : undefined,
       });
       await refreshState(activeSession.session.id, sessionStore);
       return [
@@ -364,6 +441,57 @@ export default function App() {
         "",
         "Tool result",
         JSON.stringify(result.toolResult, null, 2),
+        ...(result.continuation
+          ? [
+              "",
+              "Continuation",
+              ...formatToolCalls(result.continuation.toolCalls),
+              "Final response",
+              result.continuation.message.content,
+            ]
+          : []),
+      ].join("\n");
+    });
+  }
+
+  async function handleContinueTask() {
+    if (!activeSession || !settings || !activeTask) return;
+    await withToolExecution("Continue task", async () => {
+      const result = await continueAgentTaskFromBrowser({
+        sessionId: activeSession.session.id,
+        settings,
+      });
+      await refreshState(activeSession.session.id, sessionStore);
+      return [
+        `Goal: ${result.task?.goal ?? activeTask.goal}`,
+        `Status: ${result.task?.status ?? "unknown"}`,
+        `Continue count: ${result.task?.continueCount ?? activeTask.continueCount}`,
+        "",
+        ...formatToolCalls(result.toolCalls),
+        "Final response",
+        result.message.content,
+      ].join("\n");
+    });
+  }
+
+  async function handleContinueSubAgent(subAgentId: string) {
+    if (!activeSession || !settings) return;
+    await withToolExecution("Continue sub-agent", async () => {
+      const result = await continueSubAgentFromBrowser({
+        sessionId: activeSession.session.id,
+        subAgentId,
+        settings,
+      });
+      await refreshState(activeSession.session.id, sessionStore);
+      return [
+        `Sub-agent: ${result.subAgent.id}`,
+        `Status: ${result.subAgent.status}`,
+        `Resume count: ${result.subAgent.resumeCount}`,
+        result.noop ? `No-op: ${result.reason}` : "",
+        "",
+        ...formatToolCalls(result.subAgent.toolCalls),
+        "Final response",
+        result.subAgent.finalResponse || "(empty)",
       ].join("\n");
     });
   }
@@ -378,6 +506,7 @@ export default function App() {
 
     await withToolExecution("Parallel agents", async () => {
       const result = await runParallelAgentsFromBrowser({
+        executionMode: parallelExecutionMode,
         sessionId: activeSession.session.id,
         prompts,
         settings,
@@ -428,8 +557,6 @@ export default function App() {
       const userDraft = draft.trim();
       setDraft("");
       if (sessionStore.mode === "agentos") {
-        await sessionStore.appendMessage(current.session.id, "user", userDraft);
-        await refreshState(current.session.id, sessionStore);
         setStatus("agentOS coding agent を実行しています…");
         const result = await runAgentTurnFromBrowser({
           sessionId: current.session.id,
@@ -808,264 +935,15 @@ export default function App() {
           </section>
         ) : null}
 
-        <section className="coding-panel">
-          <div className="section-head">
+        <section className="chat-panel">
+          <div className="section-head chat-panel-head">
             <div>
-              <span>Coding workspace</span>
+              <span>Chat</span>
               <p className="panel-intro">
-                真ん中のカードです。project 選択、repo 操作、file editor、tool output をまとめています。
+                ふだん使うメイン画面です。ここで依頼を投げて、agent の返答と進行状況を確認します。
               </p>
             </div>
-            <div className="section-head-actions">
-              <button
-                className="ghost-button"
-                onClick={() => void refreshProjects()}
-                disabled={sessionStore.mode !== "agentos" || isToolRunning}
-              >
-                <RefreshCw size={16} />
-                Refresh projects
-              </button>
-            </div>
           </div>
-
-          {sessionStore.mode !== "agentos" ? (
-            <p className="status-copy">agentOS actor に接続しているときだけ coding tools を使えます。</p>
-          ) : (
-            <>
-              <div className="coding-grid">
-                <label>
-                  <span>Mode</span>
-                  <select
-                    aria-label="Mode"
-                    value={activeSession?.session.mode ?? "plan"}
-                    onChange={(event) => void handleChangeMode(event.target.value as "plan" | "act")}
-                  >
-                    <option value="plan">plan</option>
-                    <option value="act">act</option>
-                  </select>
-                </label>
-
-                <label>
-                  <span>Project</span>
-                  <select
-                    aria-label="Project"
-                    value={selectedProject}
-                    onChange={(event) => setSelectedProject(event.target.value)}
-                  >
-                    {projects.map((project) => (
-                      <option key={project.relativePath} value={project.relativePath}>
-                        {project.relativePath}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  <span>Script</span>
-                  <select
-                    aria-label="Script"
-                    value={selectedScript}
-                    onChange={(event) => setSelectedScript(event.target.value)}
-                  >
-                    {(projectInfo?.scripts ?? []).map((script) => (
-                      <option key={script} value={script}>
-                        {script}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="wide-field">
-                  <span>Repo search</span>
-                  <input
-                    aria-label="Repo search"
-                    value={toolSearchQuery}
-                    placeholder="例: agentOS actor"
-                    onChange={(event) => setToolSearchQuery(event.target.value)}
-                  />
-                </label>
-
-                <label className="wide-field">
-                  <span>File path</span>
-                  <input
-                    aria-label="File path"
-                    value={filePathDraft}
-                    placeholder="例: vibe-local-pyodide/src/App.tsx"
-                    onChange={(event) => setFilePathDraft(event.target.value)}
-                  />
-                </label>
-              </div>
-
-              <div className="tool-actions">
-                <button className="ghost-button" onClick={() => void handleGitStatus()} disabled={isToolRunning}>
-                  Git status
-                </button>
-                <button className="ghost-button" onClick={() => void handleGitDiffStat()} disabled={isToolRunning}>
-                  Diff stat
-                </button>
-                <button
-                  className="ghost-button"
-                  onClick={() => void handleSearchCode()}
-                  disabled={isToolRunning || !toolSearchQuery.trim()}
-                >
-                  Search code
-                </button>
-                <button
-                  className="primary-button"
-                  onClick={() => void handleRunScript()}
-                  disabled={isToolRunning || !selectedProject || !selectedScript}
-                >
-                  {isToolRunning ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
-                  Run script
-                </button>
-                <button
-                  className="ghost-button"
-                  onClick={() => void handleOpenFile()}
-                  disabled={isToolRunning || !filePathDraft.trim()}
-                >
-                  Open file
-                </button>
-                <button
-                  className="ghost-button"
-                  onClick={() => void handleSaveFile()}
-                  disabled={isToolRunning || !filePathDraft.trim()}
-                >
-                  Save file
-                </button>
-              </div>
-
-              <div className="project-summary">
-                <strong>{projectInfo?.name ?? selectedProject ?? "Project not selected"}</strong>
-                <span>{projectInfo?.absolutePath ?? ""}</span>
-                <p className="status-copy">
-                  {activeSession?.session.mode === "plan"
-                    ? "Plan mode では書き込み系 tool が approval 待ちになります。"
-                    : "Act mode では tool-calling agent が即実行します。"}
-                </p>
-              </div>
-
-              <div className="tool-output">
-                <div className="section-head">
-                  <span>Pending approvals</span>
-                  <span>{pendingApprovals.length}</span>
-                </div>
-                {pendingApprovals.length === 0 ? (
-                  <p className="status-copy">承認待ちの tool はありません。</p>
-                ) : (
-                  <div className="tool-result-list" aria-label="Pending approvals">
-                    {pendingApprovals.map((approval) => (
-                      <div key={approval.id} className="project-summary">
-                        <strong>{approval.toolName}</strong>
-                        <span>{approval.id}</span>
-                        <pre>{JSON.stringify(approval.input, null, 2)}</pre>
-                        <div className="tool-actions">
-                          <button
-                            className="primary-button"
-                            onClick={() => void handleApprovalDecision(approval.id, "approve")}
-                            disabled={isToolRunning}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="ghost-button"
-                            onClick={() => void handleApprovalDecision(approval.id, "reject")}
-                            disabled={isToolRunning}
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {searchResults.length > 0 ? (
-                <div className="tool-result-list" aria-label="Search results">
-                  {searchResults.map((entry) => (
-                    <button
-                      key={entry}
-                      className="search-result-button"
-                      aria-label={`Open search result ${extractPathFromSearchResult(entry)}`}
-                      onClick={() => void handleOpenFile(extractPathFromSearchResult(entry))}
-                    >
-                      <code>{entry}</code>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="file-editor-panel">
-                <div className="section-head">
-                  <span>{openedFilePath || "File editor"}</span>
-                </div>
-                <textarea
-                  aria-label="File editor"
-                  className="file-editor"
-                  value={fileContentDraft}
-                  onChange={(event) => setFileContentDraft(event.target.value)}
-                  spellCheck={false}
-                />
-              </div>
-
-              <div className="tool-output">
-                <div className="section-head">
-                  <span>{toolOutputTitle}</span>
-                  {isToolRunning ? <LoaderCircle size={16} className="spin" /> : null}
-                </div>
-                <pre>{toolOutput}</pre>
-              </div>
-
-              <div className="tool-output">
-                <div className="section-head">
-                  <div>
-                    <span>Parallel agents</span>
-                    <p className="panel-intro">`--` 区切りで複数プロンプトを投げて、read-only の調査エージェントを並列実行します。</p>
-                  </div>
-                </div>
-                <textarea
-                  aria-label="Parallel prompts"
-                  className="file-editor"
-                  value={parallelPromptsDraft}
-                  onChange={(event) => setParallelPromptsDraft(event.target.value)}
-                  spellCheck={false}
-                />
-                <div className="tool-actions">
-                  <button
-                    className="primary-button"
-                    onClick={() => void handleRunParallelAgents()}
-                    disabled={isToolRunning || !parallelPromptsDraft.trim()}
-                  >
-                    Run parallel agents
-                  </button>
-                </div>
-                {(activeSession?.subAgents ?? []).length > 0 ? (
-                  <div className="tool-result-list" aria-label="Sub-agent runs">
-                    {activeSession?.subAgents.map((subAgent) => (
-                      <div key={subAgent.id} className="project-summary">
-                        <strong>{subAgent.status}</strong>
-                        <span>{subAgent.prompt}</span>
-                        <pre>
-                          {[
-                            subAgent.finalResponse,
-                            subAgent.error ? `error: ${subAgent.error}` : "",
-                            ...formatToolCalls(subAgent.toolCalls),
-                          ]
-                            .filter(Boolean)
-                            .join("\n")}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="status-copy">まだ sub-agent 実行はありません。</p>
-                )}
-              </div>
-            </>
-          )}
-        </section>
-
-        <section className="chat-panel">
           <div className="chat-log" ref={chatLogRef}>
             {transcript.length === 0 ? (
               <div className="empty-state">
@@ -1079,11 +957,222 @@ export default function App() {
                     <strong>{message.role}</strong>
                     <span>{new Date(message.createdAt).toLocaleString()}</span>
                   </div>
-                  <p>{message.content}</p>
+                  {message.role === "assistant" ? (
+                    <MarkdownText>{message.content}</MarkdownText>
+                  ) : (
+                    <p>{message.content}</p>
+                  )}
                 </article>
               ))
             )}
           </div>
+
+          <section className="tool-output">
+            <div className="section-head">
+              <div>
+                <span>Agent controls</span>
+                <p className="panel-intro">agent の実行を続行・承認・並列実行はこのセクションで行います。</p>
+              </div>
+            </div>
+
+            <div className="tool-output">
+              <div className="section-head">
+                <span>Current task</span>
+                {activeTask ? <span>{activeTask.status}</span> : null}
+              </div>
+              {activeTask ? (
+                <div className="project-summary">
+                  <strong>{activeTask.goal}</strong>
+                  <span>{activeTask.selectedProject || "(project not selected)"}</span>
+                  <p className="status-copy">
+                    Continue count: {activeTask.continueCount} · Last status: {activeTask.status}
+                  </p>
+                  {activeTask.lastResponse ? <MarkdownText>{activeTask.lastResponse}</MarkdownText> : null}
+                  {activeTask.lastError ? <pre>{activeTask.lastError}</pre> : null}
+                  <div className="tool-actions">
+                    <button
+                      className="primary-button"
+                      onClick={() => void handleContinueTask()}
+                      disabled={isToolRunning || isSending || !settings || sessionStore.mode !== "agentos"}
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="status-copy">まだ進行中タスクはありません。</p>
+              )}
+            </div>
+
+            <div className="tool-output">
+              <div className="section-head">
+                <span>Pending approvals</span>
+                <span>{pendingApprovals.length}</span>
+              </div>
+              {pendingApprovals.length === 0 ? (
+                <p className="status-copy">承認待ちの tool はありません。</p>
+              ) : (
+                <div className="tool-result-list" aria-label="Pending approvals">
+                  {pendingApprovals.map((approval) => (
+                    <div key={approval.id} className="project-summary">
+                      <strong>{approval.toolName}</strong>
+                      <span>
+                        {approval.id}
+                        {approval.subAgentId ? ` · sub-agent ${approval.subAgentId}` : ""}
+                      </span>
+                      <div className="compact-code-block">
+                        <pre>{summarizeToolInput(approval.input)}</pre>
+                      </div>
+                      {approval.outputPreview ? (
+                        <details className="details-block">
+                          <summary>最新の出力</summary>
+                          <pre>{approval.outputPreview}</pre>
+                        </details>
+                      ) : null}
+                      <div className="tool-actions">
+                        <button
+                          className="primary-button"
+                          onClick={() => void handleApprovalDecision(approval.id, "approve")}
+                          disabled={isToolRunning || sessionStore.mode !== "agentos"}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="primary-button"
+                          onClick={() => void handleApprovalDecision(approval.id, "approve", true)}
+                          disabled={isToolRunning || !settings || sessionStore.mode !== "agentos"}
+                        >
+                          Approve & continue
+                        </button>
+                        <button
+                          className="ghost-button"
+                          onClick={() => void handleApprovalDecision(approval.id, "reject")}
+                          disabled={isToolRunning || sessionStore.mode !== "agentos"}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="tool-output">
+              <div className="section-head">
+                <div>
+                  <span>Parallel agents</span>
+                  <p className="panel-intro">`--` 区切りで複数プロンプトを投げて、sub-agent を並列実行します。</p>
+                </div>
+              </div>
+              <div className="coding-grid">
+                <label>
+                  <span>Sub-agent mode</span>
+                  <select
+                    aria-label="Sub-agent mode"
+                    value={parallelExecutionMode}
+                    onChange={(event) =>
+                      setParallelExecutionMode(event.target.value as "act" | "plan" | "read-only")
+                    }
+                  >
+                    <option value="read-only">read-only</option>
+                    <option value="act">act</option>
+                    <option value="plan">plan</option>
+                  </select>
+                </label>
+              </div>
+              <textarea
+                aria-label="Parallel prompts"
+                className="file-editor"
+                value={parallelPromptsDraft}
+                onChange={(event) => setParallelPromptsDraft(event.target.value)}
+                spellCheck={false}
+              />
+              <div className="tool-actions">
+                <button
+                  className="primary-button"
+                  onClick={() => void handleRunParallelAgents()}
+                  disabled={isToolRunning || !parallelPromptsDraft.trim() || sessionStore.mode !== "agentos"}
+                >
+                  Run parallel agents
+                </button>
+              </div>
+              {(activeSession?.subAgents ?? []).length > 0 ? (
+                <div className="tool-result-list" aria-label="Sub-agent runs">
+                  {activeSession?.subAgents.map((subAgent) => {
+                    const isResumable =
+                      subAgent.executionMode === "plan" &&
+                      subAgent.pendingApprovals.length === 0 &&
+                      pendingApprovals.every((approval) => approval.subAgentId !== subAgent.id) &&
+                      activeSession.approvals.some(
+                        (approval) =>
+                          approval.subAgentId === subAgent.id &&
+                          approval.status === "approved" &&
+                          (!subAgent.lastResumedAt || approval.updatedAt > subAgent.lastResumedAt),
+                      );
+
+                    return (
+                      <div key={subAgent.id} className="project-summary">
+                        <strong>{subAgent.status}</strong>
+                        <span>{subAgent.executionMode} · {subAgent.prompt}</span>
+                        <p className="status-copy">
+                          Resume count: {subAgent.resumeCount}
+                          {subAgent.lastResumedAt ? ` · last resumed ${subAgent.lastResumedAt}` : ""}
+                        </p>
+                        {isResumable ? (
+                          <div className="tool-actions">
+                            <button
+                              className="ghost-button"
+                              onClick={() => void handleContinueSubAgent(subAgent.id)}
+                              disabled={isToolRunning || !settings || sessionStore.mode !== "agentos"}
+                            >
+                              Resume
+                            </button>
+                          </div>
+                        ) : null}
+                        {subAgent.finalResponse ? <MarkdownText>{subAgent.finalResponse}</MarkdownText> : null}
+                        {subAgent.pendingApprovals.length > 0 ? (
+                          <p className="status-copy">pending approvals: {subAgent.pendingApprovals.join(", ")}</p>
+                        ) : null}
+                        {pendingApprovals.some((approval) => approval.subAgentId === subAgent.id) ? (
+                          <p className="status-copy">
+                            approval owners: {" "}
+                            {pendingApprovals
+                              .filter((approval) => approval.subAgentId === subAgent.id)
+                              .map((approval) => approval.id)
+                              .join(", ")}
+                          </p>
+                        ) : null}
+                        {subAgent.error ? <pre>{subAgent.error}</pre> : null}
+                        {subAgent.toolCalls.length > 0 ? (
+                          <details className="details-block">
+                            <summary>tool traces ({subAgent.toolCalls.length})</summary>
+                            <div className="tool-trace-list">
+                              {subAgent.toolCalls.map((trace, index) => (
+                                <div key={`${subAgent.id}-${trace.name}-${index}`} className="compact-code-block">
+                                  <pre>{renderToolTraceSummary(trace)}</pre>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="status-copy">まだ sub-agent 実行はありません。</p>
+              )}
+            </div>
+
+            <div className="tool-output">
+              <div className="section-head">
+                <span>{toolOutputTitle}</span>
+                {isToolRunning ? <LoaderCircle size={16} className="spin" /> : null}
+              </div>
+              <pre>{toolOutput}</pre>
+            </div>
+          </section>
 
           <div className="composer">
             <textarea
@@ -1116,6 +1205,184 @@ export default function App() {
               </button>
             </div>
           </div>
+        </section>
+
+        <section className="coding-panel">
+          <div className="section-head">
+            <div>
+              <span>Project workspace</span>
+              <p className="panel-intro">ファイル確認と編集、検索、軽量 script 実行のための作業エリアです。</p>
+            </div>
+            <div className="section-head-actions">
+              {codingPanelOpen && sessionStore.mode === "agentos" ? (
+                <button
+                  className="ghost-button"
+                  onClick={() => void refreshProjects()}
+                  disabled={isToolRunning}
+                >
+                  <RefreshCw size={16} />
+                  Refresh projects
+                </button>
+              ) : null}
+                <button className="ghost-button" onClick={() => setCodingPanelOpen((value) => !value)}>
+                  <Settings2 size={16} />
+                  {codingPanelOpen ? "Hide project workspace" : "Show project workspace"}
+                </button>
+              </div>
+            </div>
+
+          {codingPanelOpen ? (
+            sessionStore.mode !== "agentos" ? (
+              <p className="status-copy">agentOS actor に接続しているときだけ coding tools を使えます。</p>
+            ) : (
+              <>
+                <div className="coding-grid">
+                  <label>
+                    <span>Mode</span>
+                    <select
+                      aria-label="Mode"
+                      value={activeSession?.session.mode ?? "plan"}
+                      onChange={(event) => void handleChangeMode(event.target.value as "plan" | "act")}
+                    >
+                      <option value="plan">plan</option>
+                      <option value="act">act</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Project</span>
+                    <select
+                      aria-label="Project"
+                      value={selectedProject}
+                      onChange={(event) => setSelectedProject(event.target.value)}
+                    >
+                      {projects.map((project) => (
+                        <option key={project.relativePath} value={project.relativePath}>
+                          {project.relativePath}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Script</span>
+                    <select
+                      aria-label="Script"
+                      value={selectedScript}
+                      onChange={(event) => setSelectedScript(event.target.value)}
+                    >
+                      {(projectInfo?.scripts ?? []).map((script) => (
+                        <option key={script} value={script}>
+                          {script}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="wide-field">
+                    <span>Repo search</span>
+                    <input
+                      aria-label="Repo search"
+                      value={toolSearchQuery}
+                      placeholder="例: agentOS actor"
+                      onChange={(event) => setToolSearchQuery(event.target.value)}
+                    />
+                  </label>
+
+                  <label className="wide-field">
+                    <span>File path</span>
+                    <input
+                      aria-label="File path"
+                      value={filePathDraft}
+                      placeholder="例: vibe-local-pyodide/src/App.tsx"
+                      onChange={(event) => setFilePathDraft(event.target.value)}
+                    />
+                  </label>
+                </div>
+
+                <div className="tool-actions">
+                  <button className="ghost-button" onClick={() => void handleGitStatus()} disabled={isToolRunning}>
+                    Git status
+                  </button>
+                  <button className="ghost-button" onClick={() => void handleGitDiffStat()} disabled={isToolRunning}>
+                    Diff stat
+                  </button>
+                  <button
+                    className="ghost-button"
+                    onClick={() => void handleSearchCode()}
+                    disabled={isToolRunning || !toolSearchQuery.trim()}
+                  >
+                    Search code
+                  </button>
+                  <button
+                    className="primary-button"
+                    onClick={() => void handleRunScript()}
+                    disabled={isToolRunning || !selectedProject || !selectedScript}
+                  >
+                    {isToolRunning ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
+                    Run script
+                  </button>
+                  <button
+                    className="ghost-button"
+                    onClick={() => void handleOpenFile()}
+                    disabled={isToolRunning || !filePathDraft.trim()}
+                  >
+                    Open file
+                  </button>
+                  <button
+                    className="ghost-button"
+                    onClick={() => void handleSaveFile()}
+                    disabled={isToolRunning || !filePathDraft.trim()}
+                  >
+                    Save file
+                  </button>
+                </div>
+
+                <div className="project-summary">
+                  <strong>{projectInfo?.name ?? selectedProject ?? "Project not selected"}</strong>
+                  <span>{projectInfo?.absolutePath ?? ""}</span>
+                  <p className="status-copy">
+                    {activeSession?.session.mode === "plan"
+                      ? "Plan mode では書き込み系 tool が approval 待ちになります。"
+                      : "Act mode では tool-calling agent が即実行します。"}
+                  </p>
+                </div>
+
+                {searchResults.length > 0 ? (
+                  <div className="tool-result-list" aria-label="Search results">
+                    {searchResults.map((entry) => (
+                      <button
+                        key={entry}
+                        className="search-result-button"
+                        aria-label={`Open search result ${extractPathFromSearchResult(entry)}`}
+                        onClick={() => void handleOpenFile(extractPathFromSearchResult(entry))}
+                      >
+                        <code>{entry}</code>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="file-editor-panel">
+                  <div className="section-head">
+                    <span>{openedFilePath || "File editor"}</span>
+                  </div>
+                  <textarea
+                    aria-label="File editor"
+                    className="file-editor"
+                    value={fileContentDraft}
+                    onChange={(event) => setFileContentDraft(event.target.value)}
+                    spellCheck={false}
+                  />
+                </div>
+
+              </>
+            )
+          ) : (
+            <p className="panel-summary">
+              ここは任意です。ファイル確認、検索、script 実行が必要なときだけ開いてください。
+            </p>
+          )}
         </section>
       </main>
     </div>
