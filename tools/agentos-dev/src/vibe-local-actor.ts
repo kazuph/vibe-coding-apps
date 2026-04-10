@@ -198,7 +198,12 @@ type AgentTurnResult = {
 };
 
 const execFileAsync = promisify(execFile);
-const MUTATING_TOOL_NAMES = new Set(["replaceInFile", "runScript", "writeFile"]);
+const MUTATING_TOOL_NAMES = new Set([
+  "continueSubAgentTask",
+  "replaceInFile",
+  "runScript",
+  "writeFile",
+]);
 
 type ToolExecutionMode = "act" | "plan" | "read-only" | "yolo";
 type AssistantDeltaCallback = (fullText: string) => Promise<void> | void;
@@ -437,10 +442,28 @@ const CODING_TOOL_SCHEMAS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "continueSubAgentTask",
+      description:
+        "Continue one paused sub-agent after its required approvals were resolved and return the refreshed sub-agent result.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          subAgentId: { type: "string" },
+        },
+        required: ["subAgentId"],
+      },
+    },
+  },
 ] as const;
 
 const SUB_AGENT_TOOL_SCHEMAS = CODING_TOOL_SCHEMAS.filter(
-  (tool) => tool.function.name !== "runParallelAgentTasks",
+  (tool) =>
+    tool.function.name !== "continueSubAgentTask" &&
+    tool.function.name !== "runParallelAgentTasks",
 );
 
 async function persistMessage(
@@ -1359,6 +1382,162 @@ function buildSubAgentReplayMessages(approvals: ApprovalRecord[]): OpenAiMessage
   });
 }
 
+async function executeContinueSubAgentTask(
+  dbClient: RawAccess,
+  sessionId: string,
+  subAgentId: string,
+  settings: BackendSettings,
+) {
+  const snapshot = await requireSnapshot(dbClient, sessionId);
+  const subAgent = getSubAgent(snapshot, subAgentId);
+  if (!subAgent) {
+    throw new Error(`Unknown sub-agent: ${subAgentId}`);
+  }
+  if (subAgent.status === "queued" || subAgent.status === "running") {
+    throw new Error(`Sub-agent ${subAgentId} is still ${subAgent.status}.`);
+  }
+  if (subAgent.pendingApprovals.length > 0) {
+    return {
+      approvals: snapshot.approvals.filter((approval) => approval.subAgentId === subAgentId),
+      noop: true,
+      reason: `Sub-agent ${subAgentId} still has pending approvals.`,
+      session: snapshot.session,
+      subAgent,
+    };
+  }
+
+  const resolvedApprovals = snapshot.approvals
+    .filter(
+      (approval) =>
+        approval.subAgentId === subAgent.id &&
+        approval.status === "approved" &&
+        (!subAgent.lastResumedAt || approval.updatedAt > subAgent.lastResumedAt),
+    )
+    .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
+  if (resolvedApprovals.length === 0) {
+    return {
+      approvals: snapshot.approvals.filter((approval) => approval.subAgentId === subAgentId),
+      noop: true,
+      reason: `Sub-agent ${subAgentId} has no newly approved tools to continue from.`,
+      session: snapshot.session,
+      subAgent,
+    };
+  }
+
+  await updateSubAgent(dbClient, subAgent.id, {
+    executionMode: subAgent.executionMode,
+    status: "running",
+    finalResponse: subAgent.finalResponse,
+    error: "",
+    lastResumedAt: subAgent.lastResumedAt,
+    pendingApprovals: [],
+    resumeCount: subAgent.resumeCount,
+    resumeReadyAt: subAgent.resumeReadyAt,
+    toolCalls: subAgent.toolCalls,
+    updatedAt: nowIso(),
+  });
+
+  try {
+    const loopResult = await runAgentLoop(
+      dbClient,
+      snapshot,
+      [
+        "Continue this sub-agent task from the already approved tool results.",
+        `Original sub-agent prompt: ${subAgent.prompt}`,
+        "Only work on the original sub-agent prompt. Ignore sibling sub-agents and unrelated files.",
+        "If the approved tool result already satisfies the original prompt, stop and answer with completion.",
+        "Do not repeat already completed tool calls unless the inputs must change.",
+        "Take the next smallest useful step for this exact prompt only.",
+      ].join("\n"),
+      settings,
+      subAgent.selectedProject,
+      subAgent.executionMode,
+      {
+        runId: crypto.randomUUID(),
+      },
+      subAgent.id,
+      [
+        {
+          role: "system",
+          content:
+            "The following tool results were already approved and executed. Treat them as completed work for this exact sub-agent only.",
+        },
+        ...buildSubAgentReplayMessages(resolvedApprovals),
+      ],
+    );
+    const resumedAt = nowIso();
+    await updateSubAgent(dbClient, subAgent.id, {
+      executionMode: subAgent.executionMode,
+      status: "completed",
+      finalResponse: loopResult.finalResponse,
+      error: "",
+      lastResumedAt: resumedAt,
+      pendingApprovals: loopResult.pendingApprovals.map((approval) => approval.id),
+      resumeCount: subAgent.resumeCount + 1,
+      resumeReadyAt: loopResult.pendingApprovals.length > 0 ? resumedAt : subAgent.resumeReadyAt,
+      toolCalls: [...subAgent.toolCalls, ...loopResult.toolCalls],
+      updatedAt: resumedAt,
+    });
+    await persistArtifact(dbClient, sessionId, "sub_agent_continue", {
+      approvedToolIds: resolvedApprovals.map((approval) => approval.id),
+      finalResponse: loopResult.finalResponse,
+      selectedProject: subAgent.selectedProject,
+      subAgentId,
+      toolCalls: loopResult.toolCalls,
+    });
+    const refreshed = await requireSnapshot(dbClient, sessionId);
+    const nextSubAgent = getSubAgent(refreshed, subAgentId);
+    if (!nextSubAgent) {
+      throw new Error(`Sub-agent ${subAgentId} disappeared after continuation.`);
+    }
+    return {
+      approvals: refreshed.approvals.filter((approval) => approval.subAgentId === subAgentId),
+      noop: false,
+      reason: "",
+      session: refreshed.session,
+      subAgent: nextSubAgent,
+    };
+  } catch (caughtError) {
+    await updateSubAgent(dbClient, subAgent.id, {
+      executionMode: subAgent.executionMode,
+      status: "failed",
+      finalResponse: subAgent.finalResponse,
+      error: toErrorMessage(caughtError),
+      lastResumedAt: subAgent.lastResumedAt,
+      pendingApprovals: [],
+      resumeCount: subAgent.resumeCount,
+      resumeReadyAt: subAgent.resumeReadyAt,
+      toolCalls: subAgent.toolCalls,
+      updatedAt: nowIso(),
+    });
+    throw caughtError;
+  }
+}
+
+function summarizeContinueSubAgentTaskResult(
+  result: Awaited<ReturnType<typeof executeContinueSubAgentTask>>,
+) {
+  return {
+    noop: result.noop,
+    reason: result.reason,
+    approvals: result.approvals.map((approval) => ({
+      id: approval.id,
+      status: approval.status,
+      toolName: approval.toolName,
+    })),
+    subAgent: {
+      id: result.subAgent.id,
+      prompt: result.subAgent.prompt,
+      executionMode: result.subAgent.executionMode,
+      status: result.subAgent.status,
+      pendingApprovals: result.subAgent.pendingApprovals,
+      resumeCount: result.subAgent.resumeCount,
+      finalResponse: result.subAgent.finalResponse,
+      error: result.subAgent.error,
+    },
+  };
+}
+
 async function runAgentLoop(
   dbClient: RawAccess,
   snapshot: SessionSnapshot,
@@ -1480,6 +1659,15 @@ async function runAgentLoop(
                     settings,
                     String(input.project ?? selectedProject),
                     getNestedParallelExecutionMode(input, executionMode),
+                  ),
+                );
+              } else if (trace.name === "continueSubAgentTask") {
+                result = summarizeContinueSubAgentTaskResult(
+                  await executeContinueSubAgentTask(
+                    dbClient,
+                    snapshot.session.id,
+                    String(input.subAgentId ?? ""),
+                    settings,
                   ),
                 );
               } else {
@@ -2518,130 +2706,7 @@ export const vibeLocalActor = actor({
       };
     },
     continueSubAgentTask: async (c, sessionId: string, subAgentId: string, settings: BackendSettings) => {
-      const snapshot = await requireSnapshot(c.db, sessionId);
-      const subAgent = getSubAgent(snapshot, subAgentId);
-      if (!subAgent) {
-        throw new Error(`Unknown sub-agent: ${subAgentId}`);
-      }
-      if (subAgent.status === "queued" || subAgent.status === "running") {
-        throw new Error(`Sub-agent ${subAgentId} is still ${subAgent.status}.`);
-      }
-      if (subAgent.pendingApprovals.length > 0) {
-        return {
-          approvals: snapshot.approvals.filter((approval) => approval.subAgentId === subAgentId),
-          noop: true,
-          reason: `Sub-agent ${subAgentId} still has pending approvals.`,
-          session: snapshot.session,
-          subAgent,
-        };
-      }
-
-      const resolvedApprovals = snapshot.approvals
-        .filter(
-          (approval) =>
-            approval.subAgentId === subAgent.id &&
-            approval.status === "approved" &&
-            (!subAgent.lastResumedAt || approval.updatedAt > subAgent.lastResumedAt),
-        )
-        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
-      if (resolvedApprovals.length === 0) {
-        return {
-          approvals: snapshot.approvals.filter((approval) => approval.subAgentId === subAgentId),
-          noop: true,
-          reason: `Sub-agent ${subAgentId} has no newly approved tools to continue from.`,
-          session: snapshot.session,
-          subAgent,
-        };
-      }
-
-      await updateSubAgent(c.db, subAgent.id, {
-        executionMode: subAgent.executionMode,
-        status: "running",
-        finalResponse: subAgent.finalResponse,
-        error: "",
-        lastResumedAt: subAgent.lastResumedAt,
-        pendingApprovals: [],
-        resumeCount: subAgent.resumeCount,
-        resumeReadyAt: subAgent.resumeReadyAt,
-        toolCalls: subAgent.toolCalls,
-        updatedAt: nowIso(),
-      });
-
-      try {
-        const loopResult = await runAgentLoop(
-          c.db,
-          snapshot,
-          [
-            "Continue this sub-agent task from the already approved tool results.",
-            `Original sub-agent prompt: ${subAgent.prompt}`,
-            "Only work on the original sub-agent prompt. Ignore sibling sub-agents and unrelated files.",
-            "If the approved tool result already satisfies the original prompt, stop and answer with completion.",
-            "Do not repeat already completed tool calls unless the inputs must change.",
-            "Take the next smallest useful step for this exact prompt only.",
-          ].join("\n"),
-          settings,
-          subAgent.selectedProject,
-          subAgent.executionMode,
-          {
-            runId: crypto.randomUUID(),
-          },
-          subAgent.id,
-          [
-            {
-              role: "system",
-              content:
-                "The following tool results were already approved and executed. Treat them as completed work for this exact sub-agent only.",
-            },
-            ...buildSubAgentReplayMessages(resolvedApprovals),
-          ],
-        );
-        const resumedAt = nowIso();
-        await updateSubAgent(c.db, subAgent.id, {
-          executionMode: subAgent.executionMode,
-          status: "completed",
-          finalResponse: loopResult.finalResponse,
-          error: "",
-          lastResumedAt: resumedAt,
-          pendingApprovals: loopResult.pendingApprovals.map((approval) => approval.id),
-          resumeCount: subAgent.resumeCount + 1,
-          resumeReadyAt: loopResult.pendingApprovals.length > 0 ? resumedAt : subAgent.resumeReadyAt,
-          toolCalls: [...subAgent.toolCalls, ...loopResult.toolCalls],
-          updatedAt: resumedAt,
-        });
-        await persistArtifact(c.db, sessionId, "sub_agent_continue", {
-          approvedToolIds: resolvedApprovals.map((approval) => approval.id),
-          finalResponse: loopResult.finalResponse,
-          selectedProject: subAgent.selectedProject,
-          subAgentId,
-          toolCalls: loopResult.toolCalls,
-        });
-        const refreshed = await requireSnapshot(c.db, sessionId);
-        const nextSubAgent = getSubAgent(refreshed, subAgentId);
-        if (!nextSubAgent) {
-          throw new Error(`Sub-agent ${subAgentId} disappeared after continuation.`);
-        }
-        return {
-          approvals: refreshed.approvals.filter((approval) => approval.subAgentId === subAgentId),
-          noop: false,
-          reason: "",
-          session: refreshed.session,
-          subAgent: nextSubAgent,
-        };
-      } catch (caughtError) {
-        await updateSubAgent(c.db, subAgent.id, {
-          executionMode: subAgent.executionMode,
-          status: "failed",
-          finalResponse: subAgent.finalResponse,
-          error: toErrorMessage(caughtError),
-          lastResumedAt: subAgent.lastResumedAt,
-          pendingApprovals: [],
-          resumeCount: subAgent.resumeCount,
-          resumeReadyAt: subAgent.resumeReadyAt,
-          toolCalls: subAgent.toolCalls,
-          updatedAt: nowIso(),
-        });
-        throw caughtError;
-      }
+      return await executeContinueSubAgentTask(c.db, sessionId, subAgentId, settings);
     },
     runParallelAgentTasks: async (
       c,
