@@ -411,7 +411,37 @@ const CODING_TOOL_SCHEMAS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "runParallelAgentTasks",
+      description:
+        "Spawn up to 4 sub-agents for independent subtasks and return each result. Use this when the work can be split into parallel branches.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          prompts: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            maxItems: 4,
+          },
+          executionMode: {
+            type: "string",
+            enum: ["read-only", "plan", "act", "yolo"],
+          },
+          project: { type: "string" },
+        },
+        required: ["prompts"],
+      },
+    },
+  },
 ] as const;
+
+const SUB_AGENT_TOOL_SCHEMAS = CODING_TOOL_SCHEMAS.filter(
+  (tool) => tool.function.name !== "runParallelAgentTasks",
+);
 
 async function persistMessage(
   dbClient: RawAccess,
@@ -817,6 +847,61 @@ function sessionModeToExecutionMode(mode: SessionMode): ToolExecutionMode {
   return "act";
 }
 
+function normalizeToolExecutionMode(
+  value: unknown,
+  fallback: ToolExecutionMode,
+): ToolExecutionMode {
+  return value === "read-only" || value === "plan" || value === "act" || value === "yolo"
+    ? value
+    : fallback;
+}
+
+function getNestedParallelExecutionMode(
+  input: Record<string, unknown>,
+  fallback: ToolExecutionMode,
+) {
+  return normalizeToolExecutionMode(input.executionMode, fallback);
+}
+
+function getToolRestriction(
+  name: string,
+  input: Record<string, unknown>,
+  executionMode: ToolExecutionMode,
+) {
+  if (name === "runParallelAgentTasks") {
+    const nestedMode = getNestedParallelExecutionMode(input, executionMode);
+    if (executionMode === "read-only" && nestedMode !== "read-only") {
+      return {
+        approvalRequired: false,
+        rejectReason:
+          "Read-only mode cannot start parallel sub-agents in plan, act, or yolo mode.",
+      };
+    }
+    if (executionMode === "plan" && (nestedMode === "act" || nestedMode === "yolo")) {
+      return {
+        approvalRequired: true,
+        rejectReason: "",
+      };
+    }
+    return {
+      approvalRequired: false,
+      rejectReason: "",
+    };
+  }
+
+  if (executionMode === "read-only" && MUTATING_TOOL_NAMES.has(name)) {
+    return {
+      approvalRequired: false,
+      rejectReason: "Sub-agents are read-only and cannot execute mutating tools.",
+    };
+  }
+
+  return {
+    approvalRequired: executionMode === "plan" && MUTATING_TOOL_NAMES.has(name),
+    rejectReason: "",
+  };
+}
+
 function createAgentSystemPrompt(
   selectedProject: string,
   extraPrompt: string,
@@ -841,6 +926,7 @@ async function callOpenAiCompatible(
   settings: BackendSettings,
   messages: OpenAiMessage[],
   includeTools = true,
+  toolSchemas: ReadonlyArray<(typeof CODING_TOOL_SCHEMAS)[number]> = CODING_TOOL_SCHEMAS,
 ) {
   const normalizedMessages = normalizeOpenAiMessages(messages);
   const response = await fetch(`${settings.baseUrl.trim().replace(/\/$/, "")}/chat/completions`, {
@@ -854,7 +940,7 @@ async function callOpenAiCompatible(
       messages: normalizedMessages,
       ...(includeTools
         ? {
-            tools: CODING_TOOL_SCHEMAS,
+            tools: toolSchemas,
             tool_choice: "auto",
           }
         : {}),
@@ -1107,6 +1193,116 @@ async function executeCodingTool(name: string, args: Record<string, unknown>) {
   }
 }
 
+async function executeParallelAgentTasks(
+  dbClient: RawAccess,
+  sessionId: string,
+  prompts: string[],
+  settings: BackendSettings,
+  selectedProject = "",
+  executionMode: ToolExecutionMode = "read-only",
+) {
+  const snapshot = await requireSnapshot(dbClient, sessionId);
+  const trimmedPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean).slice(0, 4);
+  if (trimmedPrompts.length === 0) {
+    throw new Error("At least one sub-agent prompt is required.");
+  }
+
+  const subAgents = await Promise.all(
+    trimmedPrompts.map(
+      async (prompt) => await createSubAgent(dbClient, sessionId, prompt, selectedProject, executionMode),
+    ),
+  );
+
+  await Promise.all(
+    subAgents.map(async (subAgent) => {
+      await updateSubAgent(dbClient, subAgent.id, {
+        executionMode: subAgent.executionMode,
+        status: "running",
+        finalResponse: "",
+        error: "",
+        lastResumedAt: subAgent.lastResumedAt,
+        pendingApprovals: [],
+        resumeCount: subAgent.resumeCount,
+        resumeReadyAt: subAgent.resumeReadyAt,
+        toolCalls: [],
+        updatedAt: nowIso(),
+      });
+
+      try {
+        const result = await runAgentLoop(
+          dbClient,
+          snapshot,
+          subAgent.prompt,
+          settings,
+          selectedProject,
+          subAgent.executionMode,
+          {
+            runId: crypto.randomUUID(),
+          },
+          subAgent.id,
+        );
+        await updateSubAgent(dbClient, subAgent.id, {
+          executionMode: subAgent.executionMode,
+          status: "completed",
+          finalResponse: result.finalResponse,
+          error: "",
+          lastResumedAt: subAgent.lastResumedAt,
+          pendingApprovals: result.pendingApprovals.map((approval) => approval.id),
+          resumeCount: subAgent.resumeCount,
+          resumeReadyAt: result.pendingApprovals.length > 0 ? nowIso() : subAgent.resumeReadyAt,
+          toolCalls: result.toolCalls,
+          updatedAt: nowIso(),
+        });
+      } catch (caughtError) {
+        await updateSubAgent(dbClient, subAgent.id, {
+          executionMode: subAgent.executionMode,
+          status: "failed",
+          finalResponse: "",
+          error: toErrorMessage(caughtError),
+          lastResumedAt: subAgent.lastResumedAt,
+          pendingApprovals: [],
+          resumeCount: subAgent.resumeCount,
+          resumeReadyAt: subAgent.resumeReadyAt,
+          toolCalls: [],
+          updatedAt: nowIso(),
+        });
+      }
+    }),
+  );
+
+  const refreshed = await requireSnapshot(dbClient, sessionId);
+  await persistArtifact(dbClient, sessionId, "parallel_agent_run", {
+    count: trimmedPrompts.length,
+    executionMode,
+    selectedProject,
+    subAgentIds: subAgents.map((subAgent) => subAgent.id),
+  });
+
+  return {
+    session: refreshed.session,
+    subAgents: refreshed.subAgents.filter((subAgent) =>
+      subAgents.some((created) => created.id === subAgent.id),
+    ),
+  };
+}
+
+function summarizeParallelAgentTasksResult(
+  result: Awaited<ReturnType<typeof executeParallelAgentTasks>>,
+) {
+  return {
+    count: result.subAgents.length,
+    subAgents: result.subAgents.map((subAgent) => ({
+      id: subAgent.id,
+      prompt: subAgent.prompt,
+      executionMode: subAgent.executionMode,
+      status: subAgent.status,
+      pendingApprovals: subAgent.pendingApprovals,
+      finalResponse: subAgent.finalResponse,
+      error: subAgent.error,
+    })),
+  };
+}
+
 function createApprovalRequiredPreview(toolName: string, approvalId: string, input: Record<string, unknown>) {
   return trimToolOutput({
     ok: false,
@@ -1176,10 +1372,12 @@ async function runAgentLoop(
       content: prompt,
     },
   ];
+  const availableToolSchemas = ownerSubAgentId ? SUB_AGENT_TOOL_SCHEMAS : CODING_TOOL_SCHEMAS;
 
   for (let iteration = 0; iteration < 6; iteration += 1) {
-    const assistant = await callOpenAiCompatible(settings, messages, true);
+    const assistant = await callOpenAiCompatible(settings, messages, true, availableToolSchemas);
     if (assistant.tool_calls?.length) {
+      let usedParallelAgentTool = false;
       messages.push({
         role: "assistant",
         content: assistant.content ?? "",
@@ -1228,14 +1426,15 @@ async function runAgentLoop(
         });
 
         if (result === undefined) {
-          if (executionMode === "read-only" && MUTATING_TOOL_NAMES.has(trace.name)) {
+          const restriction = getToolRestriction(trace.name, input, executionMode);
+          if (restriction.rejectReason) {
             trace.status = "rejected";
-            trace.error = "Sub-agents are read-only and cannot execute mutating tools.";
+            trace.error = restriction.rejectReason;
             result = {
               ok: false,
               error: trace.error,
             };
-          } else if (executionMode === "plan" && MUTATING_TOOL_NAMES.has(trace.name)) {
+          } else if (restriction.approvalRequired) {
             const approval = await createApproval(
               dbClient,
               snapshot.session.id,
@@ -1254,7 +1453,23 @@ async function runAgentLoop(
             };
           } else {
             try {
-              result = await executeCodingTool(trace.name, input);
+              if (trace.name === "runParallelAgentTasks") {
+                usedParallelAgentTool = true;
+                result = summarizeParallelAgentTasksResult(
+                  await executeParallelAgentTasks(
+                    dbClient,
+                    snapshot.session.id,
+                    Array.isArray(input.prompts)
+                      ? input.prompts.map((value) => String(value))
+                      : [],
+                    settings,
+                    String(input.project ?? selectedProject),
+                    getNestedParallelExecutionMode(input, executionMode),
+                  ),
+                );
+              } else {
+                result = await executeCodingTool(trace.name, input);
+              }
             } catch (error) {
               trace.status = "failed";
               trace.error = toErrorMessage(error);
@@ -1292,6 +1507,29 @@ async function runAgentLoop(
           tool_call_id: toolCall.id,
           content: trace.outputPreview,
         });
+      }
+
+      if (usedParallelAgentTool) {
+        const synthesizer = await callOpenAiCompatible(
+          settings,
+          [
+            ...messages,
+            {
+              role: "system",
+              content:
+                "You now have the parallel sub-agent results. Do not call more tools. Synthesize them into one concise final answer.",
+            },
+          ],
+          false,
+        );
+        const finalResponse = synthesizer.content?.trim();
+        if (finalResponse) {
+          return {
+            finalResponse,
+            pendingApprovals,
+            toolCalls,
+          } satisfies AgentLoopResult;
+        }
       }
 
       if (executionMode === "plan" && pendingApprovals.length > 0) {
@@ -2397,92 +2635,15 @@ export const vibeLocalActor = actor({
       settings: BackendSettings,
       selectedProject = "",
       executionMode: ToolExecutionMode = "read-only",
-    ) => {
-      const snapshot = await requireSnapshot(c.db, sessionId);
-      const trimmedPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean).slice(0, 4);
-      if (trimmedPrompts.length === 0) {
-        throw new Error("At least one sub-agent prompt is required.");
-      }
-
-      const subAgents = await Promise.all(
-        trimmedPrompts.map(
-          async (prompt) =>
-            await createSubAgent(c.db, sessionId, prompt, selectedProject, executionMode),
-        ),
-      );
-
-      await Promise.all(
-        subAgents.map(async (subAgent) => {
-          await updateSubAgent(c.db, subAgent.id, {
-            executionMode: subAgent.executionMode,
-            status: "running",
-            finalResponse: "",
-            error: "",
-            lastResumedAt: subAgent.lastResumedAt,
-            pendingApprovals: [],
-            resumeCount: subAgent.resumeCount,
-            resumeReadyAt: subAgent.resumeReadyAt,
-            toolCalls: [],
-            updatedAt: nowIso(),
-          });
-
-          try {
-            const result = await runAgentLoop(
-              c.db,
-              snapshot,
-              subAgent.prompt,
-              settings,
-              selectedProject,
-              subAgent.executionMode,
-              {
-                runId: crypto.randomUUID(),
-              },
-              subAgent.id,
-            );
-            await updateSubAgent(c.db, subAgent.id, {
-              executionMode: subAgent.executionMode,
-              status: "completed",
-              finalResponse: result.finalResponse,
-              error: "",
-              lastResumedAt: subAgent.lastResumedAt,
-              pendingApprovals: result.pendingApprovals.map((approval) => approval.id),
-              resumeCount: subAgent.resumeCount,
-              resumeReadyAt: result.pendingApprovals.length > 0 ? nowIso() : subAgent.resumeReadyAt,
-              toolCalls: result.toolCalls,
-              updatedAt: nowIso(),
-            });
-          } catch (caughtError) {
-            await updateSubAgent(c.db, subAgent.id, {
-              executionMode: subAgent.executionMode,
-              status: "failed",
-              finalResponse: "",
-              error: toErrorMessage(caughtError),
-              lastResumedAt: subAgent.lastResumedAt,
-              pendingApprovals: [],
-              resumeCount: subAgent.resumeCount,
-              resumeReadyAt: subAgent.resumeReadyAt,
-              toolCalls: [],
-              updatedAt: nowIso(),
-            });
-          }
-        }),
-      );
-
-      const refreshed = await requireSnapshot(c.db, sessionId);
-      await persistArtifact(c.db, sessionId, "parallel_agent_run", {
-        count: trimmedPrompts.length,
-        executionMode,
+    ) =>
+      await executeParallelAgentTasks(
+        c.db,
+        sessionId,
+        prompts,
+        settings,
         selectedProject,
-        subAgentIds: subAgents.map((subAgent) => subAgent.id),
-      });
-
-      return {
-        session: refreshed.session,
-        subAgents: refreshed.subAgents.filter((subAgent) =>
-          subAgents.some((created) => created.id === subAgent.id),
-        ),
-      };
-    },
+        executionMode,
+      ),
     rewriteFileWithAgent: async (
       c,
       sessionId: string,

@@ -111,6 +111,65 @@ async function watchSessionProgress(
   }
 }
 
+async function watchExistingSession(
+  actor: Awaited<ReturnType<typeof getActor>>,
+  sessionId: string,
+  pollMs = 700,
+) {
+  let lastAssistantText = "";
+  const seenToolEvents = new Set<string>();
+  const seenSubAgents = new Set<string>();
+
+  while (true) {
+    const snapshot = (await actor.exportSession(sessionId)) as SessionSnapshot | null;
+    if (!snapshot) {
+      throw new Error(`Unknown session: ${sessionId}`);
+    }
+
+    const orderedArtifacts = [...snapshot.artifacts].sort(
+      (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+    );
+    for (const artifact of orderedArtifacts) {
+      if (artifact.kind !== "agent_tool_event" || seenToolEvents.has(artifact.id)) {
+        continue;
+      }
+      seenToolEvents.add(artifact.id);
+      console.log(formatCliToolEvent(artifact.payload));
+    }
+
+    for (const subAgent of snapshot.subAgents) {
+      if (seenSubAgents.has(subAgent.id)) {
+        continue;
+      }
+      seenSubAgents.add(subAgent.id);
+      console.log(
+        `[sub-agent:${subAgent.status}] ${subAgent.id} mode=${subAgent.executionMode} prompt=${subAgent.prompt}`,
+      );
+    }
+
+    const currentText = snapshot.task?.lastResponse ?? "";
+    if (currentText.startsWith(lastAssistantText) && currentText.length > lastAssistantText.length) {
+      process.stdout.write(currentText.slice(lastAssistantText.length));
+      lastAssistantText = currentText;
+    } else if (currentText && currentText !== lastAssistantText) {
+      process.stdout.write(`\n${currentText}`);
+      lastAssistantText = currentText;
+    }
+
+    if (snapshot.task && snapshot.task.status !== "running") {
+      if (lastAssistantText) {
+        process.stdout.write("\n");
+      }
+      console.log(`[session] status=${snapshot.task.status}`);
+      printPendingApprovals(snapshot);
+      printSubAgentSummary(snapshot);
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
 function usage() {
   console.log(`Usage:
   pnpm vibe-local:cli health
@@ -129,6 +188,7 @@ function usage() {
   pnpm vibe-local:cli chat <project> [--mode plan|act|yolo]
   pnpm vibe-local:cli sessions
   pnpm vibe-local:cli session <sessionId>
+  pnpm vibe-local:cli watch-session <sessionId>
   pnpm vibe-local:cli continue-session <sessionId>
   pnpm vibe-local:cli continue-subagent <sessionId> <subAgentId>
   pnpm vibe-local:cli approval <sessionId> <approvalId> <approve|reject> [--continue]
@@ -170,7 +230,7 @@ function loadBackendSettings(): BackendSettings {
     apiKey: providerConfig.options?.apiKey ?? "",
     baseUrl: providerConfig.options?.baseURL ?? "",
     model: firstModelEntry[0],
-    maxTokens: 4000,
+    maxTokens: 4096,
     systemPrompt: "You are the browser core of vibe-local. Be concise, careful, and helpful.",
     temperature: 0.2,
   };
@@ -418,6 +478,12 @@ async function main() {
       const sessionId = args[0];
       if (!sessionId) throw new Error("Missing <sessionId>");
       console.log(JSON.stringify(await actor.exportSession(sessionId), null, 2));
+      return;
+    }
+    case "watch-session": {
+      const sessionId = args[0];
+      if (!sessionId) throw new Error("Missing <sessionId>");
+      await watchExistingSession(actor, sessionId);
       return;
     }
     case "diff-stat": {

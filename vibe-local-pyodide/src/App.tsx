@@ -13,19 +13,10 @@ import {
 } from "lucide-react";
 
 import {
-  continueSubAgentFromBrowser,
   continueAgentTaskFromBrowser,
   decideApprovalFromBrowser,
-  fetchGitDiffStat,
-  fetchGitStatus,
-  fetchProjectInfo,
   fetchProjects,
-  readRepoFileFromBrowser,
-  runParallelAgentsFromBrowser,
   runAgentTurnFromBrowser,
-  runProjectScriptFromBrowser,
-  searchRepoCode,
-  writeRepoFileFromBrowser,
 } from "./lib/codingTools";
 import { fetchOpenCodeDefaults, streamChatCompletion, fetchModels } from "./lib/openAiCompat";
 import { agentosStore } from "./persistence/agentosStore";
@@ -44,7 +35,6 @@ import type {
   ChatMessage,
   HydratedState,
   ProjectInfo,
-  ProjectInfoDetails,
   SessionMode,
   SessionSnapshot,
   ToolExecutionTrace,
@@ -326,24 +316,10 @@ export default function App() {
   const [streamingText, setStreamingText] = useState("");
   const [pendingUserMessage, setPendingUserMessage] = useState<PendingUserMessage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [codingPanelOpen, setCodingPanelOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<BackendSettings | null>(null);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
-  const [projectInfo, setProjectInfo] = useState<ProjectInfoDetails | null>(null);
-  const [selectedScript, setSelectedScript] = useState("");
-  const [toolSearchQuery, setToolSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<string[]>([]);
-  const [toolOutputTitle, setToolOutputTitle] = useState("Tool output");
-  const [toolOutput, setToolOutput] = useState("agentOS に接続すると coding tools を使えます。");
   const [isToolRunning, setIsToolRunning] = useState(false);
-  const [filePathDraft, setFilePathDraft] = useState("");
-  const [fileContentDraft, setFileContentDraft] = useState("");
-  const [openedFilePath, setOpenedFilePath] = useState("");
-  const [parallelPromptsDraft, setParallelPromptsDraft] = useState(
-    "README.md を読んで repo の要点を3行でまとめる\n--\nvibe-local-pyodide の scripts を見て check/build/test を短く整理する",
-  );
-  const [parallelExecutionMode, setParallelExecutionMode] = useState<"act" | "plan" | "read-only">("read-only");
 
   async function refreshProjects(nextProject?: string) {
     if (sessionStore.mode !== "agentos") return;
@@ -463,8 +439,6 @@ export default function App() {
       if (sessionStore.mode !== "agentos") {
         setProjects([]);
         setSelectedProject("");
-        setProjectInfo(null);
-        setSelectedScript("");
         return;
       }
 
@@ -496,18 +470,19 @@ export default function App() {
 
     const run = async () => {
       if (sessionStore.mode !== "agentos" || !selectedProject) {
-        setProjectInfo(null);
-        setSelectedScript("");
         return;
       }
 
       try {
-        const details = await fetchProjectInfo(selectedProject);
-        if (cancelled) return;
-        setProjectInfo(details);
-        const scripts = Object.keys(details.packageJson.scripts ?? {});
-        setSelectedScript((current) => (current && scripts.includes(current) ? current : scripts[0] ?? ""));
-        setFilePathDraft((current) => current || `${details.relativePath}/package.json`);
+        if (!projects.some((project) => project.relativePath === selectedProject)) {
+          const fallback =
+            projects.find((project) => project.relativePath === "vibe-local-pyodide")?.relativePath ??
+            projects[0]?.relativePath ??
+            "";
+          if (!cancelled && fallback) {
+            setSelectedProject(fallback);
+          }
+        }
       } catch (caughtError) {
         if (cancelled) return;
         setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
@@ -519,7 +494,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedProject, sessionStore.mode]);
+  }, [projects, selectedProject, sessionStore.mode]);
 
   const sessions = hydrated?.sessions ?? [];
   const activeSession = sessions.find((entry) => entry.session.id === selectedSessionId) ?? null;
@@ -779,58 +754,6 @@ export default function App() {
     });
   }
 
-  async function handleContinueSubAgent(subAgentId: string) {
-    if (!activeSession || !settings) return;
-    await withToolExecution("Continue sub-agent", async () => {
-      const result = await continueSubAgentFromBrowser({
-        sessionId: activeSession.session.id,
-        subAgentId,
-        settings,
-      });
-      await refreshState(activeSession.session.id, sessionStore);
-      return [
-        `Sub-agent: ${result.subAgent.id}`,
-        `Status: ${result.subAgent.status}`,
-        `Resume count: ${result.subAgent.resumeCount}`,
-        result.noop ? `No-op: ${result.reason}` : "",
-        "",
-        ...formatToolCalls(result.subAgent.toolCalls),
-        "Final response",
-        result.subAgent.finalResponse || "(empty)",
-      ].join("\n");
-    });
-  }
-
-  async function handleRunParallelAgents() {
-    if (!activeSession || !settings) return;
-    const prompts = parallelPromptsDraft
-      .split(/\n--\n|\n--|\r\n--\r\n/)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    if (prompts.length === 0) return;
-
-    await withToolExecution("Parallel agents", async () => {
-      const result = await runParallelAgentsFromBrowser({
-        executionMode: parallelExecutionMode,
-        sessionId: activeSession.session.id,
-        prompts,
-        settings,
-        selectedProject,
-      });
-      await refreshState(activeSession.session.id, sessionStore);
-      return result.subAgents
-        .flatMap((subAgent, index) => [
-          `#${index + 1} ${subAgent.status}`,
-          subAgent.prompt,
-          subAgent.finalResponse,
-          subAgent.error ? `error: ${subAgent.error}` : "",
-          ...formatToolCalls(subAgent.toolCalls),
-        ])
-        .filter(Boolean)
-        .join("\n");
-    });
-  }
-
   async function ensureActiveSession() {
     if (activeSession) return activeSession;
     const snapshot = await sessionStore.createSession("");
@@ -891,25 +814,6 @@ export default function App() {
         });
         await watchAgentRun(current.session.id, runPromise);
         const result = await runPromise;
-        setToolOutputTitle("Agent run");
-        setToolOutput(
-          [
-            `Project: ${selectedProject || "(not selected)"}`,
-            `Mode: ${activeSession?.session.mode ?? current.session.mode}`,
-            `Tool calls: ${result.toolCalls.length}`,
-            `Pending approvals: ${result.approvals.length}`,
-            "",
-            ...formatToolCalls(result.toolCalls),
-            ...(result.approvals.length > 0
-              ? [
-                  "Approvals",
-                  ...result.approvals.flatMap((approval) => [formatApproval(approval), ""]),
-                ]
-              : []),
-            "Final response",
-            result.message.content,
-          ].join("\n"),
-        );
         await refreshState(current.session.id, sessionStore);
         setPendingUserMessage(null);
         setStatus(
@@ -989,90 +893,16 @@ export default function App() {
     try {
       setError("");
       setIsToolRunning(true);
-      setToolOutputTitle(title);
       setStatus(`${title} を実行しています…`);
-      const output = await runner();
-      setToolOutput(output);
+      await runner();
       setStatus(`${title} を完了しました。`);
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setError(message);
-      setToolOutput(message);
       setStatus(`${title} に失敗しました。`);
     } finally {
       setIsToolRunning(false);
     }
-  }
-
-  async function handleGitStatus() {
-    await withToolExecution("Git status", async () => {
-      const result = await fetchGitStatus();
-      return [`Branch: ${result.branch || "(unknown)"}`, "", ...(result.status.length > 0 ? result.status : ["clean"])].join(
-        "\n",
-      );
-    });
-  }
-
-  async function handleGitDiffStat() {
-    await withToolExecution("Git diff stat", async () => {
-      const result = await fetchGitDiffStat();
-      return result.diffStat || result.stderr || "No diff.";
-    });
-  }
-
-  async function handleSearchCode() {
-    if (!toolSearchQuery.trim()) return;
-    await withToolExecution("Repo search", async () => {
-      const result = await searchRepoCode(toolSearchQuery.trim(), 20);
-      setSearchResults(result.matches);
-      return result.matches.length > 0 ? result.matches.join("\n") : "No matches.";
-    });
-  }
-
-  async function handleRunScript() {
-    if (!selectedProject || !selectedScript) return;
-    await withToolExecution("Run script", async () => {
-      const result = await runProjectScriptFromBrowser(selectedProject, selectedScript);
-      return [
-        `Command: ${result.command}`,
-        `Exit code: ${result.exitCode}`,
-        "",
-        "$ stdout",
-        result.stdout.trim() || "(empty)",
-        "",
-        "$ stderr",
-        result.stderr.trim() || "(empty)",
-      ].join("\n");
-    });
-  }
-
-  function extractPathFromSearchResult(entry: string) {
-    const [filePath] = entry.split(":");
-    return filePath.replace(/^\.\//, "");
-  }
-
-  async function handleOpenFile(nextPath?: string) {
-    const targetPath = (nextPath ?? filePathDraft).trim();
-    if (!targetPath) return;
-
-    await withToolExecution("Open file", async () => {
-      const result = await readRepoFileFromBrowser(targetPath);
-      setOpenedFilePath(result.path);
-      setFilePathDraft(result.path);
-      setFileContentDraft(result.content);
-      return result.content || "(empty file)";
-    });
-  }
-
-  async function handleSaveFile() {
-    const targetPath = filePathDraft.trim();
-    if (!targetPath) return;
-
-    await withToolExecution("Save file", async () => {
-      const result = await writeRepoFileFromBrowser(targetPath, fileContentDraft);
-      setOpenedFilePath(result.path);
-      return `Saved ${result.path}\nBytes: ${result.bytes}\nUpdated: ${result.updatedAt}`;
-    });
   }
 
   const pendingDisabled = !settings || isSending;
