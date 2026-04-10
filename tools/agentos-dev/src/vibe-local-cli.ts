@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { stdin as input, stdout as output } from "node:process";
+import { createInterface } from "node:readline/promises";
 
 import { createAgentosClient, waitForManager, agentosEndpoint } from "./client.js";
 
@@ -124,6 +126,7 @@ function usage() {
   pnpm vibe-local:cli agent-run <project> <prompt...>
   pnpm vibe-local:cli agent-plan <project> <prompt...>
   pnpm vibe-local:cli agent-yolo <project> <prompt...>
+  pnpm vibe-local:cli chat <project> [--mode plan|act|yolo]
   pnpm vibe-local:cli sessions
   pnpm vibe-local:cli session <sessionId>
   pnpm vibe-local:cli continue-session <sessionId>
@@ -171,6 +174,183 @@ function loadBackendSettings(): BackendSettings {
     systemPrompt: "You are the browser core of vibe-local. Be concise, careful, and helpful.",
     temperature: 0.2,
   };
+}
+
+function printPendingApprovals(snapshot: SessionSnapshot | null) {
+  const approvals =
+    snapshot?.approvals.filter((approval: SessionSnapshot["approvals"][number]) => approval.status === "pending") ??
+    [];
+  if (approvals.length === 0) {
+    console.log("[approvals] pending approval はありません");
+    return;
+  }
+
+  console.log("[approvals]");
+  for (const approval of approvals) {
+    console.log(
+      `- ${approval.id} ${approval.toolName} ${summarizeCliToolInput(
+        approval.input as Record<string, unknown>,
+      )}`,
+    );
+  }
+}
+
+function printSubAgentSummary(snapshot: SessionSnapshot | null) {
+  const subAgents = snapshot?.subAgents ?? [];
+  if (subAgents.length === 0) {
+    console.log("[sub-agents] まだありません");
+    return;
+  }
+
+  console.log("[sub-agents]");
+  for (const subAgent of subAgents) {
+    console.log(
+      `- ${subAgent.id} status=${subAgent.status} mode=${subAgent.executionMode} resumes=${subAgent.resumeCount} prompt=${subAgent.prompt}`,
+    );
+  }
+}
+
+async function runInteractiveChat(
+  actor: Awaited<ReturnType<typeof getActor>>,
+  project: string,
+  initialMode: "act" | "plan" | "yolo",
+) {
+  const settings = loadBackendSettings();
+  const session = await actor.createSession(`CLI chat ${project}`);
+  let mode = initialMode;
+  await actor.setSessionConfig(session.session.id, settings.model, mode);
+
+  const rl = createInterface({ input, output });
+  console.log(`[chat] session=${session.session.id} project=${project} mode=${mode}`);
+  console.log(
+    "[chat] /help /mode <plan|act|yolo> /approvals /approve <id> [continue] /reject <id> /continue /subagents /session /exit",
+  );
+
+  try {
+    while (true) {
+      let rawLine = "";
+      try {
+        rawLine = await rl.question(`${mode}> `);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("readline was closed")) {
+          break;
+        }
+        throw error;
+      }
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+
+      if (line === "/exit" || line === "/quit") {
+        break;
+      }
+
+      if (line === "/help") {
+        console.log(
+          "[chat] 通常入力は agent 実行です。/mode /approvals /approve /reject /continue /subagents /session /exit が使えます。",
+        );
+        continue;
+      }
+
+      if (line.startsWith("/mode ")) {
+        const nextMode = line.slice("/mode ".length).trim();
+        if (nextMode !== "plan" && nextMode !== "act" && nextMode !== "yolo") {
+          console.log("[chat] mode は plan / act / yolo のみです");
+          continue;
+        }
+        mode = nextMode;
+        await actor.setSessionConfig(session.session.id, settings.model, mode);
+        console.log(`[chat] mode を ${mode} に切り替えました`);
+        continue;
+      }
+
+      if (line === "/approvals") {
+        printPendingApprovals((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+        continue;
+      }
+
+      if (line === "/subagents") {
+        printSubAgentSummary((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+        continue;
+      }
+
+      if (line === "/session") {
+        const snapshot = (await actor.exportSession(session.session.id)) as SessionSnapshot | null;
+        console.log(
+          JSON.stringify(
+            {
+              session: snapshot?.session,
+              task: snapshot?.task,
+              pendingApprovals:
+                snapshot?.approvals.filter(
+                  (approval: SessionSnapshot["approvals"][number]) => approval.status === "pending",
+                ) ?? [],
+              subAgents: snapshot?.subAgents ?? [],
+            },
+            null,
+            2,
+          ),
+        );
+        continue;
+      }
+
+      if (line === "/continue") {
+        const runPromise = actor.continueAgentTask(session.session.id, settings);
+        await watchSessionProgress(actor, session.session.id, runPromise);
+        const result = await runPromise;
+        console.log(`[task] status=${result.task?.status ?? "unknown"}`);
+        printPendingApprovals((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+        continue;
+      }
+
+      if (line.startsWith("/approve ")) {
+        const [approvalId, continueToken] = line
+          .slice("/approve ".length)
+          .trim()
+          .split(/\s+/);
+        if (!approvalId) {
+          console.log("[chat] /approve <approvalId> [continue]");
+          continue;
+        }
+        const continueAfter = continueToken === "continue";
+        const actionPromise = actor.approveToolCall(
+          session.session.id,
+          approvalId,
+          "approve",
+          continueAfter,
+          continueAfter ? settings : undefined,
+        );
+        if (continueAfter) {
+          await watchSessionProgress(actor, session.session.id, actionPromise);
+        }
+        const result = await actionPromise;
+        console.log(`[approval] ${result.approval.toolName} -> ${result.approval.status}`);
+        printPendingApprovals((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+        continue;
+      }
+
+      if (line.startsWith("/reject ")) {
+        const approvalId = line.slice("/reject ".length).trim();
+        if (!approvalId) {
+          console.log("[chat] /reject <approvalId>");
+          continue;
+        }
+        const result = await actor.approveToolCall(session.session.id, approvalId, "reject", false);
+        console.log(`[approval] ${result.approval.toolName} -> ${result.approval.status}`);
+        printPendingApprovals((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+        continue;
+      }
+
+      const runPromise = actor.runAgentTurn(session.session.id, line, settings, project);
+      await watchSessionProgress(actor, session.session.id, runPromise);
+      const result = await runPromise;
+      console.log(`[task] status=${result.task.status}`);
+      printPendingApprovals((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+    }
+  } finally {
+    rl.close();
+  }
 }
 
 async function main() {
@@ -294,6 +474,23 @@ async function main() {
           2,
         ),
       );
+      return;
+    }
+    case "chat": {
+      const project = args[0];
+      if (!project) {
+        throw new Error("Missing <project>");
+      }
+      const modeIndex = args.findIndex((token) => token === "--mode");
+      let mode: "act" | "plan" | "yolo" = "act";
+      if (modeIndex >= 0) {
+        const candidate = args[modeIndex + 1];
+        if (candidate !== "act" && candidate !== "plan" && candidate !== "yolo") {
+          throw new Error("chat --mode must be one of act, plan, or yolo");
+        }
+        mode = candidate;
+      }
+      await runInteractiveChat(actor, project, mode);
       return;
     }
     case "continue-session": {

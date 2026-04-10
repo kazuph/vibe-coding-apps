@@ -111,6 +111,20 @@ type AgentToolTimelineEvent = {
   status: "running" | "approval_required" | "completed" | "failed" | "rejected";
 };
 
+type SubAgentTimelineEvent = {
+  createdAt: string;
+  error: string;
+  executionMode: "act" | "plan" | "read-only" | "yolo";
+  finalResponse: string;
+  id: string;
+  pendingApprovalsCount: number;
+  prompt: string;
+  resumeCount: number;
+  selectedProject: string;
+  status: "completed" | "failed" | "queued" | "running";
+  updatedAt: string;
+};
+
 type TimelineEntry =
   | {
       createdAt: string;
@@ -123,6 +137,12 @@ type TimelineEntry =
       id: string;
       kind: "tool";
       toolEvent: AgentToolTimelineEvent;
+    }
+  | {
+      createdAt: string;
+      id: string;
+      kind: "sub-agent";
+      subAgentEvent: SubAgentTimelineEvent;
     }
   | {
       createdAt: string;
@@ -265,6 +285,31 @@ function parseAgentToolTimelineEvents(snapshot: SessionSnapshot | null) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function parseSubAgentTimelineEvents(snapshot: SessionSnapshot | null) {
+  if (!snapshot) {
+    return [];
+  }
+
+  return [...snapshot.subAgents]
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+    .map(
+      (subAgent) =>
+        ({
+          createdAt: subAgent.createdAt,
+          error: subAgent.error,
+          executionMode: subAgent.executionMode,
+          finalResponse: subAgent.finalResponse,
+          id: `sub-agent-${subAgent.id}`,
+          pendingApprovalsCount: subAgent.pendingApprovals.length,
+          prompt: subAgent.prompt,
+          resumeCount: subAgent.resumeCount,
+          selectedProject: subAgent.selectedProject,
+          status: subAgent.status,
+          updatedAt: subAgent.updatedAt,
+        }) satisfies SubAgentTimelineEvent,
+    );
 }
 
 export default function App() {
@@ -483,6 +528,7 @@ export default function App() {
   const activeTask = activeSession?.task ?? null;
   const activeMode = activeSession?.session.mode ?? "plan";
   const toolTimelineEvents = useMemo(() => parseAgentToolTimelineEvents(activeSession), [activeSession]);
+  const subAgentTimelineEvents = useMemo(() => parseSubAgentTimelineEvents(activeSession), [activeSession]);
 
   function formatToolCalls(toolCalls: ToolExecutionTrace[]) {
     return toolCalls.flatMap((toolCall, index) => [
@@ -547,6 +593,16 @@ export default function App() {
         }) satisfies TimelineEntry,
     );
 
+    const subAgentEntries = subAgentTimelineEvents.map(
+      (subAgentEvent) =>
+        ({
+          id: subAgentEvent.id,
+          createdAt: subAgentEvent.createdAt,
+          kind: "sub-agent",
+          subAgentEvent,
+        }) satisfies TimelineEntry,
+    );
+
     const localStreamEntries =
       sessionStore.mode !== "agentos" && streamingText.trim().length > 0
         ? [
@@ -573,17 +629,17 @@ export default function App() {
           ]
         : [];
 
-    return [...messageEntries, ...toolEntries, ...localStreamEntries, ...runningAgentEntries].sort(
+    return [...messageEntries, ...toolEntries, ...subAgentEntries, ...localStreamEntries, ...runningAgentEntries].sort(
       (left, right) => {
         const timeDiff = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
         if (timeDiff !== 0) {
           return timeDiff;
         }
-        const weight = { message: 0, tool: 1, "streaming-assistant": 2 } as const;
+        const weight = { message: 0, tool: 1, "sub-agent": 2, "streaming-assistant": 3 } as const;
         return weight[left.kind] - weight[right.kind];
       },
     );
-  }, [activeSession, activeTask, pendingUserMessage, sessionStore.mode, streamingText, toolTimelineEvents]);
+  }, [activeSession, activeTask, pendingUserMessage, sessionStore.mode, streamingText, subAgentTimelineEvents, toolTimelineEvents]);
 
   useEffect(() => {
     const node = chatLogRef.current;
@@ -1333,6 +1389,40 @@ export default function App() {
                             {toolEvent.error
                               ? `error: ${toolEvent.error}`
                               : toCompactText(toolEvent.outputPreview || "Running…", 240)}
+                          </p>
+                        </article>
+                      </div>
+                    </details>
+                  );
+                }
+
+                if (entry.kind === "sub-agent") {
+                  const { subAgentEvent } = entry;
+                  return (
+                    <details key={subAgentEvent.id} className="subagent-event-card">
+                      <summary>
+                        <div className="tool-event-summary">
+                          <strong>sub-agent {subAgentEvent.status}</strong>
+                          <code>{subAgentEvent.prompt}</code>
+                        </div>
+                        <span className={`tool-trace-status is-${subAgentEvent.status}`}>{subAgentEvent.executionMode}</span>
+                      </summary>
+                      <div className="tool-trace-meta">
+                        <span>{new Date(subAgentEvent.createdAt).toLocaleString()}</span>
+                        <span>Directory: {subAgentEvent.selectedProject || "(not selected)"}</span>
+                        <span>Resumes: {subAgentEvent.resumeCount}</span>
+                        <span>Pending approvals: {subAgentEvent.pendingApprovalsCount}</span>
+                      </div>
+                      <div className="tool-trace-list">
+                        <article className="tool-trace-item">
+                          <div className="tool-trace-command">
+                            <span>Prompt</span>
+                            <code>{subAgentEvent.prompt}</code>
+                          </div>
+                          <p className="tool-trace-preview">
+                            {subAgentEvent.error
+                              ? `error: ${subAgentEvent.error}`
+                              : toCompactText(subAgentEvent.finalResponse || "Running…", 240)}
                           </p>
                         </article>
                       </div>
