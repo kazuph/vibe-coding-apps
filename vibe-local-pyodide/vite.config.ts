@@ -50,12 +50,14 @@ type AgentosPayload = {
   title?: string;
   content?: string;
   model?: string;
-  mode?: "plan" | "act";
+  mode?: "plan" | "act" | "yolo";
   script?: string;
   timeoutMs?: number;
   decision?: "approve" | "reject";
   approvalId?: string;
   prompts?: string[];
+  continueAfter?: boolean;
+  executionMode?: "act" | "plan" | "read-only" | "yolo";
 };
 
 function json(
@@ -345,6 +347,23 @@ function createOpenAiProxyMiddleware(): Connect.NextHandleFunction {
           return;
         }
 
+        if (url.pathname === "/__vibe_local/agentos/session/continue") {
+          if (!payload.sessionId) {
+            json(res, 400, { error: "sessionId is required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "continueAgentTask",
+              payload.sessionId,
+              payload.settings,
+            ),
+          );
+          return;
+        }
+
         if (url.pathname === "/__vibe_local/agentos/session/approval") {
           if (!payload.sessionId || !payload.approvalId || !payload.decision) {
             json(res, 400, { error: "sessionId, approvalId, and decision are required." });
@@ -358,6 +377,8 @@ function createOpenAiProxyMiddleware(): Connect.NextHandleFunction {
               payload.sessionId,
               payload.approvalId,
               payload.decision,
+              Boolean(payload.continueAfter),
+              payload.settings,
             ),
           );
           return;
@@ -377,6 +398,25 @@ function createOpenAiProxyMiddleware(): Connect.NextHandleFunction {
               payload.prompts,
               payload.settings,
               payload.selectedProject ?? "",
+              payload.executionMode ?? "read-only",
+            ),
+          );
+          return;
+        }
+
+        if (url.pathname === "/__vibe_local/agentos/session/sub-agent/continue") {
+          if (!payload.sessionId || !payload.subAgentId || !payload.settings) {
+            json(res, 400, { error: "sessionId, subAgentId, and settings are required." });
+            return;
+          }
+          json(
+            res,
+            200,
+            await callVibeLocalAction(
+              "continueSubAgentTask",
+              payload.sessionId,
+              payload.subAgentId,
+              payload.settings,
             ),
           );
           return;

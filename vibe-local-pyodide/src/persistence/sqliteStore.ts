@@ -14,6 +14,20 @@ import type {
 
 const SQLITE_DB_KEY = "vibe-local-pyodide.sqlite";
 const SETTINGS_STORAGE_KEY = "vibe-local-pyodide.settings";
+export const MIN_MAX_TOKENS = 4096;
+export const MAX_TOKEN_PRESETS = [4096, 8192, 16384, 32768, 65536] as const;
+
+export function clampMaxTokens(value: number) {
+  if (!Number.isFinite(value)) return MIN_MAX_TOKENS;
+  return Math.max(MIN_MAX_TOKENS, Math.round(value));
+}
+
+export function normalizeBackendSettings(settings: BackendSettings): BackendSettings {
+  return {
+    ...settings,
+    maxTokens: clampMaxTokens(settings.maxTokens),
+  };
+}
 
 const DEFAULT_SETTINGS: BackendSettings = {
   apiKey: "",
@@ -22,11 +36,11 @@ const DEFAULT_SETTINGS: BackendSettings = {
   systemPrompt:
     "You are the browser core of vibe-local. Be concise, careful, and helpful.",
   temperature: 0.2,
-  maxTokens: 1200,
+  maxTokens: MIN_MAX_TOKENS,
 };
 
 export function getDefaultBackendSettings(): BackendSettings {
-  return { ...DEFAULT_SETTINGS };
+  return normalizeBackendSettings({ ...DEFAULT_SETTINGS });
 }
 
 export function shouldHydrateFromExternalSettings(settings: BackendSettings) {
@@ -47,10 +61,10 @@ function readSettingsFromLocalStorage() {
   if (!raw) return null;
 
   try {
-    return {
+    return normalizeBackendSettings({
       ...DEFAULT_SETTINGS,
       ...(JSON.parse(raw) as Partial<BackendSettings>),
-    } satisfies BackendSettings;
+    } satisfies BackendSettings);
   } catch {
     return null;
   }
@@ -58,7 +72,7 @@ function readSettingsFromLocalStorage() {
 
 function writeSettingsToLocalStorage(settings: BackendSettings) {
   if (!canUseLocalStorage()) return;
-  window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(normalizeBackendSettings(settings)));
 }
 
 export class SqliteSessionStore {
@@ -88,7 +102,7 @@ export class SqliteSessionStore {
 
   async saveSettings(next: BackendSettings) {
     await this.initialize();
-    writeSettingsToLocalStorage(next);
+    writeSettingsToLocalStorage(normalizeBackendSettings(next));
   }
 
   getSettings(): BackendSettings {
@@ -99,7 +113,7 @@ export class SqliteSessionStore {
 
     const db = this.requireDb();
     const result = db.exec("SELECT key, value_json FROM settings");
-    if (!result[0]) return { ...DEFAULT_SETTINGS };
+    if (!result[0]) return normalizeBackendSettings({ ...DEFAULT_SETTINGS });
 
     const settings = { ...DEFAULT_SETTINGS };
     const { columns, values } = result[0];
@@ -111,8 +125,9 @@ export class SqliteSessionStore {
       (settings as Record<string, unknown>)[key] = value;
     }
 
-    writeSettingsToLocalStorage(settings);
-    return settings;
+    const normalized = normalizeBackendSettings(settings);
+    writeSettingsToLocalStorage(normalized);
+    return normalized;
   }
 
   async insertSession(snapshot: SessionSnapshot) {
@@ -258,6 +273,7 @@ export class SqliteSessionStore {
         messages: messagesBySession.get(sessionId) ?? [],
         artifacts: artifactsBySession.get(sessionId) ?? [],
         subAgents: [],
+        task: null,
       };
     });
   }

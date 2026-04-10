@@ -9,6 +9,8 @@ export const TOOL_ROOT = path.resolve(__dirname, "..");
 export const REPO_ROOT = path.resolve(TOOL_ROOT, "..", "..");
 export const STATE_ROOT = path.join(TOOL_ROOT, ".agentos-dev");
 export const WRITABLE_WORKSPACE_ROOT = path.join(STATE_ROOT, "workspace");
+export const AGENTFS_ROOT = path.join(STATE_ROOT, "agentfs");
+export const AGENTFS_WORKSPACE_DB_PATH = path.join(AGENTFS_ROOT, "workspace.db");
 export const PI_AGENT_ROOT = path.join(STATE_ROOT, "pi-agent");
 
 export const AGENTOS_PORT = Number.parseInt(process.env.AGENTOS_PORT ?? "6420", 10);
@@ -37,6 +39,7 @@ const FORWARDED_ENV_KEYS = [
 
 mkdirSync(STATE_ROOT, { recursive: true });
 mkdirSync(WRITABLE_WORKSPACE_ROOT, { recursive: true });
+mkdirSync(AGENTFS_ROOT, { recursive: true });
 mkdirSync(PI_AGENT_ROOT, { recursive: true });
 
 export function forwardedAgentEnv(): Record<string, string> {

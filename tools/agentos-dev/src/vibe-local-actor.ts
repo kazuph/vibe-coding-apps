@@ -6,6 +6,12 @@ import { promisify } from "node:util";
 import { actor } from "rivetkit";
 import { db, type RawAccess } from "rivetkit/db";
 
+import {
+  ensureWorkspaceParentExists,
+  isAgentFsWorkspacePath,
+  mirrorWorkspaceFileToAgentFs,
+  readAgentFsMirrorFile,
+} from "./agentfs.js";
 import { REPO_ROOT } from "./config.js";
 import {
   discoverProjects,
@@ -14,7 +20,7 @@ import {
   runProjectScript,
 } from "./projects.js";
 
-type SessionMode = "plan" | "act";
+type SessionMode = "plan" | "act" | "yolo";
 type ChatRole = "assistant" | "system" | "user";
 
 type SessionRecord = {
@@ -69,18 +75,25 @@ type ApprovalRecord = {
   outputPreview: string;
   sessionId: string;
   status: ApprovalStatus;
+  subAgentId: string | null;
   toolName: string;
   updatedAt: string;
 };
 
 type SubAgentStatus = "completed" | "failed" | "queued" | "running";
+type TaskStatus = "completed" | "failed" | "idle" | "running" | "waiting_approval";
 
 type SubAgentRun = {
   createdAt: string;
   error: string;
+  executionMode: ToolExecutionMode;
   finalResponse: string;
   id: string;
+  lastResumedAt: string;
+  pendingApprovals: string[];
   prompt: string;
+  resumeCount: number;
+  resumeReadyAt: string;
   selectedProject: string;
   sessionId: string;
   status: SubAgentStatus;
@@ -93,7 +106,21 @@ type SessionSnapshot = {
   artifacts: SessionArtifact[];
   messages: ChatMessage[];
   subAgents: SubAgentRun[];
+  task: TaskState | null;
   session: SessionRecord;
+};
+
+type TaskState = {
+  continueCount: number;
+  createdAt: string;
+  goal: string;
+  lastError: string;
+  lastResponse: string;
+  selectedProject: string;
+  sessionId: string;
+  settings: BackendSettings | null;
+  status: TaskStatus;
+  updatedAt: string;
 };
 
 type CompactResult = {
@@ -129,7 +156,7 @@ type OpenAiMessage = {
 };
 
 type AgentRunArtifactPayload = {
-  executionMode: "act" | "plan" | "read-only";
+  executionMode: "act" | "plan" | "read-only" | "yolo";
   finalResponse: string;
   pendingApprovals: string[];
   prompt: string;
@@ -143,10 +170,20 @@ type AgentLoopResult = {
   toolCalls: ToolExecutionTrace[];
 };
 
+type AgentTurnResult = {
+  approvals: ApprovalRecord[];
+  artifact: SessionArtifact;
+  message: ChatMessage;
+  pendingApproval: boolean;
+  session: SessionRecord;
+  task: TaskState | null;
+  toolCalls: ToolExecutionTrace[];
+};
+
 const execFileAsync = promisify(execFile);
 const MUTATING_TOOL_NAMES = new Set(["replaceInFile", "runScript", "writeFile"]);
 
-type ToolExecutionMode = "act" | "plan" | "read-only";
+type ToolExecutionMode = "act" | "plan" | "read-only" | "yolo";
 
 function nowIso() {
   return new Date().toISOString();
@@ -453,6 +490,7 @@ async function createApproval(
   sessionId: string,
   toolName: string,
   input: Record<string, unknown>,
+  subAgentId: string | null = null,
 ) {
   const createdAt = nowIso();
   const approval = {
@@ -461,6 +499,7 @@ async function createApproval(
     toolName,
     input,
     status: "pending" as const,
+    subAgentId,
     outputPreview: "",
     error: "",
     createdAt,
@@ -470,15 +509,16 @@ async function createApproval(
   await dbClient.execute(
     `
       INSERT INTO approvals(
-        id, session_id, tool_name, input_json, status, output_preview, error_text, created_at, updated_at
+        id, session_id, tool_name, input_json, status, sub_agent_id, output_preview, error_text, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     approval.id,
     approval.sessionId,
     approval.toolName,
     JSON.stringify(approval.input),
     approval.status,
+    approval.subAgentId,
     approval.outputPreview,
     approval.error,
     approval.createdAt,
@@ -497,12 +537,13 @@ async function getApproval(dbClient: RawAccess, approvalId: string) {
     output_preview: string;
     session_id: string;
     status: ApprovalStatus;
+    sub_agent_id: string | null;
     tool_name: string;
     updated_at: string;
   }>(
     `
       SELECT
-        id, session_id, tool_name, input_json, status, output_preview, error_text, created_at, updated_at
+        id, session_id, tool_name, input_json, status, sub_agent_id, output_preview, error_text, created_at, updated_at
       FROM approvals
       WHERE id = ?
     `,
@@ -518,6 +559,7 @@ async function getApproval(dbClient: RawAccess, approvalId: string) {
     toolName: row.tool_name,
     input: JSON.parse(row.input_json) as Record<string, unknown>,
     status: row.status,
+    subAgentId: row.sub_agent_id,
     outputPreview: row.output_preview,
     error: row.error_text,
     createdAt: row.created_at,
@@ -551,6 +593,7 @@ async function createSubAgent(
   sessionId: string,
   prompt: string,
   selectedProject: string,
+  executionMode: ToolExecutionMode,
 ) {
   const createdAt = nowIso();
   const subAgent = {
@@ -558,10 +601,15 @@ async function createSubAgent(
     sessionId,
     prompt,
     selectedProject,
+    executionMode,
     status: "queued" as const,
     finalResponse: "",
     error: "",
+    lastResumedAt: "",
+    pendingApprovals: [],
     toolCalls: [],
+    resumeCount: 0,
+    resumeReadyAt: "",
     createdAt,
     updatedAt: createdAt,
   } satisfies SubAgentRun;
@@ -579,8 +627,13 @@ async function createSubAgent(
     subAgent.selectedProject,
     subAgent.status,
     JSON.stringify({
+      executionMode: subAgent.executionMode,
       finalResponse: subAgent.finalResponse,
       error: subAgent.error,
+      lastResumedAt: subAgent.lastResumedAt,
+      pendingApprovals: subAgent.pendingApprovals,
+      resumeCount: subAgent.resumeCount,
+      resumeReadyAt: subAgent.resumeReadyAt,
       toolCalls: subAgent.toolCalls,
     }),
     subAgent.createdAt,
@@ -590,10 +643,106 @@ async function createSubAgent(
   return subAgent;
 }
 
+async function getTaskState(dbClient: RawAccess, sessionId: string) {
+  const rows = await dbClient.execute<{
+    continue_count: number;
+    created_at: string;
+    goal: string;
+    last_error: string;
+    last_response: string;
+    selected_project: string;
+    session_id: string;
+    settings_json: string;
+    status: TaskStatus;
+    updated_at: string;
+  }>(
+    `
+      SELECT
+        session_id, goal, selected_project, status, last_response, last_error,
+        continue_count, settings_json, created_at, updated_at
+      FROM task_state
+      WHERE session_id = ?
+    `,
+    sessionId,
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    sessionId: row.session_id,
+    goal: row.goal,
+    selectedProject: row.selected_project,
+    status: row.status,
+    lastResponse: row.last_response,
+    lastError: row.last_error,
+    continueCount: Number(row.continue_count),
+    settings: row.settings_json.trim()
+      ? (JSON.parse(row.settings_json) as BackendSettings)
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  } satisfies TaskState;
+}
+
+async function saveTaskState(
+  dbClient: RawAccess,
+  task: Omit<TaskState, "createdAt" | "updatedAt"> & {
+    createdAt?: string;
+    updatedAt?: string;
+  },
+) {
+  const createdAt = task.createdAt ?? nowIso();
+  const updatedAt = task.updatedAt ?? createdAt;
+
+  await dbClient.execute(
+    `
+      INSERT INTO task_state(
+        session_id, goal, selected_project, status, last_response, last_error,
+        continue_count, settings_json, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        goal = excluded.goal,
+        selected_project = excluded.selected_project,
+        status = excluded.status,
+        last_response = excluded.last_response,
+        last_error = excluded.last_error,
+        continue_count = excluded.continue_count,
+        settings_json = excluded.settings_json,
+        updated_at = excluded.updated_at
+    `,
+    task.sessionId,
+    task.goal,
+    task.selectedProject,
+    task.status,
+    task.lastResponse,
+    task.lastError,
+    task.continueCount,
+    JSON.stringify(task.settings ?? null),
+    createdAt,
+    updatedAt,
+  );
+
+  return await getTaskState(dbClient, task.sessionId);
+}
+
 async function updateSubAgent(
   dbClient: RawAccess,
   subAgentId: string,
-  patch: Pick<SubAgentRun, "error" | "finalResponse" | "status" | "toolCalls" | "updatedAt">,
+  patch: Pick<
+    SubAgentRun,
+    | "error"
+    | "executionMode"
+    | "finalResponse"
+    | "lastResumedAt"
+    | "pendingApprovals"
+    | "resumeCount"
+    | "resumeReadyAt"
+    | "status"
+    | "toolCalls"
+    | "updatedAt"
+  >,
 ) {
   await dbClient.execute(
     `
@@ -603,8 +752,13 @@ async function updateSubAgent(
     `,
     patch.status,
     JSON.stringify({
+      executionMode: patch.executionMode,
       finalResponse: patch.finalResponse,
       error: patch.error,
+      lastResumedAt: patch.lastResumedAt,
+      pendingApprovals: patch.pendingApprovals,
+      resumeCount: patch.resumeCount,
+      resumeReadyAt: patch.resumeReadyAt,
       toolCalls: patch.toolCalls,
     }),
     patch.updatedAt,
@@ -625,12 +779,25 @@ function toErrorMessage(error: unknown) {
   return String(error);
 }
 
-function createAgentSystemPrompt(selectedProject: string, extraPrompt: string) {
+function sessionModeToExecutionMode(mode: SessionMode): ToolExecutionMode {
+  if (mode === "plan") return "plan";
+  if (mode === "yolo") return "yolo";
+  return "act";
+}
+
+function createAgentSystemPrompt(
+  selectedProject: string,
+  extraPrompt: string,
+  executionMode: ToolExecutionMode,
+) {
   return [
     "You are the coding mode of vibe-local running on top of agentOS.",
     "Use tools whenever the user asks about repository state, files, scripts, or code changes.",
     "Do not pretend to inspect files or run scripts without a tool call.",
     "Keep answers concise, practical, and directly tied to the current repository.",
+    executionMode === "yolo"
+      ? "YOLO mode is enabled. Take bold end-to-end steps, prefer finishing the task in one pass, and do not pause for intermediate confirmation unless the tool layer blocks you."
+      : "",
     selectedProject ? `Prefer the project: ${selectedProject}` : "",
     extraPrompt.trim(),
   ]
@@ -742,11 +909,16 @@ async function executeCodingTool(name: string, args: Record<string, unknown>) {
       return await readFile(resolveRepoPath(String(args.path ?? "")).absolutePath, "utf8");
     case "writeFile": {
       const target = resolveRepoPath(String(args.path ?? ""));
+      const content = String(args.content ?? "");
       await mkdir(path.dirname(target.absolutePath), { recursive: true });
-      await writeFile(target.absolutePath, String(args.content ?? ""), "utf8");
+      await writeFile(target.absolutePath, content, "utf8");
+      const mirrorResult = isAgentFsWorkspacePath(target.relativePath)
+        ? await mirrorWorkspaceFileToAgentFs(target.relativePath, content)
+        : null;
       return {
         ok: true,
         path: target.relativePath,
+        bytes: mirrorResult?.bytes ?? Buffer.byteLength(content, "utf8"),
       };
     }
     case "replaceInFile": {
@@ -763,6 +935,9 @@ async function executeCodingTool(name: string, args: Record<string, unknown>) {
       }
       const updated = replaceAll ? current.split(search).join(replace) : current.replace(search, replace);
       await writeFile(target.absolutePath, updated, "utf8");
+      if (isAgentFsWorkspacePath(target.relativePath)) {
+        await mirrorWorkspaceFileToAgentFs(target.relativePath, updated);
+      }
       return {
         ok: true,
         path: target.relativePath,
@@ -806,6 +981,37 @@ function createApprovalRequiredPreview(toolName: string, approvalId: string, inp
   });
 }
 
+function getSubAgent(snapshot: SessionSnapshot, subAgentId: string) {
+  return snapshot.subAgents.find((subAgent) => subAgent.id === subAgentId) ?? null;
+}
+
+function buildSubAgentReplayMessages(approvals: ApprovalRecord[]): OpenAiMessage[] {
+  return approvals.flatMap((approval) => {
+    const toolCallId = `resume-${approval.id}`;
+    return [
+      {
+        role: "assistant" as const,
+        content: "",
+        tool_calls: [
+          {
+            id: toolCallId,
+            type: "function" as const,
+            function: {
+              name: approval.toolName,
+              arguments: JSON.stringify(approval.input),
+            },
+          },
+        ],
+      },
+      {
+        role: "tool" as const,
+        tool_call_id: toolCallId,
+        content: approval.outputPreview,
+      },
+    ];
+  });
+}
+
 async function runAgentLoop(
   dbClient: RawAccess,
   snapshot: SessionSnapshot,
@@ -813,18 +1019,21 @@ async function runAgentLoop(
   settings: BackendSettings,
   selectedProject: string,
   executionMode: ToolExecutionMode,
+  ownerSubAgentId: string | null = null,
+  extraMessages: OpenAiMessage[] = [],
 ) {
   const toolCalls: ToolExecutionTrace[] = [];
   const pendingApprovals: ApprovalRecord[] = [];
   const messages: OpenAiMessage[] = [
     {
       role: "system",
-      content: createAgentSystemPrompt(selectedProject, settings.systemPrompt),
+      content: createAgentSystemPrompt(selectedProject, settings.systemPrompt, executionMode),
     },
     ...snapshot.messages.map((message) => ({
       role: message.role,
       content: message.content,
     })),
+    ...extraMessages,
     {
       role: "user",
       content: prompt,
@@ -877,7 +1086,13 @@ async function runAgentLoop(
               error: trace.error,
             };
           } else if (executionMode === "plan" && MUTATING_TOOL_NAMES.has(trace.name)) {
-            const approval = await createApproval(dbClient, snapshot.session.id, trace.name, input);
+            const approval = await createApproval(
+              dbClient,
+              snapshot.session.id,
+              trace.name,
+              input,
+              ownerSubAgentId,
+            );
             pendingApprovals.push(approval);
             trace.status = "approval_required";
             trace.approvalId = approval.id;
@@ -1019,6 +1234,7 @@ async function migrateVibeLocalTables(dbClient: RawAccess) {
       tool_name TEXT NOT NULL,
       input_json TEXT NOT NULL,
       status TEXT NOT NULL,
+      sub_agent_id TEXT,
       output_preview TEXT NOT NULL,
       error_text TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -1035,6 +1251,31 @@ async function migrateVibeLocalTables(dbClient: RawAccess) {
       selected_project TEXT NOT NULL,
       status TEXT NOT NULL,
       result_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+  `);
+
+  try {
+    await dbClient.execute(`
+      ALTER TABLE approvals
+      ADD COLUMN sub_agent_id TEXT
+    `);
+  } catch {
+    // Column already exists on migrated databases.
+  }
+
+  await dbClient.execute(`
+    CREATE TABLE IF NOT EXISTS task_state (
+      session_id TEXT PRIMARY KEY,
+      goal TEXT NOT NULL,
+      selected_project TEXT NOT NULL,
+      status TEXT NOT NULL,
+      last_response TEXT NOT NULL,
+      last_error TEXT NOT NULL,
+      continue_count INTEGER NOT NULL,
+      settings_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -1093,11 +1334,12 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
     output_preview: string;
     session_id: string;
     status: ApprovalStatus;
+    sub_agent_id: string | null;
     tool_name: string;
     updated_at: string;
   }>(`
     SELECT
-      id, session_id, tool_name, input_json, status, output_preview, error_text, created_at, updated_at
+      id, session_id, tool_name, input_json, status, sub_agent_id, output_preview, error_text, created_at, updated_at
     FROM approvals
     ORDER BY created_at DESC
   `);
@@ -1116,6 +1358,24 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
       id, session_id, prompt, selected_project, status, result_json, created_at, updated_at
     FROM sub_agents
     ORDER BY created_at DESC
+  `);
+
+  const taskRows = await dbClient.execute<{
+    continue_count: number;
+    created_at: string;
+    goal: string;
+    last_error: string;
+    last_response: string;
+    selected_project: string;
+    session_id: string;
+    settings_json: string;
+    status: TaskStatus;
+    updated_at: string;
+  }>(`
+    SELECT
+      session_id, goal, selected_project, status, last_response, last_error,
+      continue_count, settings_json, created_at, updated_at
+    FROM task_state
   `);
 
   const messagesBySession = new Map<string, ChatMessage[]>();
@@ -1154,6 +1414,7 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
       toolName: row.tool_name,
       input: JSON.parse(row.input_json) as Record<string, unknown>,
       status: row.status,
+      subAgentId: row.sub_agent_id,
       outputPreview: row.output_preview,
       error: row.error_text,
       createdAt: row.created_at,
@@ -1166,8 +1427,13 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
   for (const row of subAgentRows) {
     const list = subAgentsBySession.get(row.session_id) ?? [];
     const parsed = JSON.parse(row.result_json) as {
+      executionMode?: ToolExecutionMode;
       error?: string;
       finalResponse?: string;
+      lastResumedAt?: string;
+      pendingApprovals?: string[];
+      resumeCount?: number;
+      resumeReadyAt?: string;
       toolCalls?: ToolExecutionTrace[];
     };
     list.push({
@@ -1175,14 +1441,37 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
       sessionId: row.session_id,
       prompt: row.prompt,
       selectedProject: row.selected_project,
+      executionMode: parsed.executionMode ?? "read-only",
       status: row.status,
       finalResponse: parsed.finalResponse ?? "",
       error: parsed.error ?? "",
+      lastResumedAt: parsed.lastResumedAt ?? "",
+      pendingApprovals: parsed.pendingApprovals ?? [],
+      resumeCount: parsed.resumeCount ?? 0,
+      resumeReadyAt: parsed.resumeReadyAt ?? "",
       toolCalls: parsed.toolCalls ?? [],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
     subAgentsBySession.set(row.session_id, list);
+  }
+
+  const taskBySession = new Map<string, TaskState>();
+  for (const row of taskRows) {
+    taskBySession.set(row.session_id, {
+      sessionId: row.session_id,
+      goal: row.goal,
+      selectedProject: row.selected_project,
+      status: row.status,
+      lastResponse: row.last_response,
+      lastError: row.last_error,
+      continueCount: Number(row.continue_count),
+      settings: row.settings_json.trim()
+        ? (JSON.parse(row.settings_json) as BackendSettings)
+        : null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    });
   }
 
   return sessionRows.map((row) => ({
@@ -1198,6 +1487,7 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
     messages: messagesBySession.get(row.id) ?? [],
     artifacts: artifactsBySession.get(row.id) ?? [],
     subAgents: subAgentsBySession.get(row.id) ?? [],
+    task: taskBySession.get(row.id) ?? null,
   }));
 }
 
@@ -1212,6 +1502,93 @@ async function requireSnapshot(dbClient: RawAccess, sessionId: string) {
     throw new Error(`Unknown session: ${sessionId}`);
   }
   return snapshot;
+}
+
+async function finalizeAgentTurn(
+  dbClient: RawAccess,
+  snapshot: SessionSnapshot,
+  prompt: string,
+  settings: BackendSettings,
+  selectedProject: string,
+  executionMode: ToolExecutionMode,
+  loopResult: AgentLoopResult,
+  continueCount: number,
+): Promise<AgentTurnResult> {
+  const persistedAssistant = await persistMessage(
+    dbClient,
+    snapshot.session.id,
+    "assistant",
+    loopResult.finalResponse,
+  );
+  const artifact = await persistArtifact(dbClient, snapshot.session.id, "agent_run", {
+    executionMode,
+    finalResponse: loopResult.finalResponse,
+    pendingApprovals: loopResult.pendingApprovals.map((approval) => approval.id),
+    prompt,
+    selectedProject,
+    toolCalls: loopResult.toolCalls,
+  } satisfies AgentRunArtifactPayload);
+
+  const task = await saveTaskState(dbClient, {
+    sessionId: snapshot.session.id,
+    goal: prompt,
+    selectedProject,
+    status:
+      loopResult.pendingApprovals.length > 0
+        ? "waiting_approval"
+        : "completed",
+    lastResponse: loopResult.finalResponse,
+    lastError: "",
+    continueCount,
+    settings,
+  });
+
+  return {
+    approvals: loopResult.pendingApprovals,
+    artifact,
+    message: persistedAssistant.message,
+    pendingApproval: loopResult.pendingApprovals.length > 0,
+    session: persistedAssistant.session,
+    task,
+    toolCalls: loopResult.toolCalls,
+  };
+}
+
+async function continueExistingTask(
+  dbClient: RawAccess,
+  snapshot: SessionSnapshot,
+  task: TaskState,
+  settings: BackendSettings,
+): Promise<AgentTurnResult> {
+  const executionMode = sessionModeToExecutionMode(snapshot.session.mode);
+  const continuePrompt = [
+    "Continue the active task until you either finish it, need approval, or hit a concrete blocker.",
+    `Active task: ${task.goal}`,
+    task.selectedProject ? `Selected project: ${task.selectedProject}` : "",
+    "Use the latest repository state and do not repeat already completed work.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const loopResult = await runAgentLoop(
+    dbClient,
+    snapshot,
+    continuePrompt,
+    settings,
+    task.selectedProject,
+    executionMode,
+    null,
+  );
+
+  return await finalizeAgentTurn(
+    dbClient,
+    snapshot,
+    task.goal,
+    settings,
+    task.selectedProject,
+    executionMode,
+    loopResult,
+    task.continueCount + 1,
+  );
 }
 
 export const vibeLocalActor = actor({
@@ -1258,6 +1635,7 @@ export const vibeLocalActor = actor({
         messages: [],
         artifacts: [],
         subAgents: [],
+        task: null,
       } satisfies SessionSnapshot;
     },
     setSessionConfig: async (c, sessionId: string, model: string, mode: SessionMode) => {
@@ -1411,12 +1789,25 @@ export const vibeLocalActor = actor({
         content: await readFile(target.absolutePath, "utf8"),
       };
     },
+    readAgentFsMirror: async (_c, relativePath: string) => {
+      const target = resolveRepoPath(relativePath);
+      if (!isAgentFsWorkspacePath(target.relativePath)) {
+        throw new Error(`Path is outside the AgentFS workspace mirror: ${target.relativePath}`);
+      }
+      return {
+        path: target.relativePath,
+        content: await readAgentFsMirrorFile(target.relativePath),
+      };
+    },
     writeFile: async (_c, relativePath: string, content: string) => {
       const target = resolveRepoPath(relativePath);
       await mkdir(path.dirname(target.absolutePath), { recursive: true });
       await writeFile(target.absolutePath, content, "utf8");
+      const mirrorResult = isAgentFsWorkspacePath(target.relativePath)
+        ? await mirrorWorkspaceFileToAgentFs(target.relativePath, content)
+        : null;
       return {
-        bytes: Buffer.byteLength(content, "utf8"),
+        bytes: mirrorResult?.bytes ?? Buffer.byteLength(content, "utf8"),
         path: target.relativePath,
         updatedAt: nowIso(),
       };
@@ -1430,7 +1821,7 @@ export const vibeLocalActor = actor({
     ) => {
       const existing = await requireSnapshot(c.db, sessionId);
       const persistedUser = await persistMessage(c.db, sessionId, "user", prompt);
-      const executionMode = existing.session.mode === "act" ? "act" : "plan";
+      const executionMode = sessionModeToExecutionMode(existing.session.mode);
       const loopResult = await runAgentLoop(
         c.db,
         existing,
@@ -1439,31 +1830,37 @@ export const vibeLocalActor = actor({
         selectedProject,
         executionMode,
       );
-      const persistedAssistant = await persistMessage(
+      return await finalizeAgentTurn(
         c.db,
-        sessionId,
-        "assistant",
-        loopResult.finalResponse,
-      );
-      const artifact = await persistArtifact(c.db, sessionId, "agent_run", {
-        executionMode,
-        finalResponse: loopResult.finalResponse,
-        pendingApprovals: loopResult.pendingApprovals.map((approval) => approval.id),
+        existing,
         prompt,
+        settings,
         selectedProject,
-        toolCalls: loopResult.toolCalls,
-      } satisfies AgentRunArtifactPayload);
-
-      return {
-        approvals: loopResult.pendingApprovals,
-        artifact,
-        message: persistedAssistant.message,
-        pendingApproval: loopResult.pendingApprovals.length > 0,
-        session: persistedAssistant.session,
-        toolCalls: loopResult.toolCalls,
-      };
+        executionMode,
+        loopResult,
+        0,
+      );
     },
-    approveToolCall: async (c, sessionId: string, approvalId: string, decision: "approve" | "reject") => {
+    continueAgentTask: async (c, sessionId: string, settings?: BackendSettings) => {
+      const snapshot = await requireSnapshot(c.db, sessionId);
+      const task = await getTaskState(c.db, sessionId);
+      if (!task) {
+        throw new Error("No active task was found for this session.");
+      }
+      const resolvedSettings = settings ?? task.settings;
+      if (!resolvedSettings) {
+        throw new Error("No backend settings were stored for this task.");
+      }
+      return await continueExistingTask(c.db, snapshot, task, resolvedSettings);
+    },
+    approveToolCall: async (
+      c,
+      sessionId: string,
+      approvalId: string,
+      decision: "approve" | "reject",
+      continueAfter = false,
+      settings?: BackendSettings,
+    ) => {
       const snapshot = await requireSnapshot(c.db, sessionId);
       const approval = await getApproval(c.db, approvalId);
       if (!approval || approval.sessionId !== sessionId) {
@@ -1484,10 +1881,29 @@ export const vibeLocalActor = actor({
         if (!rejected) {
           throw new Error(`Failed to update approval ${approvalId}.`);
         }
+        if (approval.subAgentId) {
+          const refreshed = await requireSnapshot(c.db, sessionId);
+          const subAgent = getSubAgent(refreshed, approval.subAgentId);
+          if (subAgent) {
+            await updateSubAgent(c.db, subAgent.id, {
+              executionMode: subAgent.executionMode,
+              status: "failed",
+              finalResponse: subAgent.finalResponse,
+              error: "One of the required approvals was rejected.",
+              lastResumedAt: subAgent.lastResumedAt,
+              pendingApprovals: subAgent.pendingApprovals.filter((candidate) => candidate !== approvalId),
+              resumeCount: subAgent.resumeCount,
+              resumeReadyAt: subAgent.resumeReadyAt,
+              toolCalls: subAgent.toolCalls,
+              updatedAt,
+            });
+          }
+        }
         const session = await requireSnapshot(c.db, sessionId);
         return {
           approval: rejected,
           session: session.session,
+          continuation: null,
           toolResult: null,
         };
       }
@@ -1524,11 +1940,171 @@ export const vibeLocalActor = actor({
         toolName: approval.toolName,
       });
 
+      if (approval.subAgentId) {
+        const refreshed = await requireSnapshot(c.db, sessionId);
+        const subAgent = getSubAgent(refreshed, approval.subAgentId);
+        if (subAgent) {
+          await updateSubAgent(c.db, subAgent.id, {
+            executionMode: subAgent.executionMode,
+            status: status === "approved" ? "completed" : "failed",
+            finalResponse: subAgent.finalResponse,
+            error: status === "approved" ? "" : error,
+            lastResumedAt: subAgent.lastResumedAt,
+            pendingApprovals: subAgent.pendingApprovals.filter((candidate) => candidate !== approvalId),
+            resumeCount: subAgent.resumeCount,
+            resumeReadyAt: status === "approved" ? updatedAt : subAgent.resumeReadyAt,
+            toolCalls: subAgent.toolCalls,
+            updatedAt,
+          });
+        }
+      }
+
+      const taskBeforeContinuation = await getTaskState(c.db, sessionId);
+      let continuation: AgentTurnResult | null = null;
+      if (continueAfter && status === "approved" && taskBeforeContinuation) {
+        const resolvedSettings = settings ?? taskBeforeContinuation.settings;
+        if (!resolvedSettings) {
+          throw new Error("No backend settings were stored for this task.");
+        }
+        continuation = await continueExistingTask(c.db, await requireSnapshot(c.db, sessionId), taskBeforeContinuation, resolvedSettings);
+      } else if (taskBeforeContinuation) {
+        await saveTaskState(c.db, {
+          ...taskBeforeContinuation,
+          status: status === "approved" ? "running" : "failed",
+          lastError: error,
+          updatedAt: nowIso(),
+        });
+      }
+
       return {
         approval: resolved,
+        continuation,
         session: snapshot.session,
         toolResult,
       };
+    },
+    continueSubAgentTask: async (c, sessionId: string, subAgentId: string, settings: BackendSettings) => {
+      const snapshot = await requireSnapshot(c.db, sessionId);
+      const subAgent = getSubAgent(snapshot, subAgentId);
+      if (!subAgent) {
+        throw new Error(`Unknown sub-agent: ${subAgentId}`);
+      }
+      if (subAgent.status === "queued" || subAgent.status === "running") {
+        throw new Error(`Sub-agent ${subAgentId} is still ${subAgent.status}.`);
+      }
+      if (subAgent.pendingApprovals.length > 0) {
+        return {
+          approvals: snapshot.approvals.filter((approval) => approval.subAgentId === subAgentId),
+          noop: true,
+          reason: `Sub-agent ${subAgentId} still has pending approvals.`,
+          session: snapshot.session,
+          subAgent,
+        };
+      }
+
+      const resolvedApprovals = snapshot.approvals
+        .filter(
+          (approval) =>
+            approval.subAgentId === subAgent.id &&
+            approval.status === "approved" &&
+            (!subAgent.lastResumedAt || approval.updatedAt > subAgent.lastResumedAt),
+        )
+        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
+      if (resolvedApprovals.length === 0) {
+        return {
+          approvals: snapshot.approvals.filter((approval) => approval.subAgentId === subAgentId),
+          noop: true,
+          reason: `Sub-agent ${subAgentId} has no newly approved tools to continue from.`,
+          session: snapshot.session,
+          subAgent,
+        };
+      }
+
+      await updateSubAgent(c.db, subAgent.id, {
+        executionMode: subAgent.executionMode,
+        status: "running",
+        finalResponse: subAgent.finalResponse,
+        error: "",
+        lastResumedAt: subAgent.lastResumedAt,
+        pendingApprovals: [],
+        resumeCount: subAgent.resumeCount,
+        resumeReadyAt: subAgent.resumeReadyAt,
+        toolCalls: subAgent.toolCalls,
+        updatedAt: nowIso(),
+      });
+
+      try {
+        const loopResult = await runAgentLoop(
+          c.db,
+          snapshot,
+          [
+            "Continue this sub-agent task from the already approved tool results.",
+            `Original sub-agent prompt: ${subAgent.prompt}`,
+            "Only work on the original sub-agent prompt. Ignore sibling sub-agents and unrelated files.",
+            "If the approved tool result already satisfies the original prompt, stop and answer with completion.",
+            "Do not repeat already completed tool calls unless the inputs must change.",
+            "Take the next smallest useful step for this exact prompt only.",
+          ].join("\n"),
+          settings,
+          subAgent.selectedProject,
+          subAgent.executionMode,
+          subAgent.id,
+          [
+            {
+              role: "system",
+              content:
+                "The following tool results were already approved and executed. Treat them as completed work for this exact sub-agent only.",
+            },
+            ...buildSubAgentReplayMessages(resolvedApprovals),
+          ],
+        );
+        const resumedAt = nowIso();
+        await updateSubAgent(c.db, subAgent.id, {
+          executionMode: subAgent.executionMode,
+          status: "completed",
+          finalResponse: loopResult.finalResponse,
+          error: "",
+          lastResumedAt: resumedAt,
+          pendingApprovals: loopResult.pendingApprovals.map((approval) => approval.id),
+          resumeCount: subAgent.resumeCount + 1,
+          resumeReadyAt: loopResult.pendingApprovals.length > 0 ? resumedAt : subAgent.resumeReadyAt,
+          toolCalls: [...subAgent.toolCalls, ...loopResult.toolCalls],
+          updatedAt: resumedAt,
+        });
+        await persistArtifact(c.db, sessionId, "sub_agent_continue", {
+          approvedToolIds: resolvedApprovals.map((approval) => approval.id),
+          finalResponse: loopResult.finalResponse,
+          selectedProject: subAgent.selectedProject,
+          subAgentId,
+          toolCalls: loopResult.toolCalls,
+        });
+        const refreshed = await requireSnapshot(c.db, sessionId);
+        const nextSubAgent = getSubAgent(refreshed, subAgentId);
+        if (!nextSubAgent) {
+          throw new Error(`Sub-agent ${subAgentId} disappeared after continuation.`);
+        }
+        return {
+          approvals: refreshed.approvals.filter((approval) => approval.subAgentId === subAgentId),
+          noop: false,
+          reason: "",
+          session: refreshed.session,
+          subAgent: nextSubAgent,
+        };
+      } catch (caughtError) {
+        await updateSubAgent(c.db, subAgent.id, {
+          executionMode: subAgent.executionMode,
+          status: "failed",
+          finalResponse: subAgent.finalResponse,
+          error: toErrorMessage(caughtError),
+          lastResumedAt: subAgent.lastResumedAt,
+          pendingApprovals: [],
+          resumeCount: subAgent.resumeCount,
+          resumeReadyAt: subAgent.resumeReadyAt,
+          toolCalls: subAgent.toolCalls,
+          updatedAt: nowIso(),
+        });
+        throw caughtError;
+      }
     },
     runParallelAgentTasks: async (
       c,
@@ -1536,6 +2112,7 @@ export const vibeLocalActor = actor({
       prompts: string[],
       settings: BackendSettings,
       selectedProject = "",
+      executionMode: ToolExecutionMode = "read-only",
     ) => {
       const snapshot = await requireSnapshot(c.db, sessionId);
       const trimmedPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean).slice(0, 4);
@@ -1544,15 +2121,23 @@ export const vibeLocalActor = actor({
       }
 
       const subAgents = await Promise.all(
-        trimmedPrompts.map(async (prompt) => await createSubAgent(c.db, sessionId, prompt, selectedProject)),
+        trimmedPrompts.map(
+          async (prompt) =>
+            await createSubAgent(c.db, sessionId, prompt, selectedProject, executionMode),
+        ),
       );
 
       await Promise.all(
         subAgents.map(async (subAgent) => {
           await updateSubAgent(c.db, subAgent.id, {
+            executionMode: subAgent.executionMode,
             status: "running",
             finalResponse: "",
             error: "",
+            lastResumedAt: subAgent.lastResumedAt,
+            pendingApprovals: [],
+            resumeCount: subAgent.resumeCount,
+            resumeReadyAt: subAgent.resumeReadyAt,
             toolCalls: [],
             updatedAt: nowIso(),
           });
@@ -1564,20 +2149,31 @@ export const vibeLocalActor = actor({
               subAgent.prompt,
               settings,
               selectedProject,
-              "read-only",
+              subAgent.executionMode,
+              subAgent.id,
             );
             await updateSubAgent(c.db, subAgent.id, {
+              executionMode: subAgent.executionMode,
               status: "completed",
               finalResponse: result.finalResponse,
               error: "",
+              lastResumedAt: subAgent.lastResumedAt,
+              pendingApprovals: result.pendingApprovals.map((approval) => approval.id),
+              resumeCount: subAgent.resumeCount,
+              resumeReadyAt: result.pendingApprovals.length > 0 ? nowIso() : subAgent.resumeReadyAt,
               toolCalls: result.toolCalls,
               updatedAt: nowIso(),
             });
           } catch (caughtError) {
             await updateSubAgent(c.db, subAgent.id, {
+              executionMode: subAgent.executionMode,
               status: "failed",
               finalResponse: "",
               error: toErrorMessage(caughtError),
+              lastResumedAt: subAgent.lastResumedAt,
+              pendingApprovals: [],
+              resumeCount: subAgent.resumeCount,
+              resumeReadyAt: subAgent.resumeReadyAt,
               toolCalls: [],
               updatedAt: nowIso(),
             });
@@ -1588,6 +2184,7 @@ export const vibeLocalActor = actor({
       const refreshed = await requireSnapshot(c.db, sessionId);
       await persistArtifact(c.db, sessionId, "parallel_agent_run", {
         count: trimmedPrompts.length,
+        executionMode,
         selectedProject,
         subAgentIds: subAgents.map((subAgent) => subAgent.id),
       });
@@ -1629,7 +2226,7 @@ export const vibeLocalActor = actor({
           {
             role: "system",
             content: [
-              createAgentSystemPrompt(selectedProject, settings.systemPrompt),
+              createAgentSystemPrompt(selectedProject, settings.systemPrompt, "act"),
               `Return only the full contents of ${target.relativePath}.`,
               "No markdown fences. No commentary. No diff format.",
             ].join("\n"),
@@ -1647,8 +2244,14 @@ export const vibeLocalActor = actor({
         throw new Error("Agent file rewrite finished without file contents.");
       }
 
-      await mkdir(path.dirname(target.absolutePath), { recursive: true });
-      await writeFile(target.absolutePath, nextContent, "utf8");
+      if (isAgentFsWorkspacePath(target.relativePath)) {
+        const absolutePath = await ensureWorkspaceParentExists(target.relativePath);
+        await writeFile(absolutePath, nextContent, "utf8");
+        await mirrorWorkspaceFileToAgentFs(target.relativePath, nextContent);
+      } else {
+        await mkdir(path.dirname(target.absolutePath), { recursive: true });
+        await writeFile(target.absolutePath, nextContent, "utf8");
+      }
 
       const persistedAssistant = await persistMessage(
         c.db,

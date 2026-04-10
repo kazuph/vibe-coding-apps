@@ -10,6 +10,7 @@ import type {
   RepoFileWriteResult,
   ScriptRunResult,
   SearchCodeResult,
+  SubAgentContinueResult,
 } from "../types";
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit) {
@@ -107,8 +108,17 @@ export async function runAgentTurnFromBrowser(payload: {
 
 export async function decideApprovalFromBrowser(payload: {
   approvalId: string;
+  continueAfter?: boolean;
   decision: "approve" | "reject";
   sessionId: string;
+  settings?: {
+    apiKey: string;
+    baseUrl: string;
+    maxTokens: number;
+    model: string;
+    systemPrompt: string;
+    temperature: number;
+  };
 }) {
   return await requestJson<ApprovalDecisionResult>("/__vibe_local/agentos/session/approval", {
     method: "POST",
@@ -119,7 +129,28 @@ export async function decideApprovalFromBrowser(payload: {
   });
 }
 
+export async function continueAgentTaskFromBrowser(payload: {
+  sessionId: string;
+  settings?: {
+    apiKey: string;
+    baseUrl: string;
+    maxTokens: number;
+    model: string;
+    systemPrompt: string;
+    temperature: number;
+  };
+}) {
+  return await requestJson<AgentRunResult>("/__vibe_local/agentos/session/continue", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function runParallelAgentsFromBrowser(payload: {
+  executionMode?: "act" | "plan" | "read-only" | "yolo";
   prompts: string[];
   selectedProject?: string;
   sessionId: string;
@@ -133,6 +164,27 @@ export async function runParallelAgentsFromBrowser(payload: {
   };
 }) {
   return await requestJson<ParallelAgentRunResult>("/__vibe_local/agentos/session/sub-agents", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function continueSubAgentFromBrowser(payload: {
+  sessionId: string;
+  settings: {
+    apiKey: string;
+    baseUrl: string;
+    maxTokens: number;
+    model: string;
+    systemPrompt: string;
+    temperature: number;
+  };
+  subAgentId: string;
+}) {
+  return await requestJson<SubAgentContinueResult>("/__vibe_local/agentos/session/sub-agent/continue", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

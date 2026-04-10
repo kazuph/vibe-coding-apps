@@ -1,6 +1,7 @@
-export type SessionMode = "plan" | "act";
+export type SessionMode = "plan" | "act" | "yolo";
 export type ApprovalStatus = "approved" | "failed" | "pending" | "rejected";
 export type ToolExecutionStatus = "approval_required" | "completed" | "failed" | "rejected";
+export type TaskStatus = "completed" | "failed" | "idle" | "running" | "waiting_approval";
 
 export interface BackendSettings {
   apiKey: string;
@@ -50,6 +51,7 @@ export interface ApprovalRecord {
   outputPreview: string;
   sessionId: string;
   status: ApprovalStatus;
+  subAgentId: string | null;
   toolName: string;
   updatedAt: string;
 }
@@ -57,9 +59,14 @@ export interface ApprovalRecord {
 export interface SubAgentRun {
   createdAt: string;
   error: string;
+  executionMode: "act" | "plan" | "read-only" | "yolo";
   finalResponse: string;
   id: string;
+  lastResumedAt: string;
+  pendingApprovals: string[];
   prompt: string;
+  resumeCount: number;
+  resumeReadyAt: string;
   selectedProject: string;
   sessionId: string;
   status: "completed" | "failed" | "queued" | "running";
@@ -76,11 +83,25 @@ export interface SessionRecord {
   updatedAt: string;
 }
 
+export interface TaskState {
+  continueCount: number;
+  createdAt: string;
+  goal: string;
+  lastError: string;
+  lastResponse: string;
+  selectedProject: string;
+  sessionId: string;
+  settings: BackendSettings | null;
+  status: TaskStatus;
+  updatedAt: string;
+}
+
 export interface SessionSnapshot {
   approvals: ApprovalRecord[];
   artifacts: SessionArtifact[];
   messages: ChatMessage[];
   subAgents: SubAgentRun[];
+  task: TaskState | null;
   session: SessionRecord;
 }
 
@@ -153,7 +174,7 @@ export interface RepoFileWriteResult {
 }
 
 export interface AgentRunArtifactPayload {
-  executionMode: "act" | "plan" | "read-only";
+  executionMode: "act" | "plan" | "read-only" | "yolo";
   finalResponse: string;
   pendingApprovals: string[];
   prompt: string;
@@ -167,11 +188,13 @@ export interface AgentRunResult {
   message: ChatMessage;
   pendingApproval: boolean;
   session: SessionRecord;
+  task: TaskState | null;
   toolCalls: ToolExecutionTrace[];
 }
 
 export interface ApprovalDecisionResult {
   approval: ApprovalRecord;
+  continuation: AgentRunResult | null;
   session: SessionRecord;
   toolResult: unknown;
 }
@@ -179,4 +202,12 @@ export interface ApprovalDecisionResult {
 export interface ParallelAgentRunResult {
   session: SessionRecord;
   subAgents: SubAgentRun[];
+}
+
+export interface SubAgentContinueResult {
+  approvals: ApprovalRecord[];
+  noop: boolean;
+  reason: string;
+  session: SessionRecord;
+  subAgent: SubAgentRun;
 }

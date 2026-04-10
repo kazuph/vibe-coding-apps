@@ -20,6 +20,7 @@
     "@rivet-dev/agent-os-common": "0.0.260331072558",
     "@rivet-dev/agent-os-pi": "0.1.1",
     "@sandbox-agent/cli": "0.4.2",
+    "agentfs-sdk": "^0.6.4",
     "rivetkit": "2.2.1",
     "sandbox-agent": "0.4.2",
     "zod": "^4.1.12"

@@ -55,6 +55,7 @@ pnpm vibe-local:cli run-script vibe-local-pyodide check
 pnpm vibe-local:cli agent-run vibe-local-pyodide "git status を見て要約して"
 pnpm vibe-local:cli read-file README.md
 printf 'hello from cli\n' | pnpm vibe-local:cli write-file tools/agentos-dev/.agentos-dev/workspace/note.txt
+pnpm vibe-local:cli read-agentfs-mirror tools/agentos-dev/.agentos-dev/workspace/note.txt
 ```
 
 この状態で `http://localhost:5274/` を開くと、Status が `agentOS actor` になり、会話・セッション一覧・compact artifact が `vibeLocal` actor の SQLite に保存されます。browser からは project 選択、repo search、file open / save、git status / diff stat、script 実行に加えて、選択中 project を優先した tool-calling agent run ができます。CLI からは同じ `vibeLocal` actor を直接叩きます。
@@ -95,3 +96,4 @@ printf 'hello from cli\n' | pnpm vibe-local:cli write-file tools/agentos-dev/.ag
 - 保存テーブルは `sessions`, `messages`, `artifacts`
 - `GET /__vibe_local/agentos/*` と `POST /__vibe_local/agentos/*` は `vibe-local-pyodide` の Vite middleware から actor を叩きます
 - backend settings は引き続き browser の localStorage に保存し、会話本体だけを actor-local SQLite に寄せています
+- `tools/agentos-dev/.agentos-dev/workspace` は引き続き host filesystem を正とし、AgentFS はその mirror / audit layer として並行保存します

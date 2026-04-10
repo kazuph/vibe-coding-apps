@@ -31,7 +31,13 @@ import { fetchOpenCodeDefaults, streamChatCompletion, fetchModels } from "./lib/
 import { agentosStore } from "./persistence/agentosStore";
 import { localStore } from "./persistence/localStore";
 import type { SessionStore } from "./persistence/sessionStore";
-import { shouldHydrateFromExternalSettings, sqliteStore } from "./persistence/sqliteStore";
+import {
+  clampMaxTokens,
+  MAX_TOKEN_PRESETS,
+  normalizeBackendSettings,
+  shouldHydrateFromExternalSettings,
+  sqliteStore,
+} from "./persistence/sqliteStore";
 import type {
   ApprovalRecord,
   BackendSettings,
@@ -90,6 +96,14 @@ function downloadJson(filename: string, payload: unknown) {
   URL.revokeObjectURL(url);
 }
 
+function getClosestMaxTokenPresetIndex(value: number) {
+  return MAX_TOKEN_PRESETS.reduce((bestIndex, preset, index) => {
+    const bestDistance = Math.abs(MAX_TOKEN_PRESETS[bestIndex] - value);
+    const nextDistance = Math.abs(preset - value);
+    return nextDistance < bestDistance ? index : bestIndex;
+  }, 0);
+}
+
 export default function App() {
   const chatLogRef = useRef<HTMLDivElement | null>(null);
   const [sessionStore, setSessionStore] = useState<SessionStore>(localStore);
@@ -140,7 +154,7 @@ export default function App() {
   async function refreshState(nextSelectedSessionId?: string | null, store = sessionStore) {
     const next = await store.getHydratedState();
     setHydrated(next);
-    setSettingsDraft(next.settings);
+    setSettingsDraft(normalizeBackendSettings(next.settings));
 
     const selected =
       nextSelectedSessionId ??
@@ -152,25 +166,25 @@ export default function App() {
 
   async function syncSettingsModel(store: SessionStore, nextSettings: BackendSettings) {
     if (!nextSettings.baseUrl.trim()) {
-      return nextSettings;
+      return normalizeBackendSettings(nextSettings);
     }
 
     try {
       const models = await fetchModels(nextSettings);
       setModelChoices(models);
       if (models.length === 0 || models.includes(nextSettings.model.trim())) {
-        return nextSettings;
+        return normalizeBackendSettings(nextSettings);
       }
 
       const corrected = {
         ...nextSettings,
         model: models[0],
       };
-      await store.saveSettings(corrected);
+      await store.saveSettings(normalizeBackendSettings(corrected));
       setStatus(`利用可能なモデルに合わせて ${models[0]} に切り替えました。`);
-      return corrected;
+      return normalizeBackendSettings(corrected);
     } catch {
-      return nextSettings;
+      return normalizeBackendSettings(nextSettings);
     }
   }
 
@@ -211,7 +225,7 @@ export default function App() {
         if (cancelled) return;
         setSessionStore(nextStore);
         setHydrated(hydratedState);
-        setSettingsDraft(syncedSettings);
+        setSettingsDraft(normalizeBackendSettings(syncedSettings));
         setSelectedSessionId(hydratedState.sessions[0]?.session.id ?? null);
         setStatus((current) =>
           current === DEFAULT_STATUS
@@ -303,6 +317,7 @@ export default function App() {
   const settings = settingsDraft ?? hydrated?.settings ?? null;
   const pendingApprovals = (activeSession?.approvals ?? []).filter((approval) => approval.status === "pending");
   const activeTask = activeSession?.task ?? null;
+  const activeMode = activeSession?.session.mode ?? "plan";
 
   function formatToolCalls(toolCalls: ToolExecutionTrace[]) {
     return toolCalls.flatMap((toolCall, index) => [
@@ -376,7 +391,9 @@ export default function App() {
     if (!settingsDraft) return;
     try {
       setError("");
-      await sessionStore.saveSettings(settingsDraft);
+      const normalized = normalizeBackendSettings(settingsDraft);
+      setSettingsDraft(normalized);
+      await sessionStore.saveSettings(normalized);
       await refreshState(selectedSessionId, sessionStore);
       setStatus("Backend settings を保存しました。");
     } catch (caughtError) {
@@ -384,14 +401,20 @@ export default function App() {
     }
   }
 
-  async function handleChangeMode(nextMode: "plan" | "act") {
+  async function handleChangeMode(nextMode: "plan" | "act" | "yolo") {
     if (!settings) return;
     try {
       setError("");
       const current = await ensureActiveSession();
       await sessionStore.setSessionConfig(current.session.id, settings.model, nextMode);
       await refreshState(current.session.id, sessionStore);
-      setStatus(nextMode === "plan" ? "Plan mode に切り替えました。" : "Act mode に切り替えました。");
+      setStatus(
+        nextMode === "plan"
+          ? "Plan mode に切り替えました。"
+          : nextMode === "act"
+            ? "Act mode に切り替えました。"
+            : "YOLO mode に切り替えました。",
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
     }
@@ -406,7 +429,7 @@ export default function App() {
       const models = await fetchModels(settings);
       setModelChoices(models);
       if (models[0] && (!settings.model || !models.includes(settings.model))) {
-        const next = { ...settings, model: models[0] };
+        const next = normalizeBackendSettings({ ...settings, model: models[0] });
         setSettingsDraft(next);
         await sessionStore.saveSettings(next);
         await refreshState(selectedSessionId, sessionStore);
@@ -806,6 +829,18 @@ export default function App() {
               {sessionStore.mode === "agentos" ? "agentOS + SQLite" : "Pyodide + SQLite"}
             </p>
             <h2>{activeSession?.session.title || "Start a new session"}</h2>
+            <div className="header-meta">
+              {sessionStore.mode === "agentos" ? (
+                <>
+                  <span className="header-pill">Directory: {selectedProject || "未選択"}</span>
+                  {pendingApprovals.length > 0 ? (
+                    <span className="header-pill is-alert">Approvals: {pendingApprovals.length}</span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="header-pill">Chat only</span>
+              )}
+            </div>
           </div>
           <div className="header-actions">
             <button className="ghost-button" onClick={() => void handleCompact()} disabled={!activeSession}>
@@ -898,15 +933,46 @@ export default function App() {
                     <span>Max tokens</span>
                     <input
                       type="number"
-                      min="64"
-                      max="8192"
+                      min="4096"
+                      max="65536"
                       value={settings.maxTokens}
                       onChange={(event) =>
                         setSettingsDraft((current) =>
-                          current ? { ...current, maxTokens: Number(event.target.value || "0") } : current,
+                          current ? { ...current, maxTokens: clampMaxTokens(Number(event.target.value || "0")) } : current,
                         )
                       }
                     />
+                  </label>
+                  <label className="wide-field">
+                    <span>Max tokens presets</span>
+                    <div className="token-preset-control">
+                      <input
+                        type="range"
+                        min="0"
+                        max={String(MAX_TOKEN_PRESETS.length - 1)}
+                        step="1"
+                        value={String(getClosestMaxTokenPresetIndex(settings.maxTokens))}
+                        onChange={(event) =>
+                          setSettingsDraft((current) =>
+                            current
+                              ? { ...current, maxTokens: MAX_TOKEN_PRESETS[Number(event.target.value)] ?? current.maxTokens }
+                              : current,
+                          )
+                        }
+                      />
+                      <div className="slider-labels" aria-hidden="true">
+                        {MAX_TOKEN_PRESETS.map((preset, index) => (
+                          <span
+                            key={preset}
+                            style={{
+                              left: `${(index / (MAX_TOKEN_PRESETS.length - 1)) * 100}%`,
+                            }}
+                          >
+                            {preset.toLocaleString()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </label>
                   <label className="wide-field">
                     <span>System prompt</span>
@@ -921,6 +987,25 @@ export default function App() {
                     />
                   </label>
                 </div>
+
+                {sessionStore.mode === "agentos" ? (
+                  <div className="settings-grid">
+                    <label>
+                      <span>Directory</span>
+                      <select
+                        aria-label="Directory"
+                        value={selectedProject}
+                        onChange={(event) => setSelectedProject(event.target.value)}
+                      >
+                        {projects.map((project) => (
+                          <option key={project.relativePath} value={project.relativePath}>
+                            {project.relativePath}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
 
                 <button className="primary-button" onClick={() => void handleSaveSettings()}>
                   <Save size={16} />
@@ -967,212 +1052,57 @@ export default function App() {
             )}
           </div>
 
-          <section className="tool-output">
-            <div className="section-head">
-              <div>
-                <span>Agent controls</span>
-                <p className="panel-intro">agent の実行を続行・承認・並列実行はこのセクションで行います。</p>
-              </div>
-            </div>
-
-            <div className="tool-output">
-              <div className="section-head">
-                <span>Current task</span>
-                {activeTask ? <span>{activeTask.status}</span> : null}
-              </div>
-              {activeTask ? (
-                <div className="project-summary">
-                  <strong>{activeTask.goal}</strong>
-                  <span>{activeTask.selectedProject || "(project not selected)"}</span>
-                  <p className="status-copy">
-                    Continue count: {activeTask.continueCount} · Last status: {activeTask.status}
-                  </p>
-                  {activeTask.lastResponse ? <MarkdownText>{activeTask.lastResponse}</MarkdownText> : null}
-                  {activeTask.lastError ? <pre>{activeTask.lastError}</pre> : null}
-                  <div className="tool-actions">
-                    <button
-                      className="primary-button"
-                      onClick={() => void handleContinueTask()}
-                      disabled={isToolRunning || isSending || !settings || sessionStore.mode !== "agentos"}
-                    >
-                      Continue
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="status-copy">まだ進行中タスクはありません。</p>
-              )}
-            </div>
-
-            <div className="tool-output">
-              <div className="section-head">
-                <span>Pending approvals</span>
-                <span>{pendingApprovals.length}</span>
-              </div>
-              {pendingApprovals.length === 0 ? (
-                <p className="status-copy">承認待ちの tool はありません。</p>
-              ) : (
-                <div className="tool-result-list" aria-label="Pending approvals">
-                  {pendingApprovals.map((approval) => (
-                    <div key={approval.id} className="project-summary">
-                      <strong>{approval.toolName}</strong>
-                      <span>
-                        {approval.id}
-                        {approval.subAgentId ? ` · sub-agent ${approval.subAgentId}` : ""}
-                      </span>
-                      <div className="compact-code-block">
-                        <pre>{summarizeToolInput(approval.input)}</pre>
-                      </div>
-                      {approval.outputPreview ? (
-                        <details className="details-block">
-                          <summary>最新の出力</summary>
-                          <pre>{approval.outputPreview}</pre>
-                        </details>
-                      ) : null}
-                      <div className="tool-actions">
-                        <button
-                          className="primary-button"
-                          onClick={() => void handleApprovalDecision(approval.id, "approve")}
-                          disabled={isToolRunning || sessionStore.mode !== "agentos"}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="primary-button"
-                          onClick={() => void handleApprovalDecision(approval.id, "approve", true)}
-                          disabled={isToolRunning || !settings || sessionStore.mode !== "agentos"}
-                        >
-                          Approve & continue
-                        </button>
-                        <button
-                          className="ghost-button"
-                          onClick={() => void handleApprovalDecision(approval.id, "reject")}
-                          disabled={isToolRunning || sessionStore.mode !== "agentos"}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="tool-output">
+          {pendingApprovals.length > 0 ? (
+            <div className="inline-approval-panel" aria-label="Pending approvals">
               <div className="section-head">
                 <div>
-                  <span>Parallel agents</span>
-                  <p className="panel-intro">`--` 区切りで複数プロンプトを投げて、sub-agent を並列実行します。</p>
+                  <span>Pending approvals</span>
+                  <p className="panel-intro">必要な操作だけを一時表示しています。</p>
                 </div>
+                <span>{pendingApprovals.length}</span>
               </div>
-              <div className="coding-grid">
-                <label>
-                  <span>Sub-agent mode</span>
-                  <select
-                    aria-label="Sub-agent mode"
-                    value={parallelExecutionMode}
-                    onChange={(event) =>
-                      setParallelExecutionMode(event.target.value as "act" | "plan" | "read-only")
-                    }
-                  >
-                    <option value="read-only">read-only</option>
-                    <option value="act">act</option>
-                    <option value="plan">plan</option>
-                  </select>
-                </label>
+              <div className="inline-approval-list">
+                {pendingApprovals.map((approval) => (
+                  <article key={approval.id} className="inline-approval-item">
+                    <div className="message-meta">
+                      <strong>{approval.toolName}</strong>
+                      <span>{approval.subAgentId ? `sub-agent ${approval.subAgentId}` : approval.id}</span>
+                    </div>
+                    <p>{summarizeToolInput(approval.input)}</p>
+                    {approval.outputPreview ? (
+                      <details className="details-block">
+                        <summary>最新の出力</summary>
+                        <pre>{approval.outputPreview}</pre>
+                      </details>
+                    ) : null}
+                    <div className="tool-actions">
+                      <button
+                        className="primary-button"
+                        onClick={() => void handleApprovalDecision(approval.id, "approve")}
+                        disabled={isToolRunning || sessionStore.mode !== "agentos"}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="primary-button"
+                        onClick={() => void handleApprovalDecision(approval.id, "approve", true)}
+                        disabled={isToolRunning || !settings || sessionStore.mode !== "agentos"}
+                      >
+                        Approve & continue
+                      </button>
+                      <button
+                        className="ghost-button"
+                        onClick={() => void handleApprovalDecision(approval.id, "reject")}
+                        disabled={isToolRunning || sessionStore.mode !== "agentos"}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </article>
+                ))}
               </div>
-              <textarea
-                aria-label="Parallel prompts"
-                className="file-editor"
-                value={parallelPromptsDraft}
-                onChange={(event) => setParallelPromptsDraft(event.target.value)}
-                spellCheck={false}
-              />
-              <div className="tool-actions">
-                <button
-                  className="primary-button"
-                  onClick={() => void handleRunParallelAgents()}
-                  disabled={isToolRunning || !parallelPromptsDraft.trim() || sessionStore.mode !== "agentos"}
-                >
-                  Run parallel agents
-                </button>
-              </div>
-              {(activeSession?.subAgents ?? []).length > 0 ? (
-                <div className="tool-result-list" aria-label="Sub-agent runs">
-                  {activeSession?.subAgents.map((subAgent) => {
-                    const isResumable =
-                      subAgent.executionMode === "plan" &&
-                      subAgent.pendingApprovals.length === 0 &&
-                      pendingApprovals.every((approval) => approval.subAgentId !== subAgent.id) &&
-                      activeSession.approvals.some(
-                        (approval) =>
-                          approval.subAgentId === subAgent.id &&
-                          approval.status === "approved" &&
-                          (!subAgent.lastResumedAt || approval.updatedAt > subAgent.lastResumedAt),
-                      );
-
-                    return (
-                      <div key={subAgent.id} className="project-summary">
-                        <strong>{subAgent.status}</strong>
-                        <span>{subAgent.executionMode} · {subAgent.prompt}</span>
-                        <p className="status-copy">
-                          Resume count: {subAgent.resumeCount}
-                          {subAgent.lastResumedAt ? ` · last resumed ${subAgent.lastResumedAt}` : ""}
-                        </p>
-                        {isResumable ? (
-                          <div className="tool-actions">
-                            <button
-                              className="ghost-button"
-                              onClick={() => void handleContinueSubAgent(subAgent.id)}
-                              disabled={isToolRunning || !settings || sessionStore.mode !== "agentos"}
-                            >
-                              Resume
-                            </button>
-                          </div>
-                        ) : null}
-                        {subAgent.finalResponse ? <MarkdownText>{subAgent.finalResponse}</MarkdownText> : null}
-                        {subAgent.pendingApprovals.length > 0 ? (
-                          <p className="status-copy">pending approvals: {subAgent.pendingApprovals.join(", ")}</p>
-                        ) : null}
-                        {pendingApprovals.some((approval) => approval.subAgentId === subAgent.id) ? (
-                          <p className="status-copy">
-                            approval owners: {" "}
-                            {pendingApprovals
-                              .filter((approval) => approval.subAgentId === subAgent.id)
-                              .map((approval) => approval.id)
-                              .join(", ")}
-                          </p>
-                        ) : null}
-                        {subAgent.error ? <pre>{subAgent.error}</pre> : null}
-                        {subAgent.toolCalls.length > 0 ? (
-                          <details className="details-block">
-                            <summary>tool traces ({subAgent.toolCalls.length})</summary>
-                            <div className="tool-trace-list">
-                              {subAgent.toolCalls.map((trace, index) => (
-                                <div key={`${subAgent.id}-${trace.name}-${index}`} className="compact-code-block">
-                                  <pre>{renderToolTraceSummary(trace)}</pre>
-                                </div>
-                              ))}
-                            </div>
-                          </details>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="status-copy">まだ sub-agent 実行はありません。</p>
-              )}
             </div>
-
-            <div className="tool-output">
-              <div className="section-head">
-                <span>{toolOutputTitle}</span>
-                {isToolRunning ? <LoaderCircle size={16} className="spin" /> : null}
-              </div>
-              <pre>{toolOutput}</pre>
-            </div>
-          </section>
+          ) : null}
 
           <div className="composer">
             <textarea
@@ -1188,201 +1118,39 @@ export default function App() {
               }}
             />
             <div className="composer-footer">
-              <span>
-                {activeSession?.session.model || settings?.model || "model unset"}
-              </span>
-              <button
-                className="primary-button"
-                onClick={() => void handleSendMessage()}
-                disabled={pendingDisabled || (sessionStore.mode === "agentos" && !selectedProject)}
-              >
-                {isSending ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
-                {sessionStore.mode === "agentos"
-                  ? activeSession?.session.mode === "plan"
-                    ? "Plan run"
-                    : "Act run"
-                  : "Send"}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="coding-panel">
-          <div className="section-head">
-            <div>
-              <span>Project workspace</span>
-              <p className="panel-intro">ファイル確認と編集、検索、軽量 script 実行のための作業エリアです。</p>
-            </div>
-            <div className="section-head-actions">
-              {codingPanelOpen && sessionStore.mode === "agentos" ? (
-                <button
-                  className="ghost-button"
-                  onClick={() => void refreshProjects()}
-                  disabled={isToolRunning}
-                >
-                  <RefreshCw size={16} />
-                  Refresh projects
-                </button>
-              ) : null}
-                <button className="ghost-button" onClick={() => setCodingPanelOpen((value) => !value)}>
-                  <Settings2 size={16} />
-                  {codingPanelOpen ? "Hide project workspace" : "Show project workspace"}
-                </button>
-              </div>
-            </div>
-
-          {codingPanelOpen ? (
-            sessionStore.mode !== "agentos" ? (
-              <p className="status-copy">agentOS actor に接続しているときだけ coding tools を使えます。</p>
-            ) : (
-              <>
-                <div className="coding-grid">
-                  <label>
+              <span>{activeSession?.session.model || settings?.model || "model unset"}</span>
+              <div className="composer-actions">
+                {sessionStore.mode === "agentos" ? (
+                  <label className="composer-mode">
                     <span>Mode</span>
                     <select
                       aria-label="Mode"
-                      value={activeSession?.session.mode ?? "plan"}
-                      onChange={(event) => void handleChangeMode(event.target.value as "plan" | "act")}
+                      value={activeMode}
+                      onChange={(event) => void handleChangeMode(event.target.value as "plan" | "act" | "yolo")}
                     >
                       <option value="plan">plan</option>
                       <option value="act">act</option>
+                      <option value="yolo">yolo</option>
                     </select>
                   </label>
-
-                  <label>
-                    <span>Project</span>
-                    <select
-                      aria-label="Project"
-                      value={selectedProject}
-                      onChange={(event) => setSelectedProject(event.target.value)}
-                    >
-                      {projects.map((project) => (
-                        <option key={project.relativePath} value={project.relativePath}>
-                          {project.relativePath}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    <span>Script</span>
-                    <select
-                      aria-label="Script"
-                      value={selectedScript}
-                      onChange={(event) => setSelectedScript(event.target.value)}
-                    >
-                      {(projectInfo?.scripts ?? []).map((script) => (
-                        <option key={script} value={script}>
-                          {script}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="wide-field">
-                    <span>Repo search</span>
-                    <input
-                      aria-label="Repo search"
-                      value={toolSearchQuery}
-                      placeholder="例: agentOS actor"
-                      onChange={(event) => setToolSearchQuery(event.target.value)}
-                    />
-                  </label>
-
-                  <label className="wide-field">
-                    <span>File path</span>
-                    <input
-                      aria-label="File path"
-                      value={filePathDraft}
-                      placeholder="例: vibe-local-pyodide/src/App.tsx"
-                      onChange={(event) => setFilePathDraft(event.target.value)}
-                    />
-                  </label>
-                </div>
-
-                <div className="tool-actions">
-                  <button className="ghost-button" onClick={() => void handleGitStatus()} disabled={isToolRunning}>
-                    Git status
-                  </button>
-                  <button className="ghost-button" onClick={() => void handleGitDiffStat()} disabled={isToolRunning}>
-                    Diff stat
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() => void handleSearchCode()}
-                    disabled={isToolRunning || !toolSearchQuery.trim()}
-                  >
-                    Search code
-                  </button>
-                  <button
-                    className="primary-button"
-                    onClick={() => void handleRunScript()}
-                    disabled={isToolRunning || !selectedProject || !selectedScript}
-                  >
-                    {isToolRunning ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
-                    Run script
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() => void handleOpenFile()}
-                    disabled={isToolRunning || !filePathDraft.trim()}
-                  >
-                    Open file
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() => void handleSaveFile()}
-                    disabled={isToolRunning || !filePathDraft.trim()}
-                  >
-                    Save file
-                  </button>
-                </div>
-
-                <div className="project-summary">
-                  <strong>{projectInfo?.name ?? selectedProject ?? "Project not selected"}</strong>
-                  <span>{projectInfo?.absolutePath ?? ""}</span>
-                  <p className="status-copy">
-                    {activeSession?.session.mode === "plan"
-                      ? "Plan mode では書き込み系 tool が approval 待ちになります。"
-                      : "Act mode では tool-calling agent が即実行します。"}
-                  </p>
-                </div>
-
-                {searchResults.length > 0 ? (
-                  <div className="tool-result-list" aria-label="Search results">
-                    {searchResults.map((entry) => (
-                      <button
-                        key={entry}
-                        className="search-result-button"
-                        aria-label={`Open search result ${extractPathFromSearchResult(entry)}`}
-                        onClick={() => void handleOpenFile(extractPathFromSearchResult(entry))}
-                      >
-                        <code>{entry}</code>
-                      </button>
-                    ))}
-                  </div>
                 ) : null}
-
-                <div className="file-editor-panel">
-                  <div className="section-head">
-                    <span>{openedFilePath || "File editor"}</span>
-                  </div>
-                  <textarea
-                    aria-label="File editor"
-                    className="file-editor"
-                    value={fileContentDraft}
-                    onChange={(event) => setFileContentDraft(event.target.value)}
-                    spellCheck={false}
-                  />
-                </div>
-
-              </>
-            )
-          ) : (
-            <p className="panel-summary">
-              ここは任意です。ファイル確認、検索、script 実行が必要なときだけ開いてください。
-            </p>
-          )}
+                <button
+                  className="primary-button"
+                  onClick={() => void handleSendMessage()}
+                  disabled={pendingDisabled || (sessionStore.mode === "agentos" && !selectedProject)}
+                >
+                  {isSending ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
+                  {sessionStore.mode === "agentos"
+                    ? activeSession?.session.mode === "plan"
+                      ? "Plan run"
+                      : activeSession?.session.mode === "yolo"
+                        ? "YOLO run"
+                      : "Act run"
+                    : "Send"}
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
     </div>

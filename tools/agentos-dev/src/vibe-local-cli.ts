@@ -35,12 +35,18 @@ function usage() {
   pnpm vibe-local:cli diff-stat
   pnpm vibe-local:cli search <query> [maxResults]
   pnpm vibe-local:cli read-file <path>
+  pnpm vibe-local:cli read-agentfs-mirror <path>
   pnpm vibe-local:cli write-file <path> < content.txt
   pnpm vibe-local:cli run-script <project> <script> [timeoutMs]
   pnpm vibe-local:cli agent-run <project> <prompt...>
   pnpm vibe-local:cli agent-plan <project> <prompt...>
-  pnpm vibe-local:cli approval <sessionId> <approvalId> <approve|reject>
-  pnpm vibe-local:cli parallel-run <project> <prompt1> -- <prompt2> [-- <prompt3>...]
+  pnpm vibe-local:cli agent-yolo <project> <prompt...>
+  pnpm vibe-local:cli sessions
+  pnpm vibe-local:cli session <sessionId>
+  pnpm vibe-local:cli continue-session <sessionId>
+  pnpm vibe-local:cli continue-subagent <sessionId> <subAgentId>
+  pnpm vibe-local:cli approval <sessionId> <approvalId> <approve|reject> [--continue]
+  pnpm vibe-local:cli parallel-run [--mode read-only|act|plan|yolo] <project> <prompt1> -- <prompt2> [-- <prompt3>...]
   pnpm vibe-local:cli agent-rewrite-file <project> <path> <prompt...>`);
 }
 
@@ -115,6 +121,42 @@ async function main() {
       console.log(JSON.stringify(await actor.gitStatus(), null, 2));
       return;
     }
+    case "sessions": {
+      const payload = await actor.hydrate();
+      console.log(
+        JSON.stringify(
+          payload.sessions.map((entry: any) => ({
+            id: entry.session.id,
+            title: entry.session.title,
+            mode: entry.session.mode,
+            model: entry.session.model,
+            approvals: (entry.approvals ?? [])
+              .filter((approval: any) => approval.status === "pending")
+              .map((approval: any) => ({
+                id: approval.id,
+                toolName: approval.toolName,
+                subAgentId: approval.subAgentId ?? null,
+              })),
+            task: entry.task
+              ? {
+                  goal: entry.task.goal,
+                  status: entry.task.status,
+                  continueCount: entry.task.continueCount,
+                }
+              : null,
+          })),
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    case "session": {
+      const sessionId = args[0];
+      if (!sessionId) throw new Error("Missing <sessionId>");
+      console.log(JSON.stringify(await actor.exportSession(sessionId), null, 2));
+      return;
+    }
     case "diff-stat": {
       console.log(JSON.stringify(await actor.gitDiffStat(), null, 2));
       return;
@@ -130,6 +172,12 @@ async function main() {
       const filePath = args[0];
       if (!filePath) throw new Error("Missing <path>");
       console.log(JSON.stringify(await actor.readFile(filePath), null, 2));
+      return;
+    }
+    case "read-agentfs-mirror": {
+      const filePath = args[0];
+      if (!filePath) throw new Error("Missing <path>");
+      console.log(JSON.stringify(await actor.readAgentFsMirror(filePath), null, 2));
       return;
     }
     case "write-file": {
@@ -163,6 +211,33 @@ async function main() {
       );
       return;
     }
+    case "continue-session": {
+      const sessionId = args[0];
+      if (!sessionId) throw new Error("Missing <sessionId>");
+      const settings = loadBackendSettings();
+      console.log(
+        JSON.stringify(
+          await actor.continueAgentTask(sessionId, settings),
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    case "continue-subagent": {
+      const sessionId = args[0];
+      const subAgentId = args[1];
+      if (!sessionId || !subAgentId) throw new Error("Missing <sessionId> or <subAgentId>");
+      const settings = loadBackendSettings();
+      console.log(
+        JSON.stringify(
+          await actor.continueSubAgentTask(sessionId, subAgentId, settings),
+          null,
+          2,
+        ),
+      );
+      return;
+    }
     case "agent-plan": {
       const project = args[0];
       const prompt = args.slice(1).join(" ").trim();
@@ -179,21 +254,50 @@ async function main() {
       );
       return;
     }
+    case "agent-yolo": {
+      const project = args[0];
+      const prompt = args.slice(1).join(" ").trim();
+      if (!project || !prompt) throw new Error("Missing <project> or <prompt...>");
+      const settings = loadBackendSettings();
+      const session = await actor.createSession(`CLI ${project}`);
+      await actor.setSessionConfig(session.session.id, settings.model, "yolo");
+      console.log(
+        JSON.stringify(
+          await actor.runAgentTurn(session.session.id, prompt, settings, project),
+          null,
+          2,
+        ),
+      );
+      return;
+    }
     case "approval": {
       const sessionId = args[0];
       const approvalId = args[1];
       const decision = args[2];
+      const continueAfter = args.includes("--continue");
       if (!sessionId || !approvalId || (decision !== "approve" && decision !== "reject")) {
-        throw new Error("Usage: approval <sessionId> <approvalId> <approve|reject>");
+        throw new Error("Usage: approval <sessionId> <approvalId> <approve|reject> [--continue]");
       }
+      const settings = continueAfter ? loadBackendSettings() : undefined;
       console.log(
-        JSON.stringify(await actor.approveToolCall(sessionId, approvalId, decision), null, 2),
+        JSON.stringify(await actor.approveToolCall(sessionId, approvalId, decision, continueAfter, settings), null, 2),
       );
       return;
     }
     case "parallel-run": {
-      const project = args[0];
-      const rawPrompts = args.slice(1);
+      const executionModeIndex = args.findIndex((token) => token === "--mode");
+      let executionMode: "act" | "plan" | "read-only" | "yolo" = "read-only";
+      let normalizedArgs = [...args];
+      if (executionModeIndex >= 0) {
+        const candidate = normalizedArgs[executionModeIndex + 1];
+        if (candidate !== "act" && candidate !== "plan" && candidate !== "read-only" && candidate !== "yolo") {
+          throw new Error("parallel-run --mode must be one of read-only, act, plan, or yolo");
+        }
+        executionMode = candidate;
+        normalizedArgs = normalizedArgs.filter((_, index) => index !== executionModeIndex && index !== executionModeIndex + 1);
+      }
+      const project = normalizedArgs[0];
+      const rawPrompts = normalizedArgs.slice(1);
       const chunks: string[] = [];
       let current: string[] = [];
       for (const token of rawPrompts) {
@@ -211,14 +315,14 @@ async function main() {
       }
       const prompts = chunks.filter(Boolean);
       if (!project || prompts.length === 0) {
-        throw new Error("Usage: parallel-run <project> <prompt1> -- <prompt2> [-- <prompt3>...]");
+        throw new Error("Usage: parallel-run [--mode read-only|act|plan|yolo] <project> <prompt1> -- <prompt2> [-- <prompt3>...]");
       }
       const settings = loadBackendSettings();
       const session = await actor.createSession(`CLI parallel ${project}`);
       await actor.setSessionConfig(session.session.id, settings.model, "act");
       console.log(
         JSON.stringify(
-          await actor.runParallelAgentTasks(session.session.id, prompts, settings, project),
+          await actor.runParallelAgentTasks(session.session.id, prompts, settings, project, executionMode),
           null,
           2,
         ),
