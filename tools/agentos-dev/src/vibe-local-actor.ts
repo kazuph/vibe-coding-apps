@@ -929,26 +929,41 @@ async function callOpenAiCompatible(
   toolSchemas: ReadonlyArray<(typeof CODING_TOOL_SCHEMAS)[number]> = CODING_TOOL_SCHEMAS,
 ) {
   const normalizedMessages = normalizeOpenAiMessages(messages);
-  const response = await fetch(`${settings.baseUrl.trim().replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(settings.apiKey.trim() ? { Authorization: `Bearer ${settings.apiKey.trim()}` } : {}),
-    },
-    body: JSON.stringify({
-      model: settings.model,
-      messages: normalizedMessages,
-      ...(includeTools
-        ? {
-            tools: toolSchemas,
-            tool_choice: "auto",
-          }
-        : {}),
-      temperature: settings.temperature,
-      max_tokens: settings.maxTokens,
-      stream: false,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort("Agent request timed out.");
+  }, 45_000);
+  let response: Response;
+  try {
+    response = await fetch(`${settings.baseUrl.trim().replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(settings.apiKey.trim() ? { Authorization: `Bearer ${settings.apiKey.trim()}` } : {}),
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: settings.model,
+        messages: normalizedMessages,
+        ...(includeTools
+          ? {
+              tools: toolSchemas,
+              tool_choice: "auto",
+            }
+          : {}),
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: false,
+      }),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Agent request timed out after 45s.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Agent request failed: ${await response.text()}`);
