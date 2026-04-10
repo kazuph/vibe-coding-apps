@@ -26,6 +26,89 @@ type BackendSettings = {
   temperature: number;
 };
 
+type SessionSnapshot = Awaited<ReturnType<Awaited<ReturnType<typeof getActor>>["exportSession"]>>;
+
+function summarizeCliToolInput(input: Record<string, unknown>) {
+  const entries = Object.entries(input);
+  if (entries.length === 0) {
+    return "入力なし";
+  }
+  return entries
+    .map(([key, value]) =>
+      `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`,
+    )
+    .join(" ");
+}
+
+function formatCliToolEvent(payload: Record<string, unknown>) {
+  const name = typeof payload.name === "string" ? payload.name : "unknown";
+  const input =
+    payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
+      ? (payload.input as Record<string, unknown>)
+      : {};
+  const status = typeof payload.status === "string" ? payload.status : "running";
+  return `[tool:${status}] ${name} ${summarizeCliToolInput(input)}`.trim();
+}
+
+async function watchSessionProgress(
+  actor: Awaited<ReturnType<typeof getActor>>,
+  sessionId: string,
+  work: Promise<unknown>,
+) {
+  let settled = false;
+  let lastAssistantText = "";
+  const seenToolEvents = new Set<string>();
+
+  void work.finally(() => {
+    settled = true;
+  });
+
+  while (!settled) {
+    const snapshot = (await actor.exportSession(sessionId)) as SessionSnapshot | null;
+    if (snapshot) {
+      const orderedArtifacts = [...snapshot.artifacts].sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+      );
+      for (const artifact of orderedArtifacts) {
+        if (artifact.kind !== "agent_tool_event") {
+          continue;
+        }
+        if (seenToolEvents.has(artifact.id)) {
+          continue;
+        }
+        seenToolEvents.add(artifact.id);
+        console.log(formatCliToolEvent(artifact.payload));
+      }
+
+      const partialText = snapshot.task?.status === "running" ? snapshot.task.lastResponse ?? "" : "";
+      if (partialText.startsWith(lastAssistantText) && partialText.length > lastAssistantText.length) {
+        process.stdout.write(partialText.slice(lastAssistantText.length));
+        lastAssistantText = partialText;
+      } else if (partialText && partialText !== lastAssistantText) {
+        process.stdout.write(`\n${partialText}`);
+        lastAssistantText = partialText;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  }
+
+  const finalSnapshot = (await actor.exportSession(sessionId)) as SessionSnapshot | null;
+  const finalText = finalSnapshot?.task?.lastResponse ?? "";
+  if (finalText.startsWith(lastAssistantText) && finalText.length > lastAssistantText.length) {
+    process.stdout.write(finalText.slice(lastAssistantText.length));
+    lastAssistantText = finalText;
+  } else if (finalText && finalText !== lastAssistantText) {
+    process.stdout.write(`\n${finalText}`);
+    lastAssistantText = finalText;
+  }
+
+  if (lastAssistantText) {
+    process.stdout.write("\n");
+  }
+}
+
 function usage() {
   console.log(`Usage:
   pnpm vibe-local:cli health
@@ -202,9 +285,11 @@ async function main() {
       const settings = loadBackendSettings();
       const session = await actor.createSession(`CLI ${project}`);
       await actor.setSessionConfig(session.session.id, settings.model, "act");
+      const runPromise = actor.runAgentTurn(session.session.id, prompt, settings, project);
+      await watchSessionProgress(actor, session.session.id, runPromise);
       console.log(
         JSON.stringify(
-          await actor.runAgentTurn(session.session.id, prompt, settings, project),
+          await runPromise,
           null,
           2,
         ),
@@ -215,9 +300,11 @@ async function main() {
       const sessionId = args[0];
       if (!sessionId) throw new Error("Missing <sessionId>");
       const settings = loadBackendSettings();
+      const runPromise = actor.continueAgentTask(sessionId, settings);
+      await watchSessionProgress(actor, sessionId, runPromise);
       console.log(
         JSON.stringify(
-          await actor.continueAgentTask(sessionId, settings),
+          await runPromise,
           null,
           2,
         ),
@@ -245,9 +332,11 @@ async function main() {
       const settings = loadBackendSettings();
       const session = await actor.createSession(`CLI ${project}`);
       await actor.setSessionConfig(session.session.id, settings.model, "plan");
+      const runPromise = actor.runAgentTurn(session.session.id, prompt, settings, project);
+      await watchSessionProgress(actor, session.session.id, runPromise);
       console.log(
         JSON.stringify(
-          await actor.runAgentTurn(session.session.id, prompt, settings, project),
+          await runPromise,
           null,
           2,
         ),
@@ -261,9 +350,11 @@ async function main() {
       const settings = loadBackendSettings();
       const session = await actor.createSession(`CLI ${project}`);
       await actor.setSessionConfig(session.session.id, settings.model, "yolo");
+      const runPromise = actor.runAgentTurn(session.session.id, prompt, settings, project);
+      await watchSessionProgress(actor, session.session.id, runPromise);
       console.log(
         JSON.stringify(
-          await actor.runAgentTurn(session.session.id, prompt, settings, project),
+          await runPromise,
           null,
           2,
         ),
@@ -279,8 +370,12 @@ async function main() {
         throw new Error("Usage: approval <sessionId> <approvalId> <approve|reject> [--continue]");
       }
       const settings = continueAfter ? loadBackendSettings() : undefined;
+      const actionPromise = actor.approveToolCall(sessionId, approvalId, decision, continueAfter, settings);
+      if (continueAfter) {
+        await watchSessionProgress(actor, sessionId, actionPromise);
+      }
       console.log(
-        JSON.stringify(await actor.approveToolCall(sessionId, approvalId, decision, continueAfter, settings), null, 2),
+        JSON.stringify(await actionPromise, null, 2),
       );
       return;
     }

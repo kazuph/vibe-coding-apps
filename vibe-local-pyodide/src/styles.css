@@ -606,6 +606,10 @@ button {
   background: rgba(252, 248, 244, 0.98);
 }
 
+.message-bubble.role-assistant.is-streaming {
+  border-style: dashed;
+}
+
 .message-bubble.role-system {
   align-self: center;
   background: rgba(241, 236, 229, 0.92);
@@ -626,15 +630,16 @@ button {
   word-break: break-word;
 }
 
-.tool-trace-disclosure {
-  margin-top: 14px;
+.tool-event-card {
+  align-self: flex-start;
+  width: min(760px, 100%);
   border-radius: 18px;
   border: 1px solid rgba(94, 70, 54, 0.08);
   background: rgba(247, 242, 236, 0.82);
   overflow: hidden;
 }
 
-.tool-trace-disclosure summary {
+.tool-event-card summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -646,13 +651,27 @@ button {
   color: #5e4a3e;
 }
 
-.tool-trace-disclosure summary span:last-child {
-  color: #836856;
-  font-weight: 600;
+.tool-event-card[open] summary {
+  border-bottom: 1px solid rgba(94, 70, 54, 0.08);
 }
 
-.tool-trace-disclosure[open] summary {
-  border-bottom: 1px solid rgba(94, 70, 54, 0.08);
+.tool-event-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tool-event-summary code {
+  font-family:
+    "SF Mono",
+    "Menlo",
+    "Monaco",
+    monospace;
+  font-size: 0.8rem;
+  color: #836856;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .tool-trace-meta {
@@ -885,7 +904,7 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .tool-trace-disclosure summary,
+  .tool-event-card summary,
   .tool-trace-head {
     flex-direction: column;
     align-items: flex-start;

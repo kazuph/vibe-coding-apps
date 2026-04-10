@@ -46,6 +46,7 @@ import type {
   ProjectInfo,
   ProjectInfoDetails,
   SessionMode,
+  SessionSnapshot,
   ToolExecutionTrace,
 } from "./types";
 
@@ -76,16 +77,6 @@ function summarizeToolInput(input: Record<string, unknown>) {
     .join("\n");
 }
 
-function renderToolTraceSummary(trace: ToolExecutionTrace) {
-  return [
-    `${trace.name} [${trace.status}]`,
-    summarizeToolInput((trace.input ?? {}) as Record<string, unknown>),
-    trace.error ? `error: ${trace.error}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 function downloadJson(filename: string, payload: unknown) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json;charset=utf-8",
@@ -106,15 +97,39 @@ function getClosestMaxTokenPresetIndex(value: number) {
   }, 0);
 }
 
-type AgentRunArtifactLog = {
+type AgentToolTimelineEvent = {
+  command: string;
   createdAt: string;
+  error?: string;
+  eventId: string;
   executionMode: SessionMode | "read-only";
-  finalResponse: string;
   id: string;
-  prompt: string;
+  input: Record<string, unknown>;
+  name: string;
+  outputPreview: string;
   selectedProject: string;
-  toolCalls: ToolExecutionTrace[];
+  status: "running" | "approval_required" | "completed" | "failed" | "rejected";
 };
+
+type TimelineEntry =
+  | {
+      createdAt: string;
+      id: string;
+      kind: "message";
+      message: ChatMessage;
+    }
+  | {
+      createdAt: string;
+      id: string;
+      kind: "tool";
+      toolEvent: AgentToolTimelineEvent;
+    }
+  | {
+      createdAt: string;
+      id: string;
+      kind: "streaming-assistant";
+      text: string;
+    };
 
 type PendingUserMessage = ChatMessage & { sessionId: string };
 
@@ -175,40 +190,81 @@ function formatToolCommand(trace: ToolExecutionTrace) {
   }
 }
 
-function parseAgentRunArtifactLog(artifact: {
-  createdAt: string;
-  id: string;
-  kind: string;
-  payload: Record<string, unknown>;
-}) {
-  if (artifact.kind !== "agent_run") {
-    return null;
-  }
-  const payload = artifact.payload;
-  if (
-    typeof payload.finalResponse !== "string" ||
-    typeof payload.prompt !== "string" ||
-    typeof payload.selectedProject !== "string" ||
-    !Array.isArray(payload.toolCalls)
-  ) {
-    return null;
+function parseAgentToolTimelineEvents(snapshot: SessionSnapshot | null) {
+  if (!snapshot) {
+    return [];
   }
 
-  return {
-    id: artifact.id,
-    createdAt: artifact.createdAt,
-    executionMode:
-      payload.executionMode === "plan" ||
-      payload.executionMode === "act" ||
-      payload.executionMode === "yolo" ||
-      payload.executionMode === "read-only"
-        ? payload.executionMode
-        : "act",
-    finalResponse: payload.finalResponse,
-    prompt: payload.prompt,
-    selectedProject: payload.selectedProject,
-    toolCalls: payload.toolCalls as ToolExecutionTrace[],
-  } satisfies AgentRunArtifactLog;
+  const events = new Map<string, AgentToolTimelineEvent>();
+  const artifacts = [...snapshot.artifacts].sort(
+    (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+  );
+
+  for (const artifact of artifacts) {
+    if (artifact.kind !== "agent_tool_event") {
+      continue;
+    }
+
+    const payload = artifact.payload;
+    if (
+      typeof payload.eventId !== "string" ||
+      typeof payload.name !== "string" ||
+      typeof payload.startedAt !== "string" ||
+      typeof payload.selectedProject !== "string" ||
+      !isRecord(payload.input)
+    ) {
+      continue;
+    }
+
+    const existing = events.get(payload.eventId);
+    const trace: ToolExecutionTrace = {
+      name: payload.name,
+      input: payload.input,
+      outputPreview: typeof payload.outputPreview === "string" ? payload.outputPreview : "",
+      startedAt: payload.startedAt,
+      finishedAt:
+        typeof payload.finishedAt === "string" ? payload.finishedAt : payload.startedAt,
+      status:
+        payload.status === "approval_required" ||
+        payload.status === "completed" ||
+        payload.status === "failed" ||
+        payload.status === "rejected"
+          ? payload.status
+          : "completed",
+      error: typeof payload.error === "string" ? payload.error : undefined,
+    };
+
+    events.set(payload.eventId, {
+      id: `tool-event-${payload.eventId}`,
+      eventId: payload.eventId,
+      createdAt: payload.startedAt,
+      name: payload.name,
+      input: payload.input,
+      outputPreview: typeof payload.outputPreview === "string" ? payload.outputPreview : existing?.outputPreview ?? "",
+      error: typeof payload.error === "string" ? payload.error : existing?.error,
+      selectedProject: payload.selectedProject,
+      executionMode:
+        payload.executionMode === "plan" ||
+        payload.executionMode === "act" ||
+        payload.executionMode === "yolo" ||
+        payload.executionMode === "read-only"
+          ? payload.executionMode
+          : "act",
+      status:
+        payload.phase === "started"
+          ? existing?.status ?? "running"
+          : trace.status,
+      command: formatToolCommand(trace),
+    });
+  }
+
+  return [...events.values()].sort(
+    (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export default function App() {
@@ -426,33 +482,7 @@ export default function App() {
   const pendingApprovals = (activeSession?.approvals ?? []).filter((approval) => approval.status === "pending");
   const activeTask = activeSession?.task ?? null;
   const activeMode = activeSession?.session.mode ?? "plan";
-  const toolLogsByMessageId = useMemo(() => {
-    const byMessageId = new Map<string, AgentRunArtifactLog>();
-    if (!activeSession) {
-      return byMessageId;
-    }
-
-    const assistantMessages = activeSession.messages.filter((message) => message.role === "assistant");
-    const artifacts = activeSession.artifacts
-      .map(parseAgentRunArtifactLog)
-      .filter((artifact): artifact is AgentRunArtifactLog => artifact !== null)
-      .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
-
-    let nextAssistantIndex = 0;
-    for (const artifact of artifacts) {
-      for (let index = nextAssistantIndex; index < assistantMessages.length; index += 1) {
-        const message = assistantMessages[index];
-        if (message.content !== artifact.finalResponse) {
-          continue;
-        }
-        byMessageId.set(message.id, artifact);
-        nextAssistantIndex = index + 1;
-        break;
-      }
-    }
-
-    return byMessageId;
-  }, [activeSession]);
+  const toolTimelineEvents = useMemo(() => parseAgentToolTimelineEvents(activeSession), [activeSession]);
 
   function formatToolCalls(toolCalls: ToolExecutionTrace[]) {
     return toolCalls.flatMap((toolCall, index) => [
@@ -477,8 +507,11 @@ export default function App() {
       .join("\n");
   }
 
-  const transcript = useMemo(() => {
-    if (!activeSession) return [];
+  const timelineEntries = useMemo(() => {
+    if (!activeSession) {
+      return [] as TimelineEntry[];
+    }
+
     const persistedPendingUserMessage =
       pendingUserMessage &&
       pendingUserMessage.sessionId === activeSession.session.id &&
@@ -493,20 +526,64 @@ export default function App() {
         : pendingUserMessage
           ? [pendingUserMessage]
           : [];
-    const streamedMessage =
-      streamingText.trim().length > 0
+
+    const messageEntries = [...activeSession.messages, ...persistedPendingUserMessage].map(
+      (message) =>
+        ({
+          id: message.id,
+          createdAt: message.createdAt,
+          kind: "message",
+          message,
+        }) satisfies TimelineEntry,
+    );
+
+    const toolEntries = toolTimelineEvents.map(
+      (toolEvent) =>
+        ({
+          id: toolEvent.id,
+          createdAt: toolEvent.createdAt,
+          kind: "tool",
+          toolEvent,
+        }) satisfies TimelineEntry,
+    );
+
+    const localStreamEntries =
+      sessionStore.mode !== "agentos" && streamingText.trim().length > 0
         ? [
             {
-              id: "streaming",
-              role: "assistant" as const,
-              content: streamingText,
+              id: "streaming-local-assistant",
               createdAt: new Date().toISOString(),
-              turnIndex: activeSession.messages.length,
-            },
+              kind: "streaming-assistant",
+              text: streamingText,
+            } satisfies TimelineEntry,
           ]
         : [];
-    return [...activeSession.messages, ...persistedPendingUserMessage, ...streamedMessage];
-  }, [activeSession, pendingUserMessage, streamingText]);
+
+    const runningAgentEntries =
+      sessionStore.mode === "agentos" &&
+      activeTask?.status === "running" &&
+      activeTask.lastResponse.trim().length > 0
+        ? [
+            {
+              id: `streaming-agent-assistant-${activeSession.session.id}`,
+              createdAt: activeTask.updatedAt,
+              kind: "streaming-assistant",
+              text: activeTask.lastResponse,
+            } satisfies TimelineEntry,
+          ]
+        : [];
+
+    return [...messageEntries, ...toolEntries, ...localStreamEntries, ...runningAgentEntries].sort(
+      (left, right) => {
+        const timeDiff = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+        if (timeDiff !== 0) {
+          return timeDiff;
+        }
+        const weight = { message: 0, tool: 1, "streaming-assistant": 2 } as const;
+        return weight[left.kind] - weight[right.kind];
+      },
+    );
+  }, [activeSession, activeTask, pendingUserMessage, sessionStore.mode, streamingText, toolTimelineEvents]);
 
   useEffect(() => {
     const node = chatLogRef.current;
@@ -522,7 +599,7 @@ export default function App() {
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [selectedSessionId, transcript, streamingText]);
+  }, [selectedSessionId, timelineEntries, streamingText]);
 
   async function handleCreateSession() {
     try {
@@ -705,6 +782,18 @@ export default function App() {
     return snapshot;
   }
 
+  async function watchAgentRun(sessionId: string, runPromise: Promise<unknown>) {
+    let settled = false;
+    void runPromise.finally(() => {
+      settled = true;
+    });
+
+    while (!settled) {
+      await sleep(350);
+      await refreshState(sessionId, sessionStore);
+    }
+  }
+
   async function handleSendMessage() {
     if (!settings) return;
     if (!draft.trim()) return;
@@ -738,12 +827,14 @@ export default function App() {
           turnIndex: current.messages.length,
         });
         setStatus("agentOS coding agent を実行しています…");
-        const result = await runAgentTurnFromBrowser({
+        const runPromise = runAgentTurnFromBrowser({
           sessionId: current.session.id,
           prompt: userDraft,
           selectedProject,
           settings,
         });
+        await watchAgentRun(current.session.id, runPromise);
+        const result = await runPromise;
         setToolOutputTitle("Agent run");
         setToolOutput(
           [
@@ -1188,64 +1279,77 @@ export default function App() {
             </div>
           </div>
           <div className="chat-log" ref={chatLogRef}>
-            {transcript.length === 0 ? (
+            {timelineEntries.length === 0 ? (
               <div className="empty-state">
                 <Bot size={24} />
                 <p>Backend を設定して、最初のメッセージを送るとここに transcript が出ます。</p>
               </div>
             ) : (
-              transcript.map((message) => (
-                <article key={message.id} className={`message-bubble role-${message.role}`}>
-                  <div className="message-meta">
-                    <strong>{message.role}</strong>
-                    <span>{new Date(message.createdAt).toLocaleString()}</span>
-                  </div>
-                  {message.role === "assistant" ? (
-                    <MarkdownText>{message.content}</MarkdownText>
-                  ) : (
-                    <p>{message.content}</p>
-                  )}
-                  {message.role === "assistant" && toolLogsByMessageId.has(message.id) ? (
-                    <details className="tool-trace-disclosure">
+              timelineEntries.map((entry) => {
+                if (entry.kind === "message") {
+                  const { message } = entry;
+                  return (
+                    <article key={message.id} className={`message-bubble role-${message.role}`}>
+                      <div className="message-meta">
+                        <strong>{message.role}</strong>
+                        <span>{new Date(message.createdAt).toLocaleString()}</span>
+                      </div>
+                      {message.role === "assistant" ? (
+                        <MarkdownText>{message.content}</MarkdownText>
+                      ) : (
+                        <p>{message.content}</p>
+                      )}
+                    </article>
+                  );
+                }
+
+                if (entry.kind === "tool") {
+                  const { toolEvent } = entry;
+                  return (
+                    <details key={toolEvent.id} className="tool-event-card">
                       <summary>
-                        <span>Used tools</span>
-                        <span>
-                          {toolLogsByMessageId.get(message.id)?.toolCalls.length ?? 0}
-                          {" · "}
-                          {summarizeToolNames(toolLogsByMessageId.get(message.id)?.toolCalls ?? [])}
-                        </span>
+                        <div className="tool-event-summary">
+                          <strong>{toolEvent.name}</strong>
+                          <code>{toolEvent.command}</code>
+                        </div>
+                        <span className={`tool-trace-status is-${toolEvent.status}`}>{toolEvent.status}</span>
                       </summary>
                       <div className="tool-trace-meta">
-                        <span>Mode: {toolLogsByMessageId.get(message.id)?.executionMode}</span>
-                        <span>
-                          Directory: {toolLogsByMessageId.get(message.id)?.selectedProject || "(not selected)"}
-                        </span>
+                        <span>{new Date(toolEvent.createdAt).toLocaleString()}</span>
+                        <span>Mode: {toolEvent.executionMode}</span>
+                        <span>Directory: {toolEvent.selectedProject || "(not selected)"}</span>
                       </div>
                       <div className="tool-trace-list">
-                        {toolLogsByMessageId.get(message.id)?.toolCalls.map((trace, index) => (
-                          <article key={`${message.id}-${trace.name}-${index}`} className="tool-trace-item">
-                            <div className="tool-trace-head">
-                              <strong>
-                                #{index + 1} {trace.name}
-                              </strong>
-                              <span className={`tool-trace-status is-${trace.status}`}>{trace.status}</span>
-                            </div>
-                            <div className="tool-trace-command">
-                              <span>Command</span>
-                              <code>{formatToolCommand(trace)}</code>
-                            </div>
-                            <p className="tool-trace-preview">
-                              {trace.error
-                                ? `error: ${trace.error}`
-                                : toCompactText(trace.outputPreview || "No output preview.")}
-                            </p>
-                          </article>
-                        ))}
+                        <article className="tool-trace-item">
+                          <div className="tool-trace-command">
+                            <span>Command</span>
+                            <code>{toolEvent.command}</code>
+                          </div>
+                          <div className="tool-trace-command">
+                            <span>Input</span>
+                            <code>{summarizeToolInput(toolEvent.input)}</code>
+                          </div>
+                          <p className="tool-trace-preview">
+                            {toolEvent.error
+                              ? `error: ${toolEvent.error}`
+                              : toCompactText(toolEvent.outputPreview || "Running…", 240)}
+                          </p>
+                        </article>
                       </div>
                     </details>
-                  ) : null}
-                </article>
-              ))
+                  );
+                }
+
+                return (
+                  <article key={entry.id} className="message-bubble role-assistant is-streaming">
+                    <div className="message-meta">
+                      <strong>assistant</strong>
+                      <span>streaming…</span>
+                    </div>
+                    <MarkdownText>{entry.text}</MarkdownText>
+                  </article>
+                );
+              })
             )}
           </div>
 

@@ -160,8 +160,25 @@ type AgentRunArtifactPayload = {
   finalResponse: string;
   pendingApprovals: string[];
   prompt: string;
+  runId: string;
   selectedProject: string;
   toolCalls: ToolExecutionTrace[];
+};
+
+type AgentToolEventArtifactPayload = {
+  error?: string;
+  eventId: string;
+  executionMode: ToolExecutionMode;
+  finishedAt?: string;
+  input: Record<string, unknown>;
+  name: string;
+  outputPreview?: string;
+  phase: "finished" | "started";
+  prompt: string;
+  runId: string;
+  selectedProject: string;
+  startedAt: string;
+  status: "running" | ToolExecutionStatus;
 };
 
 type AgentLoopResult = {
@@ -184,6 +201,13 @@ const execFileAsync = promisify(execFile);
 const MUTATING_TOOL_NAMES = new Set(["replaceInFile", "runScript", "writeFile"]);
 
 type ToolExecutionMode = "act" | "plan" | "read-only" | "yolo";
+type AssistantDeltaCallback = (fullText: string) => Promise<void> | void;
+type AgentLoopEventHooks = {
+  onAssistantDelta?: AssistantDeltaCallback;
+  onToolFinished?: (event: AgentToolEventArtifactPayload) => Promise<void> | void;
+  onToolStarted?: (event: AgentToolEventArtifactPayload) => Promise<void> | void;
+  runId: string;
+};
 
 function nowIso() {
   return new Date().toISOString();
@@ -483,6 +507,14 @@ async function persistArtifact(
   );
 
   return artifact;
+}
+
+async function persistAgentToolEvent(
+  dbClient: RawAccess,
+  sessionId: string,
+  payload: AgentToolEventArtifactPayload,
+) {
+  await persistArtifact(dbClient, sessionId, "agent_tool_event", payload);
 }
 
 async function createApproval(
@@ -850,6 +882,110 @@ async function callOpenAiCompatible(
   return message;
 }
 
+async function streamOpenAiCompatibleText(
+  settings: BackendSettings,
+  messages: OpenAiMessage[],
+  onDelta?: AssistantDeltaCallback,
+) {
+  const controller = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const resetIdleTimer = () => {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(() => {
+      controller.abort("Agent stream became idle.");
+    }, 2_500);
+  };
+
+  const normalizedMessages = normalizeOpenAiMessages(messages);
+  const response = await fetch(`${settings.baseUrl.trim().replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(settings.apiKey.trim() ? { Authorization: `Bearer ${settings.apiKey.trim()}` } : {}),
+    },
+    signal: controller.signal,
+    body: JSON.stringify({
+      model: settings.model,
+      messages: normalizedMessages,
+      temperature: settings.temperature,
+      max_tokens: settings.maxTokens,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Agent stream request failed: ${await response.text()}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  resetIdleTimer();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+
+      for (const frame of frames) {
+        const lines = frame
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.startsWith("data: "));
+
+        for (const line of lines) {
+          const data = line.slice(6);
+          if (data === "[DONE]") {
+            return fullText.trim();
+          }
+
+          const payload = JSON.parse(data) as {
+            choices?: Array<{
+              delta?: { content?: string };
+              finish_reason?: string | null;
+              message?: { content?: string };
+            }>;
+          };
+          const finishReason = payload.choices?.[0]?.finish_reason;
+          const textDelta =
+            payload.choices?.[0]?.delta?.content ??
+            payload.choices?.[0]?.message?.content ??
+            "";
+
+          if (finishReason) {
+            return fullText.trim();
+          }
+
+          if (!textDelta) {
+            continue;
+          }
+
+          resetIdleTimer();
+          fullText += textDelta;
+          await onDelta?.(fullText);
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError" && fullText.trim()) {
+      return fullText.trim();
+    }
+    throw error;
+  } finally {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+  }
+
+  return fullText.trim();
+}
+
 function normalizeOpenAiMessages(messages: OpenAiMessage[]) {
   const systemContents = messages
     .filter((message) => message.role === "system")
@@ -1019,6 +1155,7 @@ async function runAgentLoop(
   settings: BackendSettings,
   selectedProject: string,
   executionMode: ToolExecutionMode,
+  hooks: AgentLoopEventHooks,
   ownerSubAgentId: string | null = null,
   extraMessages: OpenAiMessage[] = [],
 ) {
@@ -1051,6 +1188,7 @@ async function runAgentLoop(
 
       for (const toolCall of assistant.tool_calls) {
         const startedAt = nowIso();
+        const eventId = crypto.randomUUID();
         const trace: ToolExecutionTrace = {
           name: toolCall.function.name,
           input: {},
@@ -1076,6 +1214,18 @@ async function runAgentLoop(
         }
 
         trace.input = input;
+        await hooks.onToolStarted?.({
+          eventId,
+          executionMode,
+          input,
+          name: trace.name,
+          phase: "started",
+          prompt,
+          runId: hooks.runId,
+          selectedProject,
+          startedAt,
+          status: "running",
+        });
 
         if (result === undefined) {
           if (executionMode === "read-only" && MUTATING_TOOL_NAMES.has(trace.name)) {
@@ -1122,6 +1272,21 @@ async function runAgentLoop(
             ? createApprovalRequiredPreview(trace.name, trace.approvalId, input)
             : trimToolOutput(result);
         toolCalls.push(trace);
+        await hooks.onToolFinished?.({
+          eventId,
+          error: trace.error,
+          executionMode,
+          finishedAt: trace.finishedAt,
+          input,
+          name: trace.name,
+          outputPreview: trace.outputPreview,
+          phase: "finished",
+          prompt,
+          runId: hooks.runId,
+          selectedProject,
+          startedAt: trace.startedAt,
+          status: trace.status,
+        });
         messages.push({
           role: "tool",
           tool_call_id: toolCall.id,
@@ -1154,7 +1319,9 @@ async function runAgentLoop(
       continue;
     }
 
-    const finalResponse = assistant.content?.trim();
+    const finalResponse =
+      (await streamOpenAiCompatibleText(settings, messages, hooks.onAssistantDelta)) ||
+      assistant.content?.trim();
     if (!finalResponse) {
       messages.push({
         role: "system",
@@ -1508,6 +1675,7 @@ async function finalizeAgentTurn(
   dbClient: RawAccess,
   snapshot: SessionSnapshot,
   prompt: string,
+  runId: string,
   settings: BackendSettings,
   selectedProject: string,
   executionMode: ToolExecutionMode,
@@ -1525,6 +1693,7 @@ async function finalizeAgentTurn(
     finalResponse: loopResult.finalResponse,
     pendingApprovals: loopResult.pendingApprovals.map((approval) => approval.id),
     prompt,
+    runId,
     selectedProject,
     toolCalls: loopResult.toolCalls,
   } satisfies AgentRunArtifactPayload);
@@ -1554,6 +1723,122 @@ async function finalizeAgentTurn(
   };
 }
 
+async function executeAgentTurnWithProgress(
+  dbClient: RawAccess,
+  snapshot: SessionSnapshot,
+  prompt: string,
+  settings: BackendSettings,
+  selectedProject: string,
+  executionMode: ToolExecutionMode,
+  continueCount: number,
+  ownerSubAgentId: string | null = null,
+  extraMessages: OpenAiMessage[] = [],
+) {
+  const runId = crypto.randomUUID();
+  const runningTaskCreatedAt = snapshot.task?.createdAt ?? nowIso();
+  let latestPartialResponse = "";
+  let lastPersistedAt = 0;
+  let lastPersistedLength = 0;
+
+  await saveTaskState(dbClient, {
+    sessionId: snapshot.session.id,
+    goal: prompt,
+    selectedProject,
+    status: "running",
+    lastResponse: "",
+    lastError: "",
+    continueCount,
+    settings,
+    createdAt: runningTaskCreatedAt,
+    updatedAt: nowIso(),
+  });
+  await persistArtifact(dbClient, snapshot.session.id, "agent_run_started", {
+    executionMode,
+    prompt,
+    runId,
+    selectedProject,
+  });
+
+  try {
+    const loopResult = await runAgentLoop(
+      dbClient,
+      snapshot,
+      prompt,
+      settings,
+      selectedProject,
+      executionMode,
+      {
+        runId,
+        onAssistantDelta: async (fullText) => {
+          latestPartialResponse = fullText;
+          const now = Date.now();
+          if (
+            now - lastPersistedAt < 120 &&
+            fullText.length - lastPersistedLength < 48
+          ) {
+            return;
+          }
+          lastPersistedAt = now;
+          lastPersistedLength = fullText.length;
+          await saveTaskState(dbClient, {
+            sessionId: snapshot.session.id,
+            goal: prompt,
+            selectedProject,
+            status: "running",
+            lastResponse: fullText,
+            lastError: "",
+            continueCount,
+            settings,
+            createdAt: runningTaskCreatedAt,
+            updatedAt: nowIso(),
+          });
+        },
+        onToolStarted: async (event) => {
+          await persistAgentToolEvent(dbClient, snapshot.session.id, event);
+        },
+        onToolFinished: async (event) => {
+          await persistAgentToolEvent(dbClient, snapshot.session.id, event);
+        },
+      },
+      ownerSubAgentId,
+      extraMessages,
+    );
+    return await finalizeAgentTurn(
+      dbClient,
+      snapshot,
+      prompt,
+      runId,
+      settings,
+      selectedProject,
+      executionMode,
+      loopResult,
+      continueCount,
+    );
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await saveTaskState(dbClient, {
+      sessionId: snapshot.session.id,
+      goal: prompt,
+      selectedProject,
+      status: "failed",
+      lastResponse: latestPartialResponse,
+      lastError: message,
+      continueCount,
+      settings,
+      createdAt: runningTaskCreatedAt,
+      updatedAt: nowIso(),
+    });
+    await persistArtifact(dbClient, snapshot.session.id, "agent_run_failed", {
+      error: message,
+      executionMode,
+      prompt,
+      runId,
+      selectedProject,
+    });
+    throw error;
+  }
+}
+
 async function continueExistingTask(
   dbClient: RawAccess,
   snapshot: SessionSnapshot,
@@ -1569,25 +1854,21 @@ async function continueExistingTask(
   ]
     .filter(Boolean)
     .join("\n");
-  const loopResult = await runAgentLoop(
-    dbClient,
-    snapshot,
-    continuePrompt,
-    settings,
-    task.selectedProject,
-    executionMode,
-    null,
-  );
-
-  return await finalizeAgentTurn(
+  return await executeAgentTurnWithProgress(
     dbClient,
     snapshot,
     task.goal,
     settings,
     task.selectedProject,
     executionMode,
-    loopResult,
     task.continueCount + 1,
+    null,
+    [
+      {
+        role: "system",
+        content: continuePrompt,
+      },
+    ],
   );
 }
 
@@ -1822,22 +2103,13 @@ export const vibeLocalActor = actor({
       const existing = await requireSnapshot(c.db, sessionId);
       const persistedUser = await persistMessage(c.db, sessionId, "user", prompt);
       const executionMode = sessionModeToExecutionMode(existing.session.mode);
-      const loopResult = await runAgentLoop(
+      return await executeAgentTurnWithProgress(
         c.db,
         existing,
         persistedUser.message.content,
         settings,
         selectedProject,
         executionMode,
-      );
-      return await finalizeAgentTurn(
-        c.db,
-        existing,
-        prompt,
-        settings,
-        selectedProject,
-        executionMode,
-        loopResult,
         0,
       );
     },
@@ -1968,9 +2240,18 @@ export const vibeLocalActor = actor({
         }
         continuation = await continueExistingTask(c.db, await requireSnapshot(c.db, sessionId), taskBeforeContinuation, resolvedSettings);
       } else if (taskBeforeContinuation) {
+        const refreshed = await requireSnapshot(c.db, sessionId);
+        const remainingPendingApprovals = refreshed.approvals.filter(
+          (candidate) => candidate.status === "pending",
+        );
         await saveTaskState(c.db, {
           ...taskBeforeContinuation,
-          status: status === "approved" ? "running" : "failed",
+          status:
+            status !== "approved"
+              ? "failed"
+              : remainingPendingApprovals.length > 0
+                ? "waiting_approval"
+                : "completed",
           lastError: error,
           updatedAt: nowIso(),
         });
@@ -2048,6 +2329,9 @@ export const vibeLocalActor = actor({
           settings,
           subAgent.selectedProject,
           subAgent.executionMode,
+          {
+            runId: crypto.randomUUID(),
+          },
           subAgent.id,
           [
             {
@@ -2150,6 +2434,9 @@ export const vibeLocalActor = actor({
               settings,
               selectedProject,
               subAgent.executionMode,
+              {
+                runId: crypto.randomUUID(),
+              },
               subAgent.id,
             );
             await updateSubAgent(c.db, subAgent.id, {

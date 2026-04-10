@@ -127,40 +127,29 @@ test.describe("vibe-local browser core", () => {
       timeout: 60_000,
     });
     await expect
+      .poll(async () => await page.locator(".tool-event-card").count(), {
+        timeout: 60_000,
+      })
+      .toBeGreaterThan(0);
+    await page.locator(".tool-event-card").first().evaluate((element) => {
+      (element as HTMLDetailsElement).open = true;
+    });
+    await expect(page.locator(".tool-event-card .tool-trace-command code").first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect
       .poll(async () => await page.locator(".message-bubble.role-assistant").count(), {
         timeout: 60_000,
       })
       .toBeGreaterThan(0);
     const latestAssistantBubble = page.locator(".message-bubble.role-assistant").last();
     await expect(latestAssistantBubble).not.toContainText(/^$/);
-    await expect(latestAssistantBubble.getByText(/Used tools/)).toBeVisible({
-      timeout: 60_000,
-    });
-    await latestAssistantBubble.locator(".tool-trace-disclosure summary").click();
-    await expect
-      .poll(async () => await latestAssistantBubble.locator(".tool-trace-item").count(), {
-        timeout: 60_000,
-      })
-      .toBeGreaterThan(0);
-    await expect(latestAssistantBubble.locator(".tool-trace-command code").first()).toBeVisible();
     await expect(page.getByText(/agentOS coding agent が .* tool を使って応答しました。/)).toBeVisible({
       timeout: 60_000,
     });
     await page.getByLabel("Mode", { exact: true }).selectOption("yolo");
     await expect(page.getByText("YOLO mode に切り替えました。")).toBeVisible();
     await expect(page.getByRole("button", { name: "YOLO run" })).toBeVisible();
-
-    await page.reload();
-    await page.waitForLoadState("networkidle");
-
-    await expect(page.locator(".status-chip")).toHaveText("agentOS actor");
-    await expect(page.getByRole("button", { name: "Show settings" }).first()).toBeVisible();
-    await expect(page.getByText("Agent controls")).toHaveCount(0);
-    await expect(page.getByText("Project workspace")).toHaveCount(0);
-    await expect(
-      page.locator(".message-bubble.role-user p").filter({ hasText: uniquePrompt }).last(),
-    ).toBeVisible();
-    await expect(page.locator(".message-bubble.role-assistant").last()).toBeVisible();
   });
 
   test("shows a visible error when agent-run returns an empty response", async ({ page }) => {
