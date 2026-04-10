@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const apiBaseUrl =
   process.env.VIBE_LOCAL_TEST_API_BASE_URL ??
@@ -19,6 +19,27 @@ async function waitForFileContent(filePath: string, expected: string) {
       }
     }, { timeout: 60_000 })
     .toBe(expected);
+}
+
+async function configureAgent(page: Page) {
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  await page.getByRole("button", { name: "Show settings" }).first().click();
+  await page.getByLabel("Base URL").fill(apiBaseUrl);
+  await page.getByRole("button", { name: "Refresh models" }).click();
+  await expect(page.getByText(/モデルを \d+ 件取得しました。/)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByLabel("Model")).not.toHaveValue("", {
+    timeout: 30_000,
+  });
+  await page.getByLabel("Directory").selectOption("vibe-local-pyodide");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByText("Backend settings を保存しました。")).toBeVisible();
+
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await expect(page.getByText("新しいセッションを作成しました。")).toBeVisible();
 }
 
 test.describe("vibe-local browser core", () => {
@@ -84,11 +105,23 @@ test.describe("vibe-local browser core", () => {
     await page.getByLabel("Mode", { exact: true }).selectOption("act");
     await expect(page.getByText("Act mode に切り替えました。")).toBeVisible();
 
+    let delayNextAgentRun = true;
+    await page.route("**/__vibe_local/agentos/session/agent-run", async (route) => {
+      if (!delayNextAgentRun) {
+        await route.continue();
+        return;
+      }
+      delayNextAgentRun = false;
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      await route.fulfill({ response });
+    });
+
     await page.getByPlaceholder("例: vibe-local の transcript compaction をどう改善する？").fill(uniquePrompt);
     await page.getByRole("button", { name: "Act run" }).click();
 
     await expect(page.locator(".message-bubble.role-user").getByText(uniquePrompt)).toBeVisible({
-      timeout: 60_000,
+      timeout: 2_000,
     });
     await expect(page.locator(".message-bubble.role-user p").filter({ hasText: uniquePrompt })).toHaveCount(1, {
       timeout: 60_000,
@@ -117,5 +150,34 @@ test.describe("vibe-local browser core", () => {
       page.locator(".message-bubble.role-user p").filter({ hasText: uniquePrompt }).last(),
     ).toBeVisible();
     await expect(page.locator(".message-bubble.role-assistant").last()).toBeVisible();
+  });
+
+  test("shows a visible error when agent-run returns an empty response", async ({ page }) => {
+    test.setTimeout(120_000);
+
+    const failedPrompt = `空レス検証 ${Date.now()}`;
+
+    await configureAgent(page);
+    await page.getByLabel("Mode", { exact: true }).selectOption("yolo");
+    await expect(page.getByText("YOLO mode に切り替えました。")).toBeVisible();
+
+    await page.route("**/__vibe_local/agentos/session/agent-run", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "",
+      });
+    });
+
+    await page.getByPlaceholder("例: vibe-local の transcript compaction をどう改善する？").fill(failedPrompt);
+    await page.getByRole("button", { name: "YOLO run" }).click();
+
+    await expect(page.locator(".message-bubble.role-user").getByText(failedPrompt)).toBeVisible({
+      timeout: 2_000,
+    });
+    await expect(page.getByText("agentOS coding agent から空のレスポンスが返りました。")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.locator(".message-bubble.role-user p").filter({ hasText: failedPrompt })).toHaveCount(1);
   });
 });

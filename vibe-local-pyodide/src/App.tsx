@@ -41,6 +41,7 @@ import {
 import type {
   ApprovalRecord,
   BackendSettings,
+  ChatMessage,
   HydratedState,
   ProjectInfo,
   ProjectInfoDetails,
@@ -104,6 +105,8 @@ function getClosestMaxTokenPresetIndex(value: number) {
   }, 0);
 }
 
+type PendingUserMessage = ChatMessage & { sessionId: string };
+
 export default function App() {
   const chatLogRef = useRef<HTMLDivElement | null>(null);
   const [sessionStore, setSessionStore] = useState<SessionStore>(localStore);
@@ -116,6 +119,7 @@ export default function App() {
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelChoices, setModelChoices] = useState<string[]>([]);
   const [streamingText, setStreamingText] = useState("");
+  const [pendingUserMessage, setPendingUserMessage] = useState<PendingUserMessage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [codingPanelOpen, setCodingPanelOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<BackendSettings | null>(null);
@@ -344,6 +348,20 @@ export default function App() {
 
   const transcript = useMemo(() => {
     if (!activeSession) return [];
+    const persistedPendingUserMessage =
+      pendingUserMessage &&
+      pendingUserMessage.sessionId === activeSession.session.id &&
+      activeSession.messages.some(
+        (message) =>
+          message.role === "user" &&
+          message.content === pendingUserMessage.content &&
+          new Date(message.createdAt).getTime() >=
+            new Date(pendingUserMessage.createdAt).getTime() - 1_000,
+      )
+        ? []
+        : pendingUserMessage
+          ? [pendingUserMessage]
+          : [];
     const streamedMessage =
       streamingText.trim().length > 0
         ? [
@@ -356,8 +374,8 @@ export default function App() {
             },
           ]
         : [];
-    return [...activeSession.messages, ...streamedMessage];
-  }, [activeSession, streamingText]);
+    return [...activeSession.messages, ...persistedPendingUserMessage, ...streamedMessage];
+  }, [activeSession, pendingUserMessage, streamingText]);
 
   useEffect(() => {
     const node = chatLogRef.current;
@@ -580,6 +598,14 @@ export default function App() {
       const userDraft = draft.trim();
       setDraft("");
       if (sessionStore.mode === "agentos") {
+        setPendingUserMessage({
+          id: `pending-user-${current.session.id}-${Date.now()}`,
+          sessionId: current.session.id,
+          role: "user",
+          content: userDraft,
+          createdAt: new Date().toISOString(),
+          turnIndex: current.messages.length,
+        });
         setStatus("agentOS coding agent を実行しています…");
         const result = await runAgentTurnFromBrowser({
           sessionId: current.session.id,
@@ -607,6 +633,7 @@ export default function App() {
           ].join("\n"),
         );
         await refreshState(current.session.id, sessionStore);
+        setPendingUserMessage(null);
         setStatus(
           result.pendingApproval
             ? "agentOS coding agent が approval 待ちの操作を提案しました。"
