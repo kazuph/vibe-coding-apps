@@ -52,6 +52,30 @@ function formatCliToolEvent(payload: Record<string, unknown>) {
   return `[tool:${status}] ${name} ${summarizeCliToolInput(input)}`.trim();
 }
 
+function formatSubAgentLine(subAgent: NonNullable<SessionSnapshot>["subAgents"][number]) {
+  const pendingCount = subAgent.pendingApprovals.length;
+  return `[sub-agent:${subAgent.status}] ${subAgent.id} mode=${subAgent.executionMode} resumes=${subAgent.resumeCount} pending=${pendingCount} prompt=${subAgent.prompt}`;
+}
+
+function parseParallelPrompts(tokens: string[]) {
+  const chunks: string[] = [];
+  let current: string[] = [];
+  for (const token of tokens) {
+    if (token === "--") {
+      if (current.length > 0) {
+        chunks.push(current.join(" ").trim());
+        current = [];
+      }
+      continue;
+    }
+    current.push(token);
+  }
+  if (current.length > 0) {
+    chunks.push(current.join(" ").trim());
+  }
+  return chunks.filter(Boolean);
+}
+
 async function watchSessionProgress(
   actor: Awaited<ReturnType<typeof getActor>>,
   sessionId: string,
@@ -60,6 +84,7 @@ async function watchSessionProgress(
   let settled = false;
   let lastAssistantText = "";
   const seenToolEvents = new Set<string>();
+  const seenSubAgentStates = new Map<string, string>();
 
   void work.finally(() => {
     settled = true;
@@ -81,6 +106,15 @@ async function watchSessionProgress(
         }
         seenToolEvents.add(artifact.id);
         console.log(formatCliToolEvent(artifact.payload));
+      }
+
+      for (const subAgent of snapshot.subAgents) {
+        const signature = `${subAgent.status}:${subAgent.resumeCount}:${subAgent.pendingApprovals.join(",")}`;
+        if (seenSubAgentStates.get(subAgent.id) === signature) {
+          continue;
+        }
+        seenSubAgentStates.set(subAgent.id, signature);
+        console.log(formatSubAgentLine(subAgent));
       }
 
       const partialText = snapshot.task?.status === "running" ? snapshot.task.lastResponse ?? "" : "";
@@ -118,7 +152,7 @@ async function watchExistingSession(
 ) {
   let lastAssistantText = "";
   const seenToolEvents = new Set<string>();
-  const seenSubAgents = new Set<string>();
+  const seenSubAgentStates = new Map<string, string>();
 
   while (true) {
     const snapshot = (await actor.exportSession(sessionId)) as SessionSnapshot | null;
@@ -138,13 +172,12 @@ async function watchExistingSession(
     }
 
     for (const subAgent of snapshot.subAgents) {
-      if (seenSubAgents.has(subAgent.id)) {
+      const signature = `${subAgent.status}:${subAgent.resumeCount}:${subAgent.pendingApprovals.join(",")}`;
+      if (seenSubAgentStates.get(subAgent.id) === signature) {
         continue;
       }
-      seenSubAgents.add(subAgent.id);
-      console.log(
-        `[sub-agent:${subAgent.status}] ${subAgent.id} mode=${subAgent.executionMode} prompt=${subAgent.prompt}`,
-      );
+      seenSubAgentStates.set(subAgent.id, signature);
+      console.log(formatSubAgentLine(subAgent));
     }
 
     const currentText = snapshot.task?.lastResponse ?? "";
@@ -267,6 +300,12 @@ function printSubAgentSummary(snapshot: SessionSnapshot | null) {
     console.log(
       `- ${subAgent.id} status=${subAgent.status} mode=${subAgent.executionMode} resumes=${subAgent.resumeCount} prompt=${subAgent.prompt}`,
     );
+    if (subAgent.error) {
+      console.log(`  error: ${subAgent.error}`);
+    } else if (subAgent.finalResponse) {
+      const preview = subAgent.finalResponse.replace(/\s+/g, " ").slice(0, 120);
+      console.log(`  result: ${preview}`);
+    }
   }
 }
 
@@ -283,7 +322,7 @@ async function runInteractiveChat(
   const rl = createInterface({ input, output });
   console.log(`[chat] session=${session.session.id} project=${project} mode=${mode}`);
   console.log(
-    "[chat] /help /mode <plan|act|yolo> /approvals /approve <id> [continue] /reject <id> /continue /subagents /session /exit",
+    "[chat] /help /mode <plan|act|yolo> /approvals /approve <id> [continue] /reject <id> /continue /subagents /continue-subagent <id> /parallel [mode] <p1> -- <p2> /session /exit",
   );
 
   try {
@@ -308,7 +347,7 @@ async function runInteractiveChat(
 
       if (line === "/help") {
         console.log(
-          "[chat] 通常入力は agent 実行です。/mode /approvals /approve /reject /continue /subagents /session /exit が使えます。",
+          "[chat] 通常入力は agent 実行です。/mode /approvals /approve /reject /continue /subagents /continue-subagent /parallel /session /exit が使えます。",
         );
         continue;
       }
@@ -331,6 +370,53 @@ async function runInteractiveChat(
       }
 
       if (line === "/subagents") {
+        printSubAgentSummary((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+        continue;
+      }
+
+      if (line.startsWith("/continue-subagent ")) {
+        const subAgentId = line.slice("/continue-subagent ".length).trim();
+        if (!subAgentId) {
+          console.log("[chat] /continue-subagent <subAgentId>");
+          continue;
+        }
+        const actionPromise = actor.continueSubAgentTask(session.session.id, subAgentId, settings);
+        await watchSessionProgress(actor, session.session.id, actionPromise);
+        const result = await actionPromise;
+        console.log(`[sub-agent] ${result.subAgent.id} -> ${result.subAgent.status}`);
+        printSubAgentSummary((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
+        continue;
+      }
+
+      if (line.startsWith("/parallel ")) {
+        const rawTokens = line.slice("/parallel ".length).trim().split(/\s+/).filter(Boolean);
+        let executionMode: "act" | "plan" | "read-only" | "yolo" = "read-only";
+        let normalizedTokens = rawTokens;
+        const modeCandidate = rawTokens[0];
+        if (
+          modeCandidate === "act" ||
+          modeCandidate === "plan" ||
+          modeCandidate === "read-only" ||
+          modeCandidate === "yolo"
+        ) {
+          executionMode = modeCandidate;
+          normalizedTokens = rawTokens.slice(1);
+        }
+        const prompts = parseParallelPrompts(normalizedTokens);
+        if (prompts.length === 0) {
+          console.log("[chat] /parallel [read-only|plan|act|yolo] <prompt1> -- <prompt2> [-- <prompt3>...]");
+          continue;
+        }
+        const result = await actor.runParallelAgentTasks(
+          session.session.id,
+          prompts,
+          settings,
+          project,
+          executionMode,
+        );
+        console.log(
+          `[parallel] started ${result.subAgents.length} sub-agents in ${executionMode} mode`,
+        );
         printSubAgentSummary((await actor.exportSession(session.session.id)) as SessionSnapshot | null);
         continue;
       }
@@ -655,23 +741,7 @@ async function main() {
         normalizedArgs = normalizedArgs.filter((_, index) => index !== executionModeIndex && index !== executionModeIndex + 1);
       }
       const project = normalizedArgs[0];
-      const rawPrompts = normalizedArgs.slice(1);
-      const chunks: string[] = [];
-      let current: string[] = [];
-      for (const token of rawPrompts) {
-        if (token === "--") {
-          if (current.length > 0) {
-            chunks.push(current.join(" ").trim());
-            current = [];
-          }
-          continue;
-        }
-        current.push(token);
-      }
-      if (current.length > 0) {
-        chunks.push(current.join(" ").trim());
-      }
-      const prompts = chunks.filter(Boolean);
+      const prompts = parseParallelPrompts(normalizedArgs.slice(1));
       if (!project || prompts.length === 0) {
         throw new Error("Usage: parallel-run [--mode read-only|act|plan|yolo] <project> <prompt1> -- <prompt2> [-- <prompt3>...]");
       }
