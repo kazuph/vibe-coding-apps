@@ -543,8 +543,7 @@ async function main() {
 
   switch (command) {
     case "health": {
-      const payload = await actor.hydrate();
-      console.log(JSON.stringify({ ok: true, sessionCount: payload.sessions.length }, null, 2));
+      console.log(JSON.stringify(await actor.health(), null, 2));
       return;
     }
     case "projects": {

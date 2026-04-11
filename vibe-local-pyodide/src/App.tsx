@@ -143,6 +143,18 @@ type TimelineEntry =
 
 type PendingUserMessage = ChatMessage & { sessionId: string };
 
+function findLatestSubAgentDirectory(snapshot: SessionSnapshot | null) {
+  if (!snapshot) {
+    return "";
+  }
+
+  return (
+    [...snapshot.subAgents]
+      .reverse()
+      .find((subAgent) => subAgent.selectedProject)?.selectedProject ?? ""
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -308,6 +320,7 @@ function parseSubAgentTimelineEvents(snapshot: SessionSnapshot | null) {
 
 export default function App() {
   const chatLogRef = useRef<HTMLDivElement | null>(null);
+  const previousSessionIdRef = useRef<string | null>(null);
   const [sessionStore, setSessionStore] = useState<SessionStore>(localStore);
   const [hydrated, setHydrated] = useState<HydratedState | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -340,17 +353,50 @@ export default function App() {
     setSelectedProject(preferred);
   }
 
+  async function hydrateSelectedSession(
+    state: HydratedState,
+    store: SessionStore,
+    preferredSessionId?: string | null,
+  ) {
+    if (store.mode !== "agentos") {
+      return {
+        selected: preferredSessionId ?? state.sessions[0]?.session.id ?? null,
+        state,
+      };
+    }
+
+    const selected = preferredSessionId ?? state.sessions[0]?.session.id ?? null;
+    if (!selected) {
+      return { selected, state };
+    }
+
+    const detailed = await store.exportSession(selected);
+    if (!detailed) {
+      return { selected, state };
+    }
+
+    return {
+      selected,
+      state: {
+        ...state,
+        sessions: state.sessions.map((entry) =>
+          entry.session.id === selected ? detailed : entry,
+        ),
+      },
+    };
+  }
+
   async function refreshState(nextSelectedSessionId?: string | null, store = sessionStore) {
     const next = await store.getHydratedState();
-    setHydrated(next);
-    setSettingsDraft(normalizeBackendSettings(next.settings));
-
     const selected =
       nextSelectedSessionId ??
       selectedSessionId ??
       next.sessions[0]?.session.id ??
       null;
-    setSelectedSessionId(selected);
+    const hydratedSelection = await hydrateSelectedSession(next, store, selected);
+    setHydrated(hydratedSelection.state);
+    setSettingsDraft(normalizeBackendSettings(hydratedSelection.state.settings));
+    setSelectedSessionId(hydratedSelection.selected);
   }
 
   async function syncSettingsModel(store: SessionStore, nextSettings: BackendSettings) {
@@ -411,11 +457,16 @@ export default function App() {
           ...hydratedState,
           settings: syncedSettings,
         };
+        const hydratedSelection = await hydrateSelectedSession(
+          hydratedState,
+          nextStore,
+          hydratedState.sessions[0]?.session.id ?? null,
+        );
         if (cancelled) return;
         setSessionStore(nextStore);
-        setHydrated(hydratedState);
+        setHydrated(hydratedSelection.state);
         setSettingsDraft(normalizeBackendSettings(syncedSettings));
-        setSelectedSessionId(hydratedState.sessions[0]?.session.id ?? null);
+        setSelectedSessionId(hydratedSelection.selected);
         setStatus((current) =>
           current === DEFAULT_STATUS
             ? nextStore.mode === "agentos"
@@ -506,8 +557,33 @@ export default function App() {
   const pendingApprovals = (activeSession?.approvals ?? []).filter((approval) => approval.status === "pending");
   const activeTask = activeSession?.task ?? null;
   const activeMode = activeSession?.session.mode ?? "plan";
+  const activeDirectory =
+    activeTask?.selectedProject ||
+    findLatestSubAgentDirectory(activeSession) ||
+    selectedProject;
   const toolTimelineEvents = useMemo(() => parseAgentToolTimelineEvents(activeSession), [activeSession]);
   const subAgentTimelineEvents = useMemo(() => parseSubAgentTimelineEvents(activeSession), [activeSession]);
+
+  useEffect(() => {
+    if (sessionStore.mode !== "agentos") {
+      previousSessionIdRef.current = selectedSessionId;
+      return;
+    }
+    if (!selectedSessionId || previousSessionIdRef.current === selectedSessionId) {
+      return;
+    }
+
+    previousSessionIdRef.current = selectedSessionId;
+    const inferredDirectory =
+      activeSession?.task?.selectedProject ||
+      findLatestSubAgentDirectory(activeSession) ||
+      projects.find((project) => project.relativePath === "vibe-local-pyodide")?.relativePath ||
+      projects[0]?.relativePath ||
+      "";
+    if (inferredDirectory) {
+      setSelectedProject(inferredDirectory);
+    }
+  }, [activeSession, projects, selectedSessionId, sessionStore.mode]);
 
   function formatToolCalls(toolCalls: ToolExecutionTrace[]) {
     return toolCalls.flatMap((toolCall, index) => [
@@ -999,7 +1075,7 @@ export default function App() {
             <div className="header-meta">
               {sessionStore.mode === "agentos" ? (
                 <>
-                  <span className="header-pill">Directory: {selectedProject || "未選択"}</span>
+                  <span className="header-pill">Directory: {activeDirectory || "未選択"}</span>
                   {pendingApprovals.length > 0 ? (
                     <span className="header-pill is-alert">Approvals: {pendingApprovals.length}</span>
                   ) : null}
@@ -1390,7 +1466,7 @@ export default function App() {
                 <button
                   className="primary-button"
                   onClick={() => void handleSendMessage()}
-                  disabled={pendingDisabled || (sessionStore.mode === "agentos" && !selectedProject)}
+                  disabled={pendingDisabled || (sessionStore.mode === "agentos" && !activeDirectory)}
                 >
                   {isSending ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
                   {sessionStore.mode === "agentos"

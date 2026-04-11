@@ -1891,6 +1891,215 @@ async function migrateVibeLocalTables(dbClient: RawAccess) {
   `);
 }
 
+function parseMessageRows(
+  rows: Array<{
+    id: string;
+    role: ChatRole;
+    content_json: string;
+    created_at: string;
+    turn_index: number;
+  }>,
+) {
+  return rows.map((row) => {
+    const parsed = JSON.parse(row.content_json) as { text?: string };
+    return {
+      id: row.id,
+      role: row.role,
+      content: parsed.text ?? "",
+      createdAt: row.created_at,
+      turnIndex: Number(row.turn_index),
+    } satisfies ChatMessage;
+  });
+}
+
+function parseArtifactRows(
+  rows: Array<{
+    id: string;
+    session_id: string;
+    kind: string;
+    payload_json: string;
+    created_at: string;
+  }>,
+) {
+  return rows.map((row) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    kind: row.kind,
+    createdAt: row.created_at,
+    payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+  })) satisfies SessionArtifact[];
+}
+
+function parseApprovalRows(
+  rows: Array<{
+    created_at: string;
+    error_text: string;
+    id: string;
+    input_json: string;
+    output_preview: string;
+    session_id: string;
+    status: ApprovalStatus;
+    sub_agent_id: string | null;
+    tool_name: string;
+    updated_at: string;
+  }>,
+) {
+  return rows.map((row) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    toolName: row.tool_name,
+    input: JSON.parse(row.input_json) as Record<string, unknown>,
+    status: row.status,
+    subAgentId: row.sub_agent_id,
+    outputPreview: row.output_preview,
+    error: row.error_text,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  })) satisfies ApprovalRecord[];
+}
+
+function parseSubAgentRows(
+  rows: Array<{
+    created_at: string;
+    id: string;
+    prompt: string;
+    result_json: string;
+    selected_project: string;
+    session_id: string;
+    status: SubAgentStatus;
+    updated_at: string;
+  }>,
+) {
+  return rows.map((row) => {
+    const parsed = JSON.parse(row.result_json) as {
+      executionMode?: ToolExecutionMode;
+      error?: string;
+      finalResponse?: string;
+      lastResumedAt?: string;
+      pendingApprovals?: string[];
+      resumeCount?: number;
+      resumeReadyAt?: string;
+      toolCalls?: ToolExecutionTrace[];
+    };
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      prompt: row.prompt,
+      selectedProject: row.selected_project,
+      executionMode: parsed.executionMode ?? "read-only",
+      status: row.status,
+      finalResponse: parsed.finalResponse ?? "",
+      error: parsed.error ?? "",
+      lastResumedAt: parsed.lastResumedAt ?? "",
+      pendingApprovals: parsed.pendingApprovals ?? [],
+      resumeCount: parsed.resumeCount ?? 0,
+      resumeReadyAt: parsed.resumeReadyAt ?? "",
+      toolCalls: parsed.toolCalls ?? [],
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    } satisfies SubAgentRun;
+  });
+}
+
+function mapTaskRows(
+  rows: Array<{
+    continue_count: number;
+    created_at: string;
+    goal: string;
+    last_error: string;
+    last_response: string;
+    selected_project: string;
+    session_id: string;
+    settings_json: string;
+    status: TaskStatus;
+    updated_at: string;
+  }>,
+) {
+  const taskBySession = new Map<string, TaskState>();
+  for (const row of rows) {
+    taskBySession.set(row.session_id, {
+      sessionId: row.session_id,
+      goal: row.goal,
+      selectedProject: row.selected_project,
+      status: row.status,
+      lastResponse: row.last_response,
+      lastError: row.last_error,
+      continueCount: Number(row.continue_count),
+      settings: row.settings_json.trim()
+        ? (JSON.parse(row.settings_json) as BackendSettings)
+        : null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    });
+  }
+  return taskBySession;
+}
+
+function toSessionRecord(row: {
+  id: string;
+  title: string;
+  model: string;
+  mode: SessionMode;
+  created_at: string;
+  updated_at: string;
+}) {
+  return {
+    id: row.id,
+    title: row.title,
+    model: row.model,
+    mode: row.mode,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  } satisfies SessionRecord;
+}
+
+async function listSessionSummaries(dbClient: RawAccess): Promise<SessionSnapshot[]> {
+  const sessionRows = await dbClient.execute<{
+    id: string;
+    title: string;
+    model: string;
+    mode: SessionMode;
+    created_at: string;
+    updated_at: string;
+  }>(`
+    SELECT id, title, model, mode, created_at, updated_at
+    FROM sessions
+    ORDER BY updated_at DESC
+  `);
+
+  if (sessionRows.length === 0) {
+    return [];
+  }
+
+  const taskRows = await dbClient.execute<{
+    continue_count: number;
+    created_at: string;
+    goal: string;
+    last_error: string;
+    last_response: string;
+    selected_project: string;
+    session_id: string;
+    settings_json: string;
+    status: TaskStatus;
+    updated_at: string;
+  }>(`
+    SELECT
+      session_id, goal, selected_project, status, last_response, last_error,
+      continue_count, settings_json, created_at, updated_at
+    FROM task_state
+  `);
+
+  const taskBySession = mapTaskRows(taskRows);
+  return sessionRows.map((row) => ({
+    session: toSessionRecord(row),
+    approvals: [],
+    messages: [],
+    artifacts: [],
+    subAgents: [],
+    task: taskBySession.get(row.id) ?? null,
+  }));
+}
+
 async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
   const sessionRows = await dbClient.execute<{
     id: string;
@@ -1989,108 +2198,35 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
   const messagesBySession = new Map<string, ChatMessage[]>();
   for (const row of messageRows) {
     const list = messagesBySession.get(row.session_id) ?? [];
-    const parsed = JSON.parse(row.content_json) as { text?: string };
-    list.push({
-      id: row.id,
-      role: row.role,
-      content: parsed.text ?? "",
-      createdAt: row.created_at,
-      turnIndex: Number(row.turn_index),
-    });
+    list.push(...parseMessageRows([row]));
     messagesBySession.set(row.session_id, list);
   }
 
   const artifactsBySession = new Map<string, SessionArtifact[]>();
   for (const row of artifactRows) {
     const list = artifactsBySession.get(row.session_id) ?? [];
-    list.push({
-      id: row.id,
-      sessionId: row.session_id,
-      kind: row.kind,
-      createdAt: row.created_at,
-      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
-    });
+    list.push(...parseArtifactRows([row]));
     artifactsBySession.set(row.session_id, list);
   }
 
   const approvalsBySession = new Map<string, ApprovalRecord[]>();
   for (const row of approvalRows) {
     const list = approvalsBySession.get(row.session_id) ?? [];
-    list.push({
-      id: row.id,
-      sessionId: row.session_id,
-      toolName: row.tool_name,
-      input: JSON.parse(row.input_json) as Record<string, unknown>,
-      status: row.status,
-      subAgentId: row.sub_agent_id,
-      outputPreview: row.output_preview,
-      error: row.error_text,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    });
+    list.push(...parseApprovalRows([row]));
     approvalsBySession.set(row.session_id, list);
   }
 
   const subAgentsBySession = new Map<string, SubAgentRun[]>();
   for (const row of subAgentRows) {
     const list = subAgentsBySession.get(row.session_id) ?? [];
-    const parsed = JSON.parse(row.result_json) as {
-      executionMode?: ToolExecutionMode;
-      error?: string;
-      finalResponse?: string;
-      lastResumedAt?: string;
-      pendingApprovals?: string[];
-      resumeCount?: number;
-      resumeReadyAt?: string;
-      toolCalls?: ToolExecutionTrace[];
-    };
-    list.push({
-      id: row.id,
-      sessionId: row.session_id,
-      prompt: row.prompt,
-      selectedProject: row.selected_project,
-      executionMode: parsed.executionMode ?? "read-only",
-      status: row.status,
-      finalResponse: parsed.finalResponse ?? "",
-      error: parsed.error ?? "",
-      lastResumedAt: parsed.lastResumedAt ?? "",
-      pendingApprovals: parsed.pendingApprovals ?? [],
-      resumeCount: parsed.resumeCount ?? 0,
-      resumeReadyAt: parsed.resumeReadyAt ?? "",
-      toolCalls: parsed.toolCalls ?? [],
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    });
+    list.push(...parseSubAgentRows([row]));
     subAgentsBySession.set(row.session_id, list);
   }
 
-  const taskBySession = new Map<string, TaskState>();
-  for (const row of taskRows) {
-    taskBySession.set(row.session_id, {
-      sessionId: row.session_id,
-      goal: row.goal,
-      selectedProject: row.selected_project,
-      status: row.status,
-      lastResponse: row.last_response,
-      lastError: row.last_error,
-      continueCount: Number(row.continue_count),
-      settings: row.settings_json.trim()
-        ? (JSON.parse(row.settings_json) as BackendSettings)
-        : null,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    });
-  }
+  const taskBySession = mapTaskRows(taskRows);
 
   return sessionRows.map((row) => ({
-    session: {
-      id: row.id,
-      title: row.title,
-      model: row.model,
-      mode: row.mode,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    },
+    session: toSessionRecord(row),
     approvals: approvalsBySession.get(row.id) ?? [],
     messages: messagesBySession.get(row.id) ?? [],
     artifacts: artifactsBySession.get(row.id) ?? [],
@@ -2100,8 +2236,108 @@ async function listSnapshots(dbClient: RawAccess): Promise<SessionSnapshot[]> {
 }
 
 async function getSnapshot(dbClient: RawAccess, sessionId: string) {
-  const snapshots = await listSnapshots(dbClient);
-  return snapshots.find((entry) => entry.session.id === sessionId) ?? null;
+  const sessionRows = await dbClient.execute<{
+    id: string;
+    title: string;
+    model: string;
+    mode: SessionMode;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `
+      SELECT id, title, model, mode, created_at, updated_at
+      FROM sessions
+      WHERE id = ?
+    `,
+    sessionId,
+  );
+  const row = sessionRows[0];
+  if (!row) {
+    return null;
+  }
+
+  const [messageRows, artifactRows, approvalRows, subAgentRows, task] = await Promise.all([
+    dbClient.execute<{
+      id: string;
+      role: ChatRole;
+      content_json: string;
+      created_at: string;
+      turn_index: number;
+    }>(
+      `
+        SELECT id, role, content_json, created_at, turn_index
+        FROM messages
+        WHERE session_id = ?
+        ORDER BY turn_index ASC
+      `,
+      sessionId,
+    ),
+    dbClient.execute<{
+      id: string;
+      session_id: string;
+      kind: string;
+      payload_json: string;
+      created_at: string;
+    }>(
+      `
+        SELECT id, session_id, kind, payload_json, created_at
+        FROM artifacts
+        WHERE session_id = ?
+        ORDER BY created_at DESC
+      `,
+      sessionId,
+    ),
+    dbClient.execute<{
+      created_at: string;
+      error_text: string;
+      id: string;
+      input_json: string;
+      output_preview: string;
+      session_id: string;
+      status: ApprovalStatus;
+      sub_agent_id: string | null;
+      tool_name: string;
+      updated_at: string;
+    }>(
+      `
+        SELECT
+          id, session_id, tool_name, input_json, status, sub_agent_id, output_preview, error_text, created_at, updated_at
+        FROM approvals
+        WHERE session_id = ?
+        ORDER BY created_at DESC
+      `,
+      sessionId,
+    ),
+    dbClient.execute<{
+      created_at: string;
+      id: string;
+      prompt: string;
+      result_json: string;
+      selected_project: string;
+      session_id: string;
+      status: SubAgentStatus;
+      updated_at: string;
+    }>(
+      `
+        SELECT
+          id, session_id, prompt, selected_project, status, result_json, created_at, updated_at
+        FROM sub_agents
+        WHERE session_id = ?
+        ORDER BY created_at DESC
+      `,
+      sessionId,
+    ),
+    getTaskState(dbClient, sessionId),
+  ]);
+
+  return {
+    session: toSessionRecord(row),
+    approvals: parseApprovalRows(approvalRows),
+    messages: parseMessageRows(messageRows),
+    artifacts: parseArtifactRows(artifactRows),
+    subAgents: parseSubAgentRows(subAgentRows),
+    task,
+  } satisfies SessionSnapshot;
 }
 
 async function requireSnapshot(dbClient: RawAccess, sessionId: string) {
@@ -2322,9 +2558,19 @@ export const vibeLocalActor = actor({
     onMigrate: migrateVibeLocalTables,
   }),
   actions: {
+    health: async (c) => {
+      const rows = await c.db.execute<{ count: number }>(`
+        SELECT COUNT(*) AS count
+        FROM sessions
+      `);
+      return {
+        ok: true,
+        sessionCount: Number(rows[0]?.count ?? 0),
+      };
+    },
     hydrate: async (c) => {
       return {
-        sessions: await listSnapshots(c.db),
+        sessions: await listSessionSummaries(c.db),
       };
     },
     createSession: async (c, title = "") => {

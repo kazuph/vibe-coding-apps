@@ -138,11 +138,8 @@ function createOpenAiProxyMiddleware(): Connect.NextHandleFunction {
 
     if (req.method === "GET" && url.pathname === "/__vibe_local/agentos/health") {
       try {
-        const payload = await callVibeLocalAction<{ sessions: unknown[] }>("hydrate");
-        json(res, 200, {
-          ok: true,
-          sessionCount: payload.sessions.length,
-        });
+        const payload = await callVibeLocalAction<{ ok: boolean; sessionCount: number }>("health");
+        json(res, 200, payload);
       } catch (error) {
         json(res, 503, {
           ok: false,

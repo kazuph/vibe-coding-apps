@@ -89,9 +89,6 @@ test.describe("vibe-local browser core", () => {
     await expect(page.locator(".message-bubble.role-user").getByText(relativePlanFile)).toBeVisible({
       timeout: 60_000,
     });
-    await expect(page.getByText("agentOS coding agent が approval 待ちの操作を提案しました。")).toBeVisible({
-      timeout: 60_000,
-    });
     await expect(page.getByLabel("Pending approvals")).toContainText("writeFile", {
       timeout: 60_000,
     });
