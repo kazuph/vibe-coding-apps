@@ -757,6 +757,56 @@ export default function App() {
     };
   }, [activeSession, sessionStore]);
 
+  useEffect(() => {
+    if (sessionStore.mode !== "agentos" || !selectedSessionId) {
+      return;
+    }
+
+    const current = hydrated?.sessions.find((entry) => entry.session.id === selectedSessionId);
+    if (!current) {
+      return;
+    }
+
+    const needsDetails =
+      current.messages.length === 0 &&
+      current.approvals.length === 0 &&
+      current.artifacts.length === 0 &&
+      current.subAgents.length === 0;
+    if (!needsDetails) {
+      return;
+    }
+
+    let cancelled = false;
+    void sessionStore
+      .exportSession(selectedSessionId)
+      .then((payload) => {
+        if (cancelled || !payload) {
+          return;
+        }
+        setHydrated((currentState) => {
+          if (!currentState) {
+            return currentState;
+          }
+          return {
+            ...currentState,
+            sessions: currentState.sessions.map((entry) =>
+              entry.session.id === selectedSessionId ? payload : entry,
+            ),
+          };
+        });
+      })
+      .catch((caughtError) => {
+        if (cancelled) {
+          return;
+        }
+        setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, selectedSessionId, sessionStore]);
+
   async function handleCreateSession() {
     try {
       setError("");

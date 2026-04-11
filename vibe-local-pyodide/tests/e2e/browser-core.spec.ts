@@ -23,7 +23,8 @@ async function waitForFileContent(filePath: string, expected: string) {
 
 async function configureAgent(page: Page) {
   await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("heading", { name: "vibe-local Pyodide" })).toBeVisible();
+  await expect(page.locator(".status-chip")).toHaveText(/agentOS actor|local Pyodide/);
 
   await page.getByRole("button", { name: "Show settings" }).first().click();
   await page.getByLabel("Base URL").fill(apiBaseUrl);
@@ -52,7 +53,7 @@ test.describe("vibe-local browser core", () => {
     const planContent = `plan-${Date.now()}`;
 
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: "vibe-local Pyodide" })).toBeVisible();
 
     await expect(page.getByRole("heading", { name: "vibe-local Pyodide" })).toBeVisible();
     await expect(page.locator(".status-chip")).toHaveText("agentOS actor");
@@ -81,7 +82,7 @@ test.describe("vibe-local browser core", () => {
     await expect(page.getByLabel("Base URL")).toHaveCount(0);
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: "vibe-local Pyodide" })).toBeVisible();
     await expect(page.locator(".status-chip")).toHaveText("agentOS actor");
     await expect(page.getByRole("button", { name: "Show settings" }).first()).toBeVisible();
     await expect(page.getByLabel("Base URL")).toHaveCount(0);
@@ -153,6 +154,14 @@ test.describe("vibe-local browser core", () => {
     await expect(page.getByText(/agentOS coding agent が .* tool を使って応答しました。/)).toBeVisible({
       timeout: 60_000,
     });
+
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await expect(page.getByText("新しいセッションを作成しました。")).toBeVisible();
+    await page.locator(".session-card").nth(1).click();
+    await expect(page.locator(".message-bubble.role-user").getByText(uniquePrompt)).toBeVisible({
+      timeout: 10_000,
+    });
+
     await page.getByLabel("Mode", { exact: true }).selectOption("yolo");
     await expect(page.getByText("YOLO mode に切り替えました。")).toBeVisible();
     await expect(page.getByRole("button", { name: "YOLO run" })).toBeVisible();
