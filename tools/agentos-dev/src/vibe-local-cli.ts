@@ -407,13 +407,15 @@ async function runInteractiveChat(
           console.log("[chat] /parallel [read-only|plan|act|yolo] <prompt1> -- <prompt2> [-- <prompt3>...]");
           continue;
         }
-        const result = await actor.runParallelAgentTasks(
+        const actionPromise = actor.runParallelAgentTasks(
           session.session.id,
           prompts,
           settings,
           project,
           executionMode,
         );
+        await watchSessionProgress(actor, session.session.id, actionPromise);
+        const result = await actionPromise;
         console.log(
           `[parallel] started ${result.subAgents.length} sub-agents in ${executionMode} mode`,
         );
@@ -748,9 +750,17 @@ async function main() {
       const settings = loadBackendSettings();
       const session = await actor.createSession(`CLI parallel ${project}`);
       await actor.setSessionConfig(session.session.id, settings.model, "act");
+      const actionPromise = actor.runParallelAgentTasks(
+        session.session.id,
+        prompts,
+        settings,
+        project,
+        executionMode,
+      );
+      await watchSessionProgress(actor, session.session.id, actionPromise);
       console.log(
         JSON.stringify(
-          await actor.runParallelAgentTasks(session.session.id, prompts, settings, project, executionMode),
+          await actionPromise,
           null,
           2,
         ),
