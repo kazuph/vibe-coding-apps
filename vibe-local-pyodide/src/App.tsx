@@ -41,6 +41,16 @@ import type {
 } from "./types";
 
 const DEFAULT_STATUS = "Pyodide core を初期化しています…";
+const SETTINGS_OPEN_STORAGE_KEY = "vibe-local-ui-settings-open";
+
+function loadSettingsPanelOpen() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const raw = window.localStorage.getItem(SETTINGS_OPEN_STORAGE_KEY);
+  return raw === "true";
+}
 
 function MarkdownText({ children }: { children: string }) {
   return (
@@ -332,7 +342,7 @@ export default function App() {
   const [modelChoices, setModelChoices] = useState<string[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [pendingUserMessage, setPendingUserMessage] = useState<PendingUserMessage | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(loadSettingsPanelOpen);
   const [settingsDraft, setSettingsDraft] = useState<BackendSettings | null>(null);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
@@ -486,6 +496,13 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(SETTINGS_OPEN_STORAGE_KEY, settingsOpen ? "true" : "false");
+  }, [settingsOpen]);
 
   useEffect(() => {
     let cancelled = false;

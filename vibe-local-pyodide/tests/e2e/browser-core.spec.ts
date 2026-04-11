@@ -77,6 +77,15 @@ test.describe("vibe-local browser core", () => {
     await page.getByLabel("Mode", { exact: true }).selectOption("plan");
     await page.getByRole("button", { name: "Save settings" }).click();
     await expect(page.getByText("Backend settings を保存しました。")).toBeVisible();
+    await page.getByRole("button", { name: "Hide settings" }).last().click();
+    await expect(page.getByLabel("Base URL")).toHaveCount(0);
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".status-chip")).toHaveText("agentOS actor");
+    await expect(page.getByRole("button", { name: "Show settings" }).first()).toBeVisible();
+    await expect(page.getByLabel("Base URL")).toHaveCount(0);
+    await page.getByRole("button", { name: "Show settings" }).first().click();
 
     await page.getByRole("button", { name: "New", exact: true }).click();
     await expect(page.getByText("新しいセッションを作成しました。")).toBeVisible();
