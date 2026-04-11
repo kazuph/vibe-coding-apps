@@ -317,19 +317,21 @@ async function runInteractiveChat(
   const settings = loadBackendSettings();
   const session = await actor.createSession(`CLI chat ${project}`);
   let mode = initialMode;
+  let currentProject = project;
   await actor.setSessionConfig(session.session.id, settings.model, mode);
+  const availableProjects = await actor.listProjects();
 
   const rl = createInterface({ input, output });
-  console.log(`[chat] session=${session.session.id} project=${project} mode=${mode}`);
+  console.log(`[chat] session=${session.session.id} project=${currentProject} mode=${mode}`);
   console.log(
-    "[chat] /help /mode <plan|act|yolo> /approvals /approve <id> [continue] /reject <id> /continue /subagents /continue-subagent <id> /parallel [mode] <p1> -- <p2> /session /exit",
+    "[chat] /help /mode <plan|act|yolo> /projects /project <name> /approvals /approve <id> [continue] /reject <id> /continue /subagents /continue-subagent <id> /parallel [mode] <p1> -- <p2> /session /exit",
   );
 
   try {
     while (true) {
       let rawLine = "";
       try {
-        rawLine = await rl.question(`${mode}> `);
+        rawLine = await rl.question(`${mode}:${currentProject}> `);
       } catch (error) {
         if (error instanceof Error && error.message.includes("readline was closed")) {
           break;
@@ -347,7 +349,7 @@ async function runInteractiveChat(
 
       if (line === "/help") {
         console.log(
-          "[chat] 通常入力は agent 実行です。/mode /approvals /approve /reject /continue /subagents /continue-subagent /parallel /session /exit が使えます。",
+          "[chat] 通常入力は agent 実行です。/mode /projects /project /approvals /approve /reject /continue /subagents /continue-subagent /parallel /session /exit が使えます。",
         );
         continue;
       }
@@ -361,6 +363,33 @@ async function runInteractiveChat(
         mode = nextMode;
         await actor.setSessionConfig(session.session.id, settings.model, mode);
         console.log(`[chat] mode を ${mode} に切り替えました`);
+        continue;
+      }
+
+      if (line === "/projects") {
+        console.log("[projects]");
+        for (const candidate of availableProjects) {
+          console.log(`- ${candidate.relativePath} (${candidate.name})`);
+        }
+        continue;
+      }
+
+      if (line.startsWith("/project ")) {
+        const nextProject = line.slice("/project ".length).trim();
+        if (!nextProject) {
+          console.log("[chat] /project <relativePath>");
+          continue;
+        }
+        const exists = availableProjects.some(
+          (candidate: Awaited<ReturnType<typeof actor.listProjects>>[number]) =>
+            candidate.relativePath === nextProject,
+        );
+        if (!exists) {
+          console.log(`[chat] unknown project: ${nextProject}`);
+          continue;
+        }
+        currentProject = nextProject;
+        console.log(`[chat] directory を ${currentProject} に切り替えました`);
         continue;
       }
 
@@ -411,7 +440,7 @@ async function runInteractiveChat(
           session.session.id,
           prompts,
           settings,
-          project,
+          currentProject,
           executionMode,
         );
         await watchSessionProgress(actor, session.session.id, actionPromise);
@@ -490,7 +519,7 @@ async function runInteractiveChat(
         continue;
       }
 
-      const runPromise = actor.runAgentTurn(session.session.id, line, settings, project);
+      const runPromise = actor.runAgentTurn(session.session.id, line, settings, currentProject);
       await watchSessionProgress(actor, session.session.id, runPromise);
       const result = await runPromise;
       console.log(`[task] status=${result.task.status}`);
