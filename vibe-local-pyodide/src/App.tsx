@@ -177,6 +177,10 @@ function formatToolCommand(trace: ToolExecutionTrace) {
       return "listProjects";
     case "projectInfo":
       return `projectInfo ${projectValue || "(directory)"}`;
+    case "runParallelAgentTasks":
+      return `runParallelAgentTasks ${projectValue || "(directory)"} [${Array.isArray(input.prompts) ? input.prompts.length : 0}]`;
+    case "continueSubAgentTask":
+      return `continueSubAgentTask ${typeof input.subAgentId === "string" ? input.subAgentId : "(sub-agent)"}`;
     case "listFiles":
       return `listFiles ${pathValue || "."}${maxEntriesValue ? ` --maxEntries ${maxEntriesValue}` : ""}`;
     case "searchCode":
@@ -631,6 +635,34 @@ export default function App() {
       window.cancelAnimationFrame(frame);
     };
   }, [selectedSessionId, timelineEntries, streamingText]);
+
+  useEffect(() => {
+    if (sessionStore.mode !== "agentos" || !activeSession) {
+      return;
+    }
+
+    const hasRunningTask = activeSession.task?.status === "running";
+    const hasRunningSubAgent = activeSession.subAgents.some(
+      (subAgent) => subAgent.status === "queued" || subAgent.status === "running",
+    );
+    if (!hasRunningTask && !hasRunningSubAgent) {
+      return;
+    }
+
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      if (cancelled) return;
+      void refreshState(activeSession.session.id, sessionStore).catch((caughtError) => {
+        if (cancelled) return;
+        setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      });
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeSession, sessionStore]);
 
   async function handleCreateSession() {
     try {
