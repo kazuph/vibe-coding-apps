@@ -130,55 +130,6 @@ pnpm verify:pi -- --project ai-wakuwaku-zukan
 
 詳しくは [tools/agentos-dev/README.md](./tools/agentos-dev/README.md) を参照してください。
 
-## 🐍 vibe-local Pyodide Browser Core
-
-`vibe-local-pyodide/` は、`ochyai/vibe-local` の思想をブラウザ向けに切り出した app です。CLI/TUI や `subprocess` は持ち込まず、`Pyodide + React` の browser core を `agentOS actor + SQLite` に接続して session と transcript を持続しつつ、OpenAI 互換 API に接続します。`agentOS` が見つからないときだけ browser-local の Pyodide 保存へフォールバックします。
-
-よく使うコマンド:
-
-```bash
-pnpm dev:vibe-local-agentos
-pnpm dev:vibe-local-pyodide
-pnpm vibe-local:cli health
-pnpm vibe-local:cli projects
-pnpm vibe-local:cli run-script vibe-local-pyodide check
-pnpm vibe-local:cli agent-run vibe-local-pyodide "git status を見て要約して"
-pnpm check:vibe-local-pyodide
-pnpm build:vibe-local-pyodide
-pnpm --filter @kazuph/vibe-local-pyodide run test:e2e
-```
-
-`pnpm dev:vibe-local-agentos` を使うと、`agentOS manager` と `vibe-local-pyodide` を一緒に起動できます。画面左の Status が `agentOS actor` なら、会話と transcript は `agentOS` 側の actor-local SQLite に保存されています。
-
-browser UI では、
-
-- session / transcript chat
-- project 一覧
-- repo search
-- file open / save
-- git status / diff stat
-- project-local script 実行
-- selected project を優先した tool-calling agent run
-
-が使えます。CLI は `pnpm vibe-local:cli ...` で同じ actor-backed service を叩きます。
-
-### vibe-local parity の優先順位
-
-この repo では、`vibe-local` 互換を広げるときの優先順位を固定しています。
-
-1. ツール実行の強化
-2. `Plan / Act / approve` フロー
-3. サブエージェント / 並列エージェント
-
-次は進めない方針です。
-
-- checkpoint / rollback
-
-後回しにする項目は次です。
-
-- file watcher
-- auto-test loop
-
 ## ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。 

@@ -9,7 +9,6 @@ packages:
   - "lesson-booking"
   - "tools/agentos-dev"
   - "tui-twitter-client"
-  - "vibe-local-pyodide"
 
 onlyBuiltDependencies:
   - "@abandonware/noble"
