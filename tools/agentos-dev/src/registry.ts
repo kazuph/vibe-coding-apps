@@ -25,7 +25,6 @@ import {
 } from "./config.js";
 import { discoverProjects } from "./projects.js";
 import { gitToolkit, repoToolkit } from "./toolkits.js";
-import { vibeLocalActor } from "./vibe-local-actor.js";
 
 function formatRepoInstructions(): string {
   const writableHost = toPosixPath(path.relative(REPO_ROOT, WRITABLE_WORKSPACE_ROOT));
@@ -129,7 +128,6 @@ export const registry = setup({
   use: {
     workspaceVm,
     codingSandbox,
-    vibeLocal: vibeLocalActor,
   } as any,
 });
 
