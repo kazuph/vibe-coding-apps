@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ブロック崩し</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: linear-gradient(135deg, #0c0c1d 0%, #1a1a3e 50%, #2d1b69 100%);
+  min-height: 100vh; font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+  color: #dde;
+}
+/* Board View */
+#boardView { display: flex; flex-direction: column; align-items: center; padding: 30px 20px; }
+#boardView h1 {
+  text-align: center; margin-bottom: 30px;
+  font-size: 2rem; letter-spacing: 4px;
+  text-shadow: 0 0 20px rgba(100,100,255,0.8); color: #fff;
+}
+.start-btn {
+  display: inline-block; padding: 14px 40px; margin-bottom: 30px;
+  background: linear-gradient(135deg, #4a6cf7, #7b5ea7);
+  color: #fff; text-decoration: none; border-radius: 8px;
+  font-size: 1.2rem; font-weight: bold;
+  box-shadow: 0 4px 20px rgba(80,120,255,0.4);
+  transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; border: none;
+}
+.start-btn:hover { transform: scale(1.05); box-shadow: 0 6px 30px rgba(80,120,255,0.6); }
+.score-section {
+  background: rgba(255,255,255,0.05); border-radius: 12px; padding: 24px;
+  border: 1px solid rgba(100,140,255,0.2); width: 100%; max-width: 700px;
+}
+.score-section h2 { margin-bottom: 16px; color: #7bf; font-size: 1.3rem; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid rgba(100,140,255,0.15); }
+th { color: #7bf; font-weight: 600; }
+td { color: #aab; }
+tr:hover td { background: rgba(100,140,255,0.08); }
+.empty-msg { text-align: center; color: #667; }
+/* Game View */
+#gameView { display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+#backLink {
+  position: fixed; top: 20px; left: 20px; color: #7bf;
+  text-decoration: none; font-size: 0.9rem; cursor: pointer;
+}
+#backLink:hover { text-decoration: underline; }
+#gameCanvas {
+  border: 2px solid rgba(100,140,255,0.6);
+  border-radius: 8px;
+  box-shadow: 0 0 30px rgba(80,120,255,0.3), inset 0 0 30px rgba(80,120,255,0.1);
+  cursor: none;
+}
+#hud {
+  display: flex; gap: 40px; margin-top: 12px; color: #aab; font-size: 1.1rem;
+}
+#hud span { text-shadow: 0 0 8px rgba(100,150,255,0.5); }
+#hud .score { color: #7df; font-weight: bold; }
+#hud .lives { color: #f7a; font-weight: bold; }
+#message {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  color: #fff; font-size: 2.5rem; font-weight: bold; text-align: center;
+  text-shadow: 0 0 30px rgba(255,255,255,0.8); pointer-events: none;
+  display: none; z-index: 10;
+}
+#message .sub { font-size: 1.2rem; margin-top: 16px; color: #99a; }
+#nameInput {
+  display: none; margin-top: 20px; text-align: center;
+}
+#nameInput input {
+  padding: 10px 16px; border-radius: 6px;
+  border: 1px solid rgba(100,140,255,0.3);
+  background: rgba(0,0,0,0.3); color: #dde; font-size: 1rem;
+  width: 200px; text-align: center;
+}
+#nameInput button {
+  padding: 10px 24px; border-radius: 6px; border: none;
+  background: linear-gradient(135deg, #4a6cf7, #7b5ea7);
+  color: #fff; font-size: 1rem; cursor: pointer; margin-left: 8px;
+}
+#restartBtn {
+  display: none; margin-top: 20px; padding: 12px 36px;
+  background: linear-gradient(135deg, #4a6cf7, #7b5ea7);
+  color: #fff; border: none; border-radius: 8px; font-size: 1.1rem;
+  cursor: pointer; box-shadow: 0 4px 20px rgba(80,120,255,0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+#restartBtn:hover { transform: scale(1.05); box-shadow: 0 6px 30px rgba(80,120,255,0.6); }
+</style>
+</head>
+<body>
+<!-- Board View -->
+<div id="boardView">
+  <h1>BREAKOUT</h1>
+  <button class="start-btn" onclick="showGame()">ゲームを始める</button>
+  <div class="score-section">
+    <h2>スコアボード</h2>
+    <table>
+      <thead>
+        <tr><th>#</th><th>プレイヤー</th><th>スコア</th><th>日時</th></tr>
+      </thead>
+      <tbody id="scoreBody">
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Game View -->
+<div id="gameView">
+  <a id="backLink" onclick="showBoard()">&larr; スコアボードに戻る</a>
+  <h1>BREAKOUT</h1>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="hud">
+    <span>SCORE: <span class="score" id="scoreDisplay">0</span></span>
+    <span>LIVES: <span class="lives" id="livesDisplay">3</span></span>
+  </div>
+  <div id="message">
+    <div id="msgText"></div>
+    <div class="sub">Score: <span id="finalScore">0</span></div>
+  </div>
+  <div id="nameInput">
+    <input type="text" id="playerNameInput" placeholder="Your name" maxlength="20">
+    <button id="submitScoreBtn">Submit Score</button>
+  </div>
+  <button id="restartBtn" onclick="restartGame()">Restart</button>
+</div>
+
+<script>
+// --- Board / Game view switching ---
+function showBoard() {
+  document.getElementById('boardView').style.display = 'flex';
+  document.getElementById('gameView').style.display = 'none';
+  gameRunning = false;
+  renderScoreBoard();
+}
+function showGame() {
+  document.getElementById('boardView').style.display = 'none';
+  document.getElementById('gameView').style.display = 'flex';
+  gameRunning = true;
+}
+
+// --- Scoreboard ---
+function renderScoreBoard() {
+  const entries = JSON.parse(localStorage.getItem('breakoutScores') || '[]');
+  const tbody = document.getElementById('scoreBody');
+  if (entries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-msg">まだスコアがありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map((e, i) => {
+    const d = new Date(e.date);
+    const dateStr = d.getFullYear() + '-' +
+      String(d.getMonth()+1).padStart(2,'0') + '-' +
+      String(d.getDate()).padStart(2,'0') + ' ' +
+      String(d.getHours()).padStart(2,'0') + ':' +
+      String(d.getMinutes()).padStart(2,'0');
+    return '<tr><td>' + (i+1) + '</td><td>' + e.playerName + '</td><td>' + e.score + '</td><td>' + dateStr + '</td></tr>';
+  }).join('');
+}
+
+// --- Game ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+var score = 0, lives = 3, gameOver = false, gameWon = false, launched = false;
+let particles = [];
+let shakeTimer = 0;
+let gameRunning = false;
+
+const paddle = { x: W/2 - 60, y: H - 40, w: 120, h: 14, color: '#5b8cff' };
+const ball = { x: W/2, y: H - 60, r: 8, dx: 5, dy: -5, color: '#fff' };
+const BALL_SPEED = 6;
+
+const brickRows = 3, brickCols = 8;
+const brickW = 88, brickH = 24, brickPad = 6, brickOffsetTop = 50;
+const brickOffsetLeft = (W - (brickCols * (brickW + brickPad) - brickPad)) / 2;
+const brickColors = ['#ff5c5c','#ff9f43','#ffd93d','#6bff6b','#5ce0ff','#7b68ee','#ff69b4'];
+let bricks = [];
+
+function initBricks() {
+  bricks = [];
+  for (let r = 0; r < brickRows; r++) {
+    bricks[r] = [];
+    for (let c = 0; c < brickCols; c++) {
+      bricks[r][c] = {
+        x: brickOffsetLeft + c * (brickW + brickPad),
+        y: brickOffsetTop + r * (brickH + brickPad),
+        alive: true, color: brickColors[r % brickColors.length]
+      };
+    }
+  }
+}
+
+function spawnParticles(x, y, color, count = 15) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 4 + 1;
+    particles.push({
+      x, y, dx: Math.cos(angle) * speed, dy: Math.sin(angle) * speed,
+      life: 1, decay: Math.random() * 0.03 + 0.015, size: Math.random() * 4 + 2, color
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.dx; p.y += p.dy; p.dy += 0.1; p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  if (particles.length === 0) return;
+  for (const p of particles) {
+    ctx.save(); ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+canvas.addEventListener('pointermove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const mx = (e.clientX - rect.left) * scaleX - paddle.w / 2;
+  paddle.x = Math.max(0, Math.min(W - paddle.w, mx));
+});
+
+canvas.addEventListener('pointerdown', () => {
+  if (!launched && !gameOver && !gameWon) launched = true;
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') {
+    paddle.x = Math.max(0, paddle.x - 20);
+  } else if (e.key === 'ArrowRight' || e.key === 'd') {
+    paddle.x = Math.min(W - paddle.w, paddle.x + 20);
+  }
+});
+
+function collisionDetection() {
+  for (let r = 0; r < brickRows; r++) {
+    for (let c = 0; c < brickCols; c++) {
+      const b = bricks[r][c];
+      if (!b.alive) continue;
+      if (ball.x + ball.r > b.x && ball.x - ball.r < b.x + brickW &&
+          ball.y + ball.r > b.y && ball.y - ball.r < b.y + brickH) {
+        ball.dy = -ball.dy; b.alive = false; score += 10;
+        document.getElementById('scoreDisplay').textContent = score;
+        spawnParticles(b.x + brickW/2, b.y + brickH/2, b.color, 20);
+        shakeTimer = 6;
+      }
+    }
+  }
+}
+
+function checkWinCondition() {
+  for (let r = 0; r < brickRows; r++) {
+    for (let c = 0; c < brickCols; c++) {
+      if (bricks[r][c].alive) return;
+    }
+  }
+  gameWon = true;
+  showMessage('CLEAR!', '#6bff6b');
+}
+
+function update() {
+  if (!gameRunning) return;
+  if (gameOver || gameWon) return;
+  if (!launched) { ball.x = paddle.x + paddle.w / 2; ball.y = paddle.y - ball.r - 2; return; }
+  ball.x += ball.dx; ball.y += ball.dy;
+  if (ball.x - ball.r <= 0 || ball.x + ball.r >= W) { ball.dx = -ball.dx; ball.x = Math.max(ball.r, Math.min(W - ball.r, ball.x)); }
+  if (ball.y - ball.r <= 0) { ball.dy = -ball.dy; }
+  if (ball.dy > 0 && ball.y + ball.r >= paddle.y && ball.y + ball.r <= paddle.y + paddle.h && ball.x >= paddle.x && ball.x <= paddle.x + paddle.w) {
+    const hitPos = (ball.x - paddle.x) / paddle.w;
+    const angle = (hitPos - 0.5) * Math.PI * 0.7;
+    const speed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+    ball.dx = speed * Math.sin(angle); ball.dy = -speed * Math.cos(angle);
+    ball.y = paddle.y - ball.r - 1; spawnParticles(ball.x, paddle.y, '#5b8cff', 5);
+  }
+  if (ball.y + ball.r >= H) {
+    lives--; document.getElementById('livesDisplay').textContent = lives; shakeTimer = 10;
+    if (lives <= 0) { gameOver = true; showMessage('GAME OVER', '#ff5c5c'); }
+    else {
+      launched = false;
+      const speed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+      ball.dx = (speed * Math.cos(Math.PI * 0.25));
+      ball.dy = -Math.abs(speed * Math.sin(Math.PI * 0.25));
+      ball.x = paddle.x + paddle.w / 2; ball.y = paddle.y - ball.r - 2;
+      paddle.x = W/2 - paddle.w/2;
+    }
+  }
+  collisionDetection();
+  checkWinCondition();
+  updateParticles(); if (shakeTimer > 0) shakeTimer--;
+}
+
+function draw() {
+  ctx.save();
+  if (shakeTimer > 0) { const i = shakeTimer * 0.8; ctx.translate(Math.random()*i-i/2, Math.random()*i-i/2); }
+  ctx.fillStyle = 'rgba(10, 10, 30, 0.85)'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(60, 80, 150, 0.08)'; ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  for (let r = 0; r < brickRows; r++) for (let c = 0; c < brickCols; c++) {
+    const b = bricks[r][c]; if (!b.alive) continue;
+    ctx.save(); ctx.fillStyle = b.color; ctx.shadowBlur = 12; ctx.shadowColor = b.color;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, brickW, brickH, 4); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath(); ctx.roundRect(b.x+2, b.y+2, brickW-4, brickH/2-2, 4); ctx.fill();
+    ctx.restore();
+  }
+  ctx.save(); ctx.fillStyle = paddle.color; ctx.shadowBlur = 20; ctx.shadowColor = paddle.color;
+  ctx.beginPath(); ctx.roundRect(paddle.x, paddle.y, paddle.w, paddle.h, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath(); ctx.roundRect(paddle.x+4, paddle.y+2, paddle.w-8, paddle.h/2-1, 4); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.fillStyle = ball.color; ctx.shadowBlur = 25; ctx.shadowColor = '#7b9fff';
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill();
+  const grad = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, ball.r);
+  grad.addColorStop(0, 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  drawParticles();
+  if (!launched && !gameOver && !gameWon) {
+    ctx.fillStyle = 'rgba(170,170,200,0.6)'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Click to launch', W/2, H/2 + 60);
+  }
+  ctx.restore();
+}
+
+function showMessage(text, color) {
+  const msg = document.getElementById('message');
+  document.getElementById('msgText').style.color = color;
+  document.getElementById('msgText').textContent = text;
+  document.getElementById('finalScore').textContent = score;
+  msg.style.display = 'block';
+  document.getElementById('nameInput').style.display = 'block';
+  document.getElementById('restartBtn').style.display = 'none';
+}
+
+document.getElementById('submitScoreBtn').addEventListener('click', function() {
+  const playerName = document.getElementById('playerNameInput').value.trim() || 'Anonymous';
+  const entries = JSON.parse(localStorage.getItem('breakoutScores') || '[]');
+  entries.push({ playerName, score, date: new Date().toISOString() });
+  entries.sort((a, b) => b.score - a.score);
+  localStorage.setItem('breakoutScores', JSON.stringify(entries.slice(0, 20)));
+  document.getElementById('nameInput').style.display = 'none';
+  // Show restart + back-to-board buttons
+  document.getElementById('restartBtn').style.display = 'inline-block';
+  // Add a "back to board" link
+  const boardLink = document.createElement('a');
+  boardLink.id = 'boardLinkAfterGame';
+  boardLink.style.cssText = 'display:block;margin-top:12px;color:#7bf;font-size:0.9rem;cursor:pointer;text-decoration:underline;';
+  boardLink.textContent = 'スコアボードに戻る';
+  boardLink.onclick = function() { showBoard(); };
+  if (!document.getElementById('boardLinkAfterGame')) {
+    document.getElementById('restartBtn').after(boardLink);
+  }
+});
+
+function restartGame() {
+  score = 0; lives = 3; gameOver = false; gameWon = false; launched = false;
+  particles = []; shakeTimer = 0;
+  document.getElementById('scoreDisplay').textContent = score;
+  document.getElementById('livesDisplay').textContent = lives;
+  document.getElementById('message').style.display = 'none';
+  document.getElementById('nameInput').style.display = 'none';
+  document.getElementById('restartBtn').style.display = 'none';
+  const bl = document.getElementById('boardLinkAfterGame');
+  if (bl) bl.remove();
+  ball.dx = 5; ball.dy = -5; ball.x = W/2; ball.y = H - 60;
+  paddle.x = W/2 - paddle.w/2; initBricks();
+}
+
+function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
+
+initBricks();
+renderScoreBoard();
+gameLoop();
+</script>
+</body>
+</html>
