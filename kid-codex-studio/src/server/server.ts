@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { CodexClient, type CodexJobInput } from './codexClient.js';
 import { createCharacterBundle } from './characterBundle.js';
-import { addAsset, ensureStore, listAssets, type AssetKind } from './store.js';
+import { addAsset, deleteAsset, ensureStore, listAssets, type AssetKind } from './store.js';
 import { assetUrlFor, clientDist, libraryRoot, timestampId, uploadsDir } from './paths.js';
 
 dotenv.config({ path: ['.env.local', '.env'] });
@@ -93,6 +93,15 @@ app.get('/api/assets/:id/detail', async (req, res) => {
     detail.files = [{ name: path.basename(asset.path), path: asset.path, url: asset.url }];
   }
   res.json(detail);
+});
+
+app.delete('/api/assets/:id', async (req, res) => {
+  const deleted = await deleteAsset(req.params.id);
+  if (!deleted) {
+    res.status(404).json({ error: 'asset not found' });
+    return;
+  }
+  res.json({ ok: true, id: deleted.id });
 });
 
 app.post('/api/uploads', upload.single('photo'), async (req, res) => {

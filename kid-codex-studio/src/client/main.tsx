@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BadgeCheck, Check, Gamepad2, Image, LoaderCircle, Maximize2, Play, Sparkles, Upload, UserRound, Video, WandSparkles, X } from 'lucide-react';
+import { BadgeCheck, Check, Gamepad2, Image, LoaderCircle, Maximize2, Play, Sparkles, Trash2, Upload, UserRound, Video, WandSparkles, X } from 'lucide-react';
 import './styles.css';
 
 type Asset = {
@@ -11,6 +11,7 @@ type Asset = {
   path: string;
   url: string;
   thumbnailUrl?: string;
+  version?: string;
   createdAt: string;
 };
 
@@ -170,6 +171,18 @@ function App() {
     if (res.ok) setDetail(await res.json());
   }
 
+  async function deleteCard(asset: Asset) {
+    if (!window.confirm(`${assetLabel(asset)}をけしますか？`)) return;
+    const res = await fetch(`/api/assets/${asset.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      setError('けせませんでした');
+      return;
+    }
+    setAssets((current) => current.filter((item) => item.id !== asset.id));
+    setSelectedIds((current) => current.filter((id) => id !== asset.id));
+    if (detail?.asset.id === asset.id) setDetail(null);
+  }
+
   const ActiveIcon = modeInfo[mode].icon;
 
   return (
@@ -282,6 +295,13 @@ function App() {
               className={selectedIds.includes(asset.id) ? 'asset selected' : 'asset'}
               key={asset.id}
             >
+              <span className="asset-kind-badge" aria-label={assetKindBadge(asset).label}>
+                {assetKindBadge(asset).emoji}
+              </span>
+              {assetVersionText(asset) && <span className="asset-version-badge">{assetVersionText(asset)}</span>}
+              <button className="asset-delete" type="button" onClick={() => void deleteCard(asset)} aria-label={`${assetLabel(asset)}を削除`}>
+                <Trash2 size={16} />
+              </button>
               <button className="asset-main" type="button" onClick={() => (isReferenceable(asset) ? toggleAsset(asset.id) : openAsset(asset))}>
                 {asset.kind === 'video' ? (
                   <video src={asset.url} muted playsInline />
@@ -553,6 +573,19 @@ function assetLabel(asset: Asset) {
 
 function assetPreviewUrl(asset: Asset) {
   return asset.kind === 'game' && asset.thumbnailUrl ? asset.thumbnailUrl : asset.url;
+}
+
+function assetKindBadge(asset: Asset) {
+  if (asset.kind === 'game') return { emoji: '🎮', label: 'ゲーム' };
+  if (asset.kind === 'video') return { emoji: '🎬', label: 'どうが' };
+  if (asset.kind === 'character') return { emoji: '🙂', label: 'キャラ' };
+  if (asset.kind === 'upload') return { emoji: '📷', label: 'アップロード' };
+  return { emoji: '🖼️', label: '生成画像' };
+}
+
+function assetVersionText(asset: Asset) {
+  const version = asset.version?.match(/v\d+/i)?.[0];
+  return version ? version.toLowerCase() : '';
 }
 
 function statusLabel(status: Job['status']) {

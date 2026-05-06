@@ -12,6 +12,7 @@ export type Asset = {
   path: string;
   url: string;
   thumbnailUrl?: string;
+  version?: string;
   createdAt: string;
 };
 
@@ -49,6 +50,18 @@ export async function addAsset(asset: Asset): Promise<Asset> {
   return asset;
 }
 
+export async function deleteAsset(id: string): Promise<Asset | null> {
+  await ensureStore();
+  const raw = await fs.readFile(dbPath, 'utf8');
+  const parsed = JSON.parse(raw) as { assets?: Asset[] };
+  const assets = parsed.assets ?? [];
+  const asset = assets.find((item) => item.id === id);
+  if (!asset) return null;
+  await fs.writeFile(dbPath, JSON.stringify({ assets: assets.filter((item) => item.id !== id) }, null, 2));
+  await deleteAssetFiles(asset);
+  return asset;
+}
+
 async function enrichAsset(asset: Asset): Promise<Asset> {
   if (asset.kind !== 'game') return asset;
 
@@ -57,9 +70,12 @@ async function enrichAsset(asset: Asset): Promise<Asset> {
   const metaPath = path.join(gameDir, 'game-meta.json');
 
   try {
-    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as { title?: unknown; thumbnail?: unknown };
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as { title?: unknown; thumbnail?: unknown; version?: unknown };
     if (typeof meta.title === 'string' && meta.title.trim() && enriched.title === 'ゲーム') {
       enriched.title = meta.title.trim();
+    }
+    if (typeof meta.version === 'string' && meta.version.trim()) {
+      enriched.version = meta.version.trim();
     }
     if (typeof meta.thumbnail === 'string' && meta.thumbnail.trim()) {
       const thumbnailPath = path.join(gameDir, meta.thumbnail);
@@ -80,4 +96,13 @@ async function enrichAsset(asset: Asset): Promise<Asset> {
   }
 
   return enriched;
+}
+
+async function deleteAssetFiles(asset: Asset) {
+  const targetPath = path.resolve(asset.path);
+  const root = path.resolve(libraryRoot);
+  if (!targetPath.startsWith(`${root}${path.sep}`)) return;
+  const removePath = asset.kind === 'game' || asset.kind === 'character' ? path.dirname(targetPath) : targetPath;
+  if (path.basename(removePath) === '.gitkeep') return;
+  await fs.rm(removePath, { recursive: true, force: true });
 }

@@ -128,6 +128,7 @@ test('game cards show title and thumbnail when available', async ({ page }) => {
           path: '/tmp/game/index.html',
           url: '/assets/games/game/index.html',
           thumbnailUrl: '/assets/games/game/thumbnail.png',
+          version: 'ゲーム v3',
           createdAt: new Date().toISOString()
         }
         ]
@@ -144,6 +145,43 @@ test('game cards show title and thumbnail when available', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('星あつめレース')).toBeVisible();
   await expect(page.locator('.asset-main img[src="/assets/games/game/thumbnail.png"]')).toBeVisible();
+  await expect(page.getByLabel('ゲーム')).toBeVisible();
+  await expect(page.getByText('v3')).toBeVisible();
+});
+
+test('asset cards can be deleted', async ({ page }) => {
+  let deletedId = '';
+  await page.route(/\/api\/assets$/, async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: 'delete-me',
+          kind: 'image',
+          title: '消す画像',
+          prompt: '消す',
+          path: '/tmp/delete-me.png',
+          url: '/assets/generated/delete-me.png',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
+  });
+  await page.route(/\/api\/jobs$/, async (route) => route.fulfill({ json: [] }));
+  await page.route(/\/api\/assets\/delete-me$/, async (route) => {
+    if (route.request().method() === 'DELETE') {
+      deletedId = 'delete-me';
+      await route.fulfill({ json: { ok: true, id: deletedId } });
+      return;
+    }
+    await route.continue();
+  });
+  page.on('dialog', (dialog) => void dialog.accept());
+
+  await page.goto('/');
+  await expect(page.getByText('消す画像')).toBeVisible();
+  await page.getByRole('button', { name: '消す画像を削除' }).click();
+  await expect(page.getByText('消す画像')).toHaveCount(0);
+  expect(deletedId).toBe('delete-me');
 });
 
 test('server health is reachable through Vite proxy', async ({ request }) => {
