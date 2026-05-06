@@ -21,12 +21,13 @@ type Job = {
   id: string;
   mode: CodexJobInput['mode'];
   prompt: string;
-  status: 'queued' | 'running' | 'done' | 'failed';
+  status: 'queued' | 'running' | 'done' | 'failed' | 'interrupted';
   createdAt: string;
   updatedAt: string;
   message: string;
   plan: string;
   references: JobAssetPreview[];
+  input: CodexJobInput;
   result?: unknown;
 };
 
@@ -41,6 +42,7 @@ type JobAssetPreview = {
 
 const jobs = new Map<string, Job>();
 const queuedJobs: Array<{ job: Job; input: CodexJobInput }> = [];
+const jobsPath = path.join(libraryRoot, 'jobs.json');
 let activeJobCount = 0;
 
 app.use(express.json({ limit: '2mb' }));
@@ -166,15 +168,17 @@ app.post('/api/jobs', async (req, res) => {
     updatedAt: now,
     message: 'まっててね',
     plan: planFor(mode, referenceAssets.length),
-    references: referenceAssets
+    references: referenceAssets,
+    input: {
+      mode,
+      prompt,
+      imagePath: typeof req.body.imagePath === 'string' ? req.body.imagePath : undefined,
+      assetPaths
+    }
   };
   jobs.set(id, job);
-  enqueueJob(job, {
-    mode,
-    prompt,
-    imagePath: typeof req.body.imagePath === 'string' ? req.body.imagePath : undefined,
-    assetPaths
-  });
+  await persistJobs();
+  enqueueJob(job, job.input);
   res.status(202).json(job);
 });
 
@@ -194,12 +198,33 @@ app.get('/api/jobs/:id', (req, res) => {
   res.json(job);
 });
 
+app.post('/api/jobs/:id/retry', async (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) {
+    res.status(404).json({ error: 'job not found' });
+    return;
+  }
+  if (job.status === 'queued' || job.status === 'running') {
+    res.status(409).json({ error: 'job is already active' });
+    return;
+  }
+  job.status = 'queued';
+  job.message = '再開します';
+  job.updatedAt = new Date().toISOString();
+  delete job.result;
+  jobs.set(job.id, job);
+  await persistJobs();
+  enqueueJob(job, job.input);
+  res.status(202).json(job);
+});
+
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 }
 
 await ensureStore();
+await restoreJobs();
 app.listen(port, '0.0.0.0', () => {
   console.log(`Kid Codex Studio: http://localhost:${port}`);
   for (const hint of localHostHints()) console.log(`iPad URL hint: http://${hint}:${port}`);
@@ -300,6 +325,35 @@ function updateJob(job: Job, status: Job['status'], message: string, result?: un
   job.updatedAt = new Date().toISOString();
   if (result) job.result = result;
   jobs.set(job.id, job);
+  void persistJobs();
+}
+
+async function restoreJobs() {
+  try {
+    const parsed = JSON.parse(await fs.readFile(jobsPath, 'utf8')) as { jobs?: Job[] };
+    for (const job of parsed.jobs ?? []) {
+      if (!job.input) continue;
+      if (job.status === 'running') {
+        job.status = 'interrupted';
+        job.message = '再起動で止まりました';
+        job.updatedAt = new Date().toISOString();
+      }
+      jobs.set(job.id, job);
+      if (job.status === 'queued') queuedJobs.push({ job, input: job.input });
+    }
+    refreshQueueMessages();
+    scheduleJobs();
+    await persistJobs();
+  } catch {
+    await persistJobs();
+  }
+}
+
+async function persistJobs() {
+  const recentJobs = Array.from(jobs.values())
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 100);
+  await fs.writeFile(jobsPath, JSON.stringify({ jobs: recentJobs }, null, 2));
 }
 
 function extensionFor(name: string, mime: string) {

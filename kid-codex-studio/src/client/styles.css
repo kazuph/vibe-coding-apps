@@ -343,12 +343,32 @@ textarea:focus {
   font-weight: 900;
 }
 
+.job-retry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 78px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #293241;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .job.done {
   border-color: #0b7f75;
 }
 
 .job.failed {
   border-color: #ef5d39;
+}
+
+.job.interrupted {
+  border-color: #ffd166;
+  background: #fffaf0;
 }
 
 .library {

@@ -101,6 +101,34 @@ test('job queue shows prompt, plan, references, and result thumbnails', async ({
   await expect(page.locator('.job-thumbs img[src="/assets/games/game/thumbnail.png"]')).toBeVisible();
 });
 
+test('interrupted jobs stay visible and can be retried', async ({ page }) => {
+  const interrupted = {
+    id: 'job-interrupted',
+    mode: 'video',
+    prompt: 'レース動画を作る',
+    status: 'interrupted',
+    message: '再起動で止まりました',
+    plan: '1この参考を見て Seedance 2.0 Fastで15秒の音声付き動画を作ります',
+    references: [],
+    input: { mode: 'video', prompt: 'レース動画を作る', assetPaths: [] }
+  };
+  let retried = false;
+  await page.route(/\/api\/assets$/, async (route) => route.fulfill({ json: [] }));
+  await page.route(/\/api\/jobs$/, async (route) => route.fulfill({ json: [interrupted] }));
+  await page.route(/\/api\/jobs\/job-interrupted$/, async (route) => route.fulfill({ json: interrupted }));
+  await page.route(/\/api\/jobs\/job-interrupted\/retry$/, async (route) => {
+    retried = true;
+    await route.fulfill({ json: { ...interrupted, status: 'queued', message: '再開します' } });
+  });
+
+  await page.goto('/');
+  await expect(page.getByText('1. 再起動で止まりました')).toBeVisible();
+  await expect(page.getByText('サーバー再起動で止まりました')).toBeVisible();
+  await page.getByRole('button', { name: '再開' }).click();
+  await expect(page.getByText('再開します')).toBeVisible();
+  expect(retried).toBe(true);
+});
+
 test('game assets can be selected as upgrade references', async ({ page }) => {
   await page.route(/\/api\/assets$/, async (route) => {
     await route.fulfill({

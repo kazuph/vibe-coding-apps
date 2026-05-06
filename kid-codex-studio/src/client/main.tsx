@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BadgeCheck, Check, Gamepad2, Image, LoaderCircle, Maximize2, Play, Sparkles, Trash2, Upload, UserRound, Video, WandSparkles, X } from 'lucide-react';
+import { BadgeCheck, Check, Gamepad2, Image, LoaderCircle, Maximize2, Play, RotateCcw, Sparkles, Trash2, Upload, UserRound, Video, WandSparkles, X } from 'lucide-react';
 import './styles.css';
 
 type Asset = {
@@ -19,7 +19,7 @@ type Job = {
   id: string;
   mode: Mode;
   prompt: string;
-  status: 'queued' | 'running' | 'done' | 'failed';
+  status: 'queued' | 'running' | 'done' | 'failed' | 'interrupted';
   message: string;
   plan?: string;
   references?: Asset[];
@@ -185,6 +185,16 @@ function App() {
     if (detail?.asset.id === asset.id) setDetail(null);
   }
 
+  async function retryJob(job: Job) {
+    const res = await fetch(`/api/jobs/${job.id}/retry`, { method: 'POST' });
+    if (!res.ok) {
+      setError('再開できませんでした');
+      return;
+    }
+    const next = (await res.json()) as Job;
+    setJobs((current) => current.map((item) => (item.id === next.id ? next : item)));
+  }
+
   const ActiveIcon = modeInfo[mode].icon;
 
   return (
@@ -289,6 +299,12 @@ function App() {
                 </div>
                 {item.status === 'running' || item.status === 'queued' ? <LoaderCircle className="spin" size={24} /> : null}
                 {item.status === 'done' && <Sparkles size={28} />}
+                {(item.status === 'interrupted' || item.status === 'failed') && (
+                  <button className="job-retry" type="button" onClick={() => void retryJob(item)}>
+                    <RotateCcw size={18} />
+                    <span>再開</span>
+                  </button>
+                )}
               </article>
             ))}
           </section>
@@ -619,6 +635,7 @@ function assetVersionText(asset: Asset) {
 function statusLabel(status: Job['status']) {
   if (status === 'done') return 'ライブラリに入りました';
   if (status === 'failed') return 'おとなに見てもらってね';
+  if (status === 'interrupted') return 'サーバー再起動で止まりました';
   if (status === 'queued') return 'じゅんばん待ちです';
   return 'できたものから先に出ます';
 }
