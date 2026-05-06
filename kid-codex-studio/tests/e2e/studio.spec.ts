@@ -52,6 +52,30 @@ test('reload restores server-side running jobs', async ({ page }) => {
   await expect(page.getByText('まだ作っています')).toBeVisible();
 });
 
+test('game assets can be selected as upgrade references', async ({ page }) => {
+  await page.route('**/api/assets', async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: 'game-v1',
+          kind: 'game',
+          title: 'ゲーム',
+          prompt: '前のゲーム',
+          path: '/tmp/game-v1/index.html',
+          url: '/assets/games/game-v1/index.html',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
+  });
+  await page.route('**/api/jobs', async (route) => route.fulfill({ json: [] }));
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'ゲームをつくる' }).click();
+  await page.getByRole('button', { name: 'さんこう画像にする' }).click();
+  await expect(page.getByText('1こ えらんでいます')).toBeVisible();
+});
+
 test('server health is reachable through Vite proxy', async ({ request }) => {
   const res = await request.get('/api/health');
   expect(res.ok()).toBeTruthy();

@@ -524,7 +524,7 @@ function CharacterPreview({ detail }: { detail: AssetDetail }) {
 }
 
 function isReferenceable(asset: Asset) {
-  return asset.kind === 'upload' || asset.kind === 'image' || asset.kind === 'character';
+  return asset.kind === 'upload' || asset.kind === 'image' || asset.kind === 'character' || asset.kind === 'game';
 }
 
 function assetLabel(asset: Asset) {

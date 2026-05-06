@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
-import { appRoot, assetUrlFor, generatedDir, gamesDir, timestampId, workspaceRoot } from './paths.js';
+import { appRoot, assetUrlFor, generatedDir, gamesDir, libraryRoot, timestampId, workspaceRoot } from './paths.js';
 import { generateSeedanceVideo } from './fal.js';
 
 type RpcMessage = { id?: number | string; method?: string; params?: any; result?: any; error?: any };
@@ -46,12 +46,19 @@ export class CodexClient extends EventEmitter {
   private runtimeAssets: CodexJobResult['assets'] = [];
   private expectedGameIndexPath = '';
   private expectedGameDir = '';
+  private selectedGamePaths: string[] = [];
+  private gameTitle = 'ゲーム';
+  private selectedGameAssetUrls: string[] = [];
   private videoReferencePaths: string[] = [];
 
   async runJob(input: CodexJobInput): Promise<CodexJobResult> {
     await this.ensureStarted();
     this.transcript = '';
     this.runtimeAssets = [];
+    this.selectedGamePaths = input.mode === 'game' ? (input.assetPaths ?? []).filter((assetPath) => path.basename(assetPath) === 'index.html') : [];
+    this.gameTitle = input.mode === 'game' ? await this.nextGameTitle(input.assetPaths ?? []) : 'ゲーム';
+    this.selectedGameAssetUrls =
+      input.mode === 'game' ? this.publicAssetUrls((input.assetPaths ?? []).filter((assetPath) => path.basename(assetPath) !== 'index.html')) : [];
     this.videoReferencePaths = input.mode === 'video' ? Array.from(new Set(input.assetPaths ?? [])).slice(0, 9) : [];
     const thread = await this.request('thread/start', {
       model: process.env.CODEX_MODEL || undefined,
@@ -251,11 +258,16 @@ export class CodexClient extends EventEmitter {
       const gameDir = `${gamesDir}/${timestampId('game')}`;
       this.expectedGameDir = gameDir;
       this.expectedGameIndexPath = `${gameDir}/index.html`;
+      const versionRequirement =
+        this.selectedGamePaths.length > 0
+          ? `\nSelected previous game version(s):\n${this.selectedGamePaths.map((gamePath) => `- ${gamePath}`).join('\n')}\nTreat the selected game as the previous version. Inspect it, fix boot/runtime/gameplay bugs, keep the useful idea, and create a new improved ${this.gameTitle}. Do not overwrite the previous game.`
+          : '';
       return `Create a playable browser game under ${gameDir} using the OpenAI Game Studio workflow.
 This is a 2D browser game request, so use the Game Studio default path: Phaser + JavaScript, simulation state outside the renderer, DOM HUD over the canvas, stable asset manifest keys, and a playtest-ready first screen.
 
 Selected image assets are mandatory. Do not create an assetless HTML/canvas game. Use these selected assets as the main player, enemy, item, or world sprites:
 ${assets}
+${versionRequirement}
 
 Child request: ${input.prompt}
 
@@ -270,6 +282,10 @@ Requirements:
 - Include pointer/touch input and keyboard input when useful.
 - Include boot, play, failure/restart, and progression states.
 - Add a small debug-safe playtest checklist as an HTML comment at the end covering boot, main verb, selected asset visibility, HUD readability, restart, and mobile viewport.
+- Before finishing, run a real Playwright smoke test from ${appRoot}. Open file://${gameDir}/index.html in Chromium, collect console errors and page errors, wait for a canvas, send one pointer/touch-like click and useful keyboard input, verify that a selected asset URL appears in the document or loaded resources, and take a screenshot.
+- If the smoke test finds console errors, a blank canvas, missing selected asset usage, missing HUD, or broken input, fix the game and rerun the smoke test.
+- Save ${gameDir}/playtest-report.json with {"passed":true,"checked":["boot","selected-asset-visible","main-input","hud","restart-or-recovery","desktop-viewport","mobile-viewport"]} only after it passes.
+- Save ${gameDir}/playtest-screenshot.png from the passing run.
 - The game must be playable directly when opened from /assets/games/.../index.html in an iframe.
 - At the end, return the exact local path ${gameDir}/index.html.`;
     }
@@ -312,7 +328,10 @@ Requirements:
     }
     if (mode === 'game') {
       const indexPath = await this.findGameIndexPath(items);
-      if (indexPath) assets.push({ kind: 'game', path: indexPath, url: assetUrlFor(indexPath), title: 'ゲーム' });
+      if (indexPath) {
+        await this.validateGeneratedGame(indexPath);
+        assets.push({ kind: 'game', path: indexPath, url: assetUrlFor(indexPath), title: this.gameTitle });
+      }
     }
     return { text: this.transcript.trim(), assets };
   }
@@ -405,5 +424,42 @@ Save the nine final row strip PNGs under ${generatedDir}.`;
       .filter(Boolean)
       .join('\n');
     return commandPaths.match(/(\/[^\s"'`]+index\.html)/)?.[1];
+  }
+
+  private publicAssetUrls(assetPaths: string[]) {
+    return assetPaths.flatMap((assetPath) => {
+      try {
+        return [assetUrlFor(assetPath)];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  private async nextGameTitle(assetPaths: string[]) {
+    const selectedGamePath = assetPaths.find((assetPath) => path.basename(assetPath) === 'index.html');
+    if (!selectedGamePath) return 'ゲーム';
+    try {
+      const db = JSON.parse(await fs.readFile(path.join(libraryRoot, 'library.json'), 'utf8')) as {
+        assets?: Array<{ kind: string; path: string; title: string }>;
+      };
+      const selected = db.assets?.find((asset) => asset.kind === 'game' && asset.path === selectedGamePath);
+      const currentVersion = selected?.title.match(/v(\d+)/i)?.[1];
+      return `ゲーム v${currentVersion ? Number(currentVersion) + 1 : 2}`;
+    } catch {
+      return 'ゲーム v2';
+    }
+  }
+
+  private async validateGeneratedGame(indexPath: string) {
+    const html = await fs.readFile(indexPath, 'utf8');
+    const reportPath = path.join(path.dirname(indexPath), 'playtest-report.json');
+    const report = JSON.parse(await fs.readFile(reportPath, 'utf8')) as { passed?: boolean };
+    if (!report.passed) throw new Error('ゲームの自己動作確認が通っていません。');
+    if (!html.includes('./vendor/phaser.min.js')) throw new Error('ゲームはローカルPhaserを使う必要があります。');
+    if (this.selectedGameAssetUrls.length > 0 && !this.selectedGameAssetUrls.some((url) => html.includes(url))) {
+      throw new Error('ゲームが選択アセットを参照していません。');
+    }
+    await fs.access(path.join(path.dirname(indexPath), 'playtest-screenshot.png'));
   }
 }
