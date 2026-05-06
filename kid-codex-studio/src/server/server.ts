@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { CodexClient, type CodexJobInput } from './codexClient.js';
 import { createCharacterBundle } from './characterBundle.js';
-import { addAsset, deleteAsset, ensureStore, listAssets, type AssetKind } from './store.js';
+import { addAsset, deleteAsset, ensureStore, listAssets, type Asset, type AssetKind } from './store.js';
 import { assetUrlFor, clientDist, libraryRoot, timestampId, uploadsDir } from './paths.js';
 
 dotenv.config({ path: ['.env.local', '.env'] });
@@ -25,7 +25,18 @@ type Job = {
   createdAt: string;
   updatedAt: string;
   message: string;
+  plan: string;
+  references: JobAssetPreview[];
   result?: unknown;
+};
+
+type JobAssetPreview = {
+  id?: string;
+  kind: AssetKind;
+  title: string;
+  url: string;
+  thumbnailUrl?: string;
+  version?: string;
 };
 
 const jobs = new Map<string, Job>();
@@ -143,9 +154,20 @@ app.post('/api/jobs', async (req, res) => {
     res.status(400).json({ error: 'ゲームはライブラリの画像を1つ以上えらんでください' });
     return;
   }
+  const referenceAssets = await selectedAssetPreviews(assetPaths);
   const id = timestampId('job');
   const now = new Date().toISOString();
-  const job: Job = { id, mode, prompt, status: 'queued', createdAt: now, updatedAt: now, message: 'まっててね' };
+  const job: Job = {
+    id,
+    mode,
+    prompt,
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+    message: 'まっててね',
+    plan: planFor(mode, referenceAssets.length),
+    references: referenceAssets
+  };
   jobs.set(id, job);
   enqueueJob(job, {
     mode,
@@ -215,9 +237,10 @@ async function executeJob(job: Job, input: CodexJobInput) {
   try {
     const result = await codex.runJob(input);
     const assets = job.mode === 'character' ? [await createCharacterBundle(result.assets, job.prompt)] : result.assets;
+    const createdAssets: JobAssetPreview[] = [];
     for (const asset of assets) {
       if (!asset.url) continue;
-      await addAsset({
+      const created = await addAsset({
         id: timestampId(asset.kind),
         kind: asset.kind as AssetKind,
         title: asset.title,
@@ -226,13 +249,49 @@ async function executeJob(job: Job, input: CodexJobInput) {
         url: asset.url,
         createdAt: new Date().toISOString()
       });
+      createdAssets.push(assetPreview(created));
     }
-    updateJob(job, 'done', 'できました', { ...result, assets });
+    updateJob(job, 'done', `${jobLabel(job.mode)}ができました`, { ...result, assets: createdAssets });
   } catch (error) {
     updateJob(job, 'failed', error instanceof Error ? error.message : String(error));
   } finally {
     codex.close();
   }
+}
+
+async function selectedAssetPreviews(assetPaths: string[]) {
+  if (assetPaths.length === 0) return [];
+  const assets = await listAssets();
+  return assetPaths
+    .map((assetPath) => assets.find((asset) => asset.path === assetPath))
+    .filter((asset): asset is Asset => Boolean(asset))
+    .map(assetPreview);
+}
+
+function assetPreview(asset: Asset): JobAssetPreview {
+  return {
+    id: asset.id,
+    kind: asset.kind,
+    title: asset.title,
+    url: asset.url,
+    thumbnailUrl: asset.thumbnailUrl,
+    version: asset.version
+  };
+}
+
+function planFor(mode: CodexJobInput['mode'], referenceCount: number) {
+  const referenceText = referenceCount > 0 ? `${referenceCount}この参考を見て` : '参考なしで';
+  if (mode === 'image') return `${referenceText} gpt-image-2で1枚の画像を作ります`;
+  if (mode === 'character') return `${referenceText} /pet形式の動くキャラ一式を作ります`;
+  if (mode === 'game') return `${referenceText} Phaserゲームを作り、動作確認とサムネを作ります`;
+  return `${referenceText} Seedance 2.0 Fastで15秒の音声付き動画を作ります`;
+}
+
+function jobLabel(mode: CodexJobInput['mode']) {
+  if (mode === 'image') return '画像';
+  if (mode === 'character') return 'キャラ';
+  if (mode === 'game') return 'ゲーム';
+  return '動画';
 }
 
 function updateJob(job: Job, status: Job['status'], message: string, result?: unknown) {

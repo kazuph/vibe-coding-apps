@@ -243,7 +243,7 @@ textarea:focus {
 
 .job {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: 14px;
@@ -255,6 +255,92 @@ textarea:focus {
 .job p {
   margin: 4px 0 0;
   color: #66746c;
+}
+
+.job-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.job-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.job-kind {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #eef6f1;
+  box-shadow: inset 0 0 0 1px #d6e3dc;
+  font-size: 19px;
+}
+
+.job-prompt,
+.job-plan {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.job-prompt {
+  color: #17211c;
+}
+
+.job-plan {
+  color: #0b7f75;
+}
+
+.job-thumbs {
+  display: grid;
+  gap: 5px;
+}
+
+.job-thumbs > span {
+  color: #66746c;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.job-thumbs > div {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.job-thumbs figure {
+  display: grid;
+  gap: 4px;
+  width: 58px;
+  min-width: 58px;
+  margin: 0;
+}
+
+.job-thumbs img,
+.job-thumbs video {
+  width: 58px;
+  height: 58px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #dcebe5;
+}
+
+.job-thumbs figcaption {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .job.done {

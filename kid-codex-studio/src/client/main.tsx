@@ -21,7 +21,9 @@ type Job = {
   prompt: string;
   status: 'queued' | 'running' | 'done' | 'failed';
   message: string;
-  result?: { text: string; assets: Array<{ kind: string; url: string; title: string }> };
+  plan?: string;
+  references?: Asset[];
+  result?: { text: string; assets: Asset[] };
 };
 
 type AssetDetail = {
@@ -272,9 +274,18 @@ function App() {
           <section className="job-list">
             {jobs.map((item, index) => (
               <article className={`job ${item.status}`} key={item.id}>
-                <div>
-                  <strong>{index + 1}. {item.message}</strong>
-                  <p>{statusLabel(item.status)}</p>
+                <div className="job-main">
+                  <div className="job-head">
+                    <span className="job-kind">{assetKindBadge({ kind: item.mode } as Asset).emoji}</span>
+                    <div>
+                      <strong>{index + 1}. {item.message}</strong>
+                      <p>{statusLabel(item.status)}</p>
+                    </div>
+                  </div>
+                  <p className="job-prompt">{item.prompt}</p>
+                  {item.plan && <p className="job-plan">{item.plan}</p>}
+                  <JobThumbs title="さんこう" assets={item.references ?? []} />
+                  <JobThumbs title="できたもの" assets={item.result?.assets ?? []} />
                 </div>
                 {item.status === 'running' || item.status === 'queued' ? <LoaderCircle className="spin" size={24} /> : null}
                 {item.status === 'done' && <Sparkles size={28} />}
@@ -334,6 +345,23 @@ function App() {
       </section>
       {detail && <AssetModal detail={detail} onClose={() => setDetail(null)} />}
     </main>
+  );
+}
+
+function JobThumbs({ title, assets }: { title: string; assets: Asset[] }) {
+  if (assets.length === 0) return null;
+  return (
+    <div className="job-thumbs">
+      <span>{title}</span>
+      <div>
+        {assets.map((asset, index) => (
+          <figure key={`${asset.url}-${index}`}>
+            {asset.kind === 'video' ? <video src={asset.url} muted playsInline /> : <img src={assetPreviewUrl(asset)} alt="" />}
+            <figcaption>{assetLabel(asset)}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
   );
 }
 

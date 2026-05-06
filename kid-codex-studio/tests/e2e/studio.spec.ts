@@ -52,6 +52,55 @@ test('reload restores server-side running jobs', async ({ page }) => {
   await expect(page.getByText('まだ作っています')).toBeVisible();
 });
 
+test('job queue shows prompt, plan, references, and result thumbnails', async ({ page }) => {
+  const job = {
+    id: 'job-detailed',
+    mode: 'game',
+    prompt: 'ジャンプするレースゲーム',
+    status: 'done',
+    message: 'ゲームができました',
+    plan: '2この参考を見て Phaserゲームを作り、動作確認とサムネを作ります',
+    references: [
+      {
+        id: 'ref-car',
+        kind: 'upload',
+        title: '車の写真',
+        prompt: '',
+        path: '/tmp/car.png',
+        url: '/assets/uploads/car.png',
+        createdAt: new Date().toISOString()
+      }
+    ],
+    result: {
+      text: '',
+      assets: [
+        {
+          id: 'made-game',
+          kind: 'game',
+          title: 'ジャンプレース',
+          prompt: 'ジャンプするレースゲーム',
+          path: '/tmp/game/index.html',
+          url: '/assets/games/game/index.html',
+          thumbnailUrl: '/assets/games/game/thumbnail.png',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }
+  };
+  await page.route(/\/api\/assets$/, async (route) => route.fulfill({ json: [] }));
+  await page.route(/\/api\/jobs$/, async (route) => route.fulfill({ json: [job] }));
+  await page.route(/\/api\/jobs\/job-detailed$/, async (route) => route.fulfill({ json: job }));
+
+  await page.goto('/');
+  await expect(page.getByText('ゲームができました')).toBeVisible();
+  await expect(page.getByText('ジャンプするレースゲーム')).toBeVisible();
+  await expect(page.getByText('2この参考を見て Phaserゲームを作り')).toBeVisible();
+  await expect(page.getByText('さんこう', { exact: true })).toBeVisible();
+  await expect(page.locator('.job-thumbs img[src="/assets/uploads/car.png"]')).toBeVisible();
+  await expect(page.getByText('できたもの')).toBeVisible();
+  await expect(page.locator('.job-thumbs img[src="/assets/games/game/thumbnail.png"]')).toBeVisible();
+});
+
 test('game assets can be selected as upgrade references', async ({ page }) => {
   await page.route(/\/api\/assets$/, async (route) => {
     await route.fulfill({
