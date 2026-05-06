@@ -219,7 +219,22 @@ function App() {
                   : 'ライブラリからえらべます'}
             </p>
           </div>
-          {selectedAssets.length > 0 && <BadgeCheck size={24} />}
+          {selectedAssets.length > 0 ? (
+            <div className="reference-thumbs" aria-label="えらんださんこう画像">
+              {selectedAssets.map((asset) => (
+                <button type="button" onClick={() => toggleAsset(asset.id)} key={asset.id} aria-label={`${assetLabel(asset)}をはずす`}>
+                  {asset.kind === 'video' ? (
+                    <video src={asset.url} muted playsInline />
+                  ) : (
+                    <img src={assetPreviewUrl(asset)} alt="" />
+                  )}
+                  <span>{assetLabel(asset)}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <BadgeCheck size={24} />
+          )}
         </section>
 
         <label className="prompt-box">
@@ -534,6 +549,10 @@ function assetLabel(asset: Asset) {
   if (asset.kind === 'video') return 'どうが';
   if (asset.kind === 'upload') return 'アップロード';
   return asset.title;
+}
+
+function assetPreviewUrl(asset: Asset) {
+  return asset.kind === 'game' && asset.thumbnailUrl ? asset.thumbnailUrl : asset.url;
 }
 
 function statusLabel(status: Job['status']) {

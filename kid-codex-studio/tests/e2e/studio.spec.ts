@@ -76,6 +76,44 @@ test('game assets can be selected as upgrade references', async ({ page }) => {
   await expect(page.getByText('1こ えらんでいます')).toBeVisible();
 });
 
+test('selected references show thumbnails in the reference panel', async ({ page }) => {
+  await page.route(/\/api\/assets$/, async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: 'upload-ref',
+          kind: 'upload',
+          title: 'car.png',
+          prompt: '',
+          path: '/tmp/car.png',
+          url: '/assets/uploads/car.png',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'game-ref',
+          kind: 'game',
+          title: '前のゲーム',
+          prompt: '前のゲーム',
+          path: '/tmp/game/index.html',
+          url: '/assets/games/game/index.html',
+          thumbnailUrl: '/assets/games/game/thumbnail.png',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
+  });
+  await page.route(/\/api\/jobs$/, async (route) => route.fulfill({ json: [] }));
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'さんこう画像にする' }).first().click();
+  await page.getByRole('button', { name: 'さんこう画像にする' }).nth(1).click();
+
+  const panel = page.getByLabel('えらんださんこう画像');
+  await expect(panel.locator('img[src="/assets/uploads/car.png"]')).toBeVisible();
+  await expect(panel.locator('img[src="/assets/games/game/thumbnail.png"]')).toBeVisible();
+  await expect(page.getByText('2こ えらんでいます')).toBeVisible();
+});
+
 test('game cards show title and thumbnail when available', async ({ page }) => {
   await page.route('**/*', async (route) => {
     const url = route.request().url();
