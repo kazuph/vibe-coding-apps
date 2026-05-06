@@ -6,6 +6,7 @@ packages:
   - "fitness-bike-webbluetooth/react-app"
   - "hiragana-practice-app"
   - "kanji-learning-game"
+  - "kid-codex-studio"
   - "lesson-booking"
   - "tools/agentos-dev"
   - "tui-twitter-client"
