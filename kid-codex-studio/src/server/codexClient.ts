@@ -283,7 +283,8 @@ Requirements:
 - If any reference image paths are listed, pass them to fal_seedance_video as imagePaths.
 - Treat selected images as visual references for the subject, style, colors, and identity, not as first or last frames.
 - Write the tool prompt as a complete 15-second story with clear kishotenketsu structure: introduction, development, twist or change, and satisfying ending.
-- Include simple synchronized sound direction in Japanese by default: Japanese child-friendly narration, Japanese character voice lines or cheering, ambient sound, action sounds, and child-safe expressive audio. Do not use English speech unless explicitly requested.
+- Use a polished adventure-anime or energetic hobby-anime tone for elementary-school kids. Keep it child-safe, but do not make it preschool TV, babyish, overly cute, or cheerleader-like.
+- Include synchronized sound direction in Japanese by default: natural short Japanese dialogue, light narration only when useful, ambient sound, and action sound effects. Do not use English speech unless explicitly requested.
 - The fal tool is already configured to use Seedance 2.0 Fast Reference-to-Video with 480p, 15 seconds, and generated audio.
 - Do not invent unrelated Disney, movie, theme-park, or copyrighted franchise scenes unless explicitly present in the selected reference and prompt.`;
   }
