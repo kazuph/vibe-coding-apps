@@ -29,6 +29,29 @@ test('game creation requires a selected image asset', async ({ page, request }) 
   await expect(await res.json()).toMatchObject({ error: 'ゲームはライブラリの画像を1つ以上えらんでください' });
 });
 
+test('reload restores server-side running jobs', async ({ page }) => {
+  const jobs = [
+    {
+      id: 'job-visible-after-reload',
+      mode: 'image',
+      prompt: 'リロードしても見えるジョブ',
+      status: 'running',
+      message: 'まだ作っています'
+    }
+  ];
+  await page.route('**/api/jobs', async (route) => {
+    await route.fulfill({ json: jobs });
+  });
+  await page.route('**/api/jobs/job-visible-after-reload', async (route) => {
+    await route.fulfill({ json: jobs[0] });
+  });
+
+  await page.goto('/');
+  await expect(page.getByText('まだ作っています')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('まだ作っています')).toBeVisible();
+});
+
 test('server health is reachable through Vite proxy', async ({ request }) => {
   const res = await request.get('/api/health');
   expect(res.ok()).toBeTruthy();

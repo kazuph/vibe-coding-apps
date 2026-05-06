@@ -62,6 +62,7 @@ function App() {
 
   useEffect(() => {
     void refreshAssets();
+    void refreshJobs();
   }, []);
 
   const activeJobIds = useMemo(
@@ -97,6 +98,11 @@ function App() {
   async function refreshAssets() {
     const res = await fetch('/api/assets');
     if (res.ok) setAssets(await res.json());
+  }
+
+  async function refreshJobs() {
+    const res = await fetch('/api/jobs');
+    if (res.ok) setJobs(((await res.json()) as Job[]).slice(0, 20));
   }
 
   async function uploadPhoto(file: File) {

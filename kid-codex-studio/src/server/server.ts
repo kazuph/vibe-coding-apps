@@ -136,6 +136,13 @@ app.post('/api/jobs', async (req, res) => {
   res.status(202).json(job);
 });
 
+app.get('/api/jobs', (_req, res) => {
+  const recentJobs = Array.from(jobs.values())
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 30);
+  res.json(recentJobs);
+});
+
 app.get('/api/jobs/:id', (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) {
