@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { charactersDir, generatedDir, gamesDir, libraryRoot, thumbsDir, uploadsDir, videosDir } from './paths.js';
+import { assetUrlFor, charactersDir, generatedDir, gamesDir, libraryRoot, thumbsDir, uploadsDir, videosDir } from './paths.js';
 
 export type AssetKind = 'upload' | 'image' | 'character' | 'game' | 'video';
 
@@ -37,7 +37,8 @@ export async function listAssets(): Promise<Asset[]> {
   await ensureStore();
   const raw = await fs.readFile(dbPath, 'utf8');
   const parsed = JSON.parse(raw) as { assets?: Asset[] };
-  return (parsed.assets ?? []).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const assets = await Promise.all((parsed.assets ?? []).map(enrichAsset));
+  return assets.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function addAsset(asset: Asset): Promise<Asset> {
@@ -46,4 +47,37 @@ export async function addAsset(asset: Asset): Promise<Asset> {
   assets.unshift(asset);
   await fs.writeFile(dbPath, JSON.stringify({ assets }, null, 2));
   return asset;
+}
+
+async function enrichAsset(asset: Asset): Promise<Asset> {
+  if (asset.kind !== 'game') return asset;
+
+  const gameDir = path.dirname(asset.path);
+  const enriched = { ...asset };
+  const metaPath = path.join(gameDir, 'game-meta.json');
+
+  try {
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as { title?: unknown; thumbnail?: unknown };
+    if (typeof meta.title === 'string' && meta.title.trim() && enriched.title === 'ゲーム') {
+      enriched.title = meta.title.trim();
+    }
+    if (typeof meta.thumbnail === 'string' && meta.thumbnail.trim()) {
+      const thumbnailPath = path.join(gameDir, meta.thumbnail);
+      await fs.access(thumbnailPath);
+      enriched.thumbnailUrl = assetUrlFor(thumbnailPath);
+      return enriched;
+    }
+  } catch {
+    // Existing game bundles may predate metadata.
+  }
+
+  const thumbnailPath = path.join(gameDir, 'thumbnail.png');
+  try {
+    await fs.access(thumbnailPath);
+    enriched.thumbnailUrl = assetUrlFor(thumbnailPath);
+  } catch {
+    // Older game bundles may not have thumbnails yet.
+  }
+
+  return enriched;
 }
