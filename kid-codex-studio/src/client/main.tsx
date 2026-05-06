@@ -10,6 +10,7 @@ type Asset = {
   prompt: string;
   path: string;
   url: string;
+  thumbnailUrl?: string;
   createdAt: string;
 };
 
@@ -270,7 +271,7 @@ function App() {
                 {asset.kind === 'video' ? (
                   <video src={asset.url} muted playsInline />
                 ) : asset.kind === 'game' ? (
-                  <span className="game-tile"><Play size={28} /></span>
+                  asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" /> : <span className="game-tile"><Play size={28} /></span>
                 ) : (
                   <img src={asset.url} alt="" />
                 )}
@@ -529,7 +530,7 @@ function isReferenceable(asset: Asset) {
 
 function assetLabel(asset: Asset) {
   if (asset.kind === 'character') return 'キャラ';
-  if (asset.kind === 'game') return 'ゲーム';
+  if (asset.kind === 'game') return asset.title || 'ゲーム';
   if (asset.kind === 'video') return 'どうが';
   if (asset.kind === 'upload') return 'アップロード';
   return asset.title;

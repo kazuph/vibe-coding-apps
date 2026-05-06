@@ -18,7 +18,7 @@ export type CodexJobInput = {
 
 export type CodexJobResult = {
   text: string;
-  assets: Array<{ kind: 'image' | 'character' | 'game' | 'video'; path: string; url: string; title: string }>;
+  assets: Array<{ kind: 'image' | 'character' | 'game' | 'video'; path: string; url: string; title: string; thumbnailUrl?: string }>;
 };
 
 const dynamicTools = [
@@ -286,6 +286,8 @@ Requirements:
 - If the smoke test finds console errors, a blank canvas, missing selected asset usage, missing HUD, or broken input, fix the game and rerun the smoke test.
 - Save ${gameDir}/playtest-report.json with {"passed":true,"checked":["boot","selected-asset-visible","main-input","hud","restart-or-recovery","desktop-viewport","mobile-viewport"]} only after it passes.
 - Save ${gameDir}/playtest-screenshot.png from the passing run.
+- Save ${gameDir}/thumbnail.png as a clear 16:9 visual thumbnail from the passing playable state, not a blank title screen.
+- Save ${gameDir}/game-meta.json with {"title":"<short descriptive Japanese title>","description":"<one sentence>","version":"${this.gameTitle}","thumbnail":"thumbnail.png"}. The title must describe the actual game, not just "ゲーム".
 - The game must be playable directly when opened from /assets/games/.../index.html in an iframe.
 - At the end, return the exact local path ${gameDir}/index.html.`;
     }
@@ -329,8 +331,14 @@ Requirements:
     if (mode === 'game') {
       const indexPath = await this.findGameIndexPath(items);
       if (indexPath) {
-        await this.validateGeneratedGame(indexPath);
-        assets.push({ kind: 'game', path: indexPath, url: assetUrlFor(indexPath), title: this.gameTitle });
+        const gameMeta = await this.validateGeneratedGame(indexPath);
+        assets.push({
+          kind: 'game',
+          path: indexPath,
+          url: assetUrlFor(indexPath),
+          title: gameMeta.title,
+          thumbnailUrl: assetUrlFor(gameMeta.thumbnailPath)
+        });
       }
     }
     return { text: this.transcript.trim(), assets };
@@ -460,6 +468,14 @@ Save the nine final row strip PNGs under ${generatedDir}.`;
     if (this.selectedGameAssetUrls.length > 0 && !this.selectedGameAssetUrls.some((url) => html.includes(url))) {
       throw new Error('ゲームが選択アセットを参照していません。');
     }
-    await fs.access(path.join(path.dirname(indexPath), 'playtest-screenshot.png'));
+    const gameDir = path.dirname(indexPath);
+    await fs.access(path.join(gameDir, 'playtest-screenshot.png'));
+    const metaPath = path.join(gameDir, 'game-meta.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as { title?: string; thumbnail?: string };
+    const title = String(meta.title ?? '').trim();
+    if (!title || title === 'ゲーム') throw new Error('ゲームの内容がわかるタイトルが必要です。');
+    const thumbnailPath = path.join(gameDir, meta.thumbnail || 'thumbnail.png');
+    await fs.access(thumbnailPath);
+    return { title, thumbnailPath };
   }
 }

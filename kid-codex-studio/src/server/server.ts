@@ -77,7 +77,18 @@ app.get('/api/assets/:id/detail', async (req, res) => {
       return { name, path: filePath, url: assetUrlFor(filePath) };
     });
   } else if (asset.kind === 'game') {
-    detail.files = [{ name: 'index.html', path: asset.path, url: asset.url }];
+    const gameDir = path.dirname(asset.path);
+    const files = [{ name: 'index.html', path: asset.path, url: asset.url }];
+    for (const name of ['game-meta.json', 'thumbnail.png', 'playtest-report.json', 'playtest-screenshot.png']) {
+      const filePath = path.join(gameDir, name);
+      try {
+        await fs.access(filePath);
+        files.push({ name, path: filePath, url: assetUrlFor(filePath) });
+      } catch {
+        // Older game bundles may not have metadata yet.
+      }
+    }
+    detail.files = files;
   } else {
     detail.files = [{ name: path.basename(asset.path), path: asset.path, url: asset.url }];
   }

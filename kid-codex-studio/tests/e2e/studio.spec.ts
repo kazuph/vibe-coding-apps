@@ -53,7 +53,7 @@ test('reload restores server-side running jobs', async ({ page }) => {
 });
 
 test('game assets can be selected as upgrade references', async ({ page }) => {
-  await page.route('**/api/assets', async (route) => {
+  await page.route(/\/api\/assets$/, async (route) => {
     await route.fulfill({
       json: [
         {
@@ -68,12 +68,44 @@ test('game assets can be selected as upgrade references', async ({ page }) => {
       ]
     });
   });
-  await page.route('**/api/jobs', async (route) => route.fulfill({ json: [] }));
+  await page.route(/\/api\/jobs$/, async (route) => route.fulfill({ json: [] }));
 
   await page.goto('/');
   await page.getByRole('button', { name: 'ゲームをつくる' }).click();
   await page.getByRole('button', { name: 'さんこう画像にする' }).click();
   await expect(page.getByText('1こ えらんでいます')).toBeVisible();
+});
+
+test('game cards show title and thumbnail when available', async ({ page }) => {
+  await page.route('**/*', async (route) => {
+    const url = route.request().url();
+    if (url.includes('/api/assets')) {
+      await route.fulfill({
+        json: [
+        {
+          id: 'game-with-thumb',
+          kind: 'game',
+          title: '星あつめレース',
+          prompt: '星を集める',
+          path: '/tmp/game/index.html',
+          url: '/assets/games/game/index.html',
+          thumbnailUrl: '/assets/games/game/thumbnail.png',
+          createdAt: new Date().toISOString()
+        }
+        ]
+      });
+      return;
+    }
+    if (url.includes('/api/jobs')) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await expect(page.getByText('星あつめレース')).toBeVisible();
+  await expect(page.locator('.asset-main img[src="/assets/games/game/thumbnail.png"]')).toBeVisible();
 });
 
 test('server health is reachable through Vite proxy', async ({ request }) => {

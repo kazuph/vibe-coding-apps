@@ -11,6 +11,7 @@ export type Asset = {
   prompt: string;
   path: string;
   url: string;
+  thumbnailUrl?: string;
   createdAt: string;
 };
 
