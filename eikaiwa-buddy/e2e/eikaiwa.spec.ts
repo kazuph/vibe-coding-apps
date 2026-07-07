@@ -6,7 +6,9 @@ test.describe("eikaiwa-buddy v2 real Gemini flow", () => {
     test.setTimeout(360_000);
     const feature = "eikaiwa-buddy";
     await page.goto("/");
-    await expect(page.getByText("コーチとの会話")).toBeVisible();
+    await expect(page.getByRole("button", { name: "新しく作る" })).toBeVisible();
+    await expect(page.getByLabel("セッション履歴")).toBeVisible();
+    await expect(page.getByPlaceholder("日本語で話したいことを入力... Shift+Enterで改行")).toBeVisible();
     await expect(page.locator(".english")).toHaveCount(0);
     await seedUserContext(page, "job", "エンジニア");
 

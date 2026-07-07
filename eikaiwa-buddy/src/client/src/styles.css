@@ -22,18 +22,31 @@ nav { flex: 1; display: flex; justify-content: center; gap: 10px; }
 .nav.active { background: #e8f6f6; color: #007f83; }
 .streak { border-color: #e4ecef; background: #fff; }
 
-.layout { display: grid; grid-template-columns: 376px minmax(440px, 1fr) 360px; min-height: calc(100vh - 68px); }
-.coach-panel, .practice-panel, .progress-panel { padding: 20px; }
-.coach-panel { border-right: 1px solid #dde6ea; background: #fbfdfd; }
+.layout { display: grid; grid-template-columns: 292px minmax(460px, 1fr) 340px; min-height: calc(100vh - 68px); }
+.app-sidebar, .conversation-panel, .progress-panel { padding: 20px; }
+.app-sidebar { border-right: 1px solid #dde6ea; background: #fbfdfd; display: grid; grid-template-rows: auto 1fr auto; gap: 16px; min-height: calc(100vh - 68px); }
+.new-chat-button { border: 1px solid #cfe4e7; background: #fff; border-radius: 8px; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 850; color: #007f83; }
+.session-list { min-height: 0; display: grid; grid-template-rows: auto 1fr; gap: 10px; }
+.session-list h2 { font-size: 14px; color: #52616d; }
+.session-list > div { overflow: auto; display: grid; align-content: start; gap: 8px; padding-right: 2px; }
+.session-list button, .sidebar-actions button { border: 1px solid transparent; background: transparent; border-radius: 8px; color: #26333e; text-align: left; padding: 10px 11px; display: grid; gap: 4px; }
+.session-list button:hover, .sidebar-actions button:hover { background: #eef7f8; border-color: #dcebed; }
+.session-list button.active { background: #e4f5f5; border-color: #bfe1e3; }
+.session-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-list span { color: #65737e; font-size: 12px; }
+.sidebar-actions { border-top: 1px solid #e6eef1; padding-top: 12px; display: grid; gap: 6px; }
+.sidebar-actions button { display: inline-flex; align-items: center; gap: 8px; font-weight: 750; }
 .progress-panel { border-left: 1px solid #dde6ea; display: grid; align-content: start; gap: 14px; }
 .panel-title { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 18px; }
 h1, h2 { margin: 0; letter-spacing: 0; }
 h1 { font-size: 20px; }
 h2 { font-size: 18px; }
 .online { border: 1px solid #dfe8e9; border-radius: 999px; padding: 7px 12px; color: #16805f; background: #fff; font-size: 12px; font-weight: 800; }
-.chat-log { display: grid; gap: 12px; max-height: 360px; overflow: auto; padding-right: 4px; }
+.conversation-panel { min-height: calc(100vh - 68px); display: grid; grid-template-rows: 1fr auto; gap: 16px; background: #fff; }
+.conversation-stream { min-height: 0; overflow: auto; display: grid; align-content: start; gap: 18px; padding-right: 4px; }
+.chat-log { display: grid; gap: 12px; }
 .bubble { border: 1px solid #dfe8ed; border-radius: 8px; background: #fff; padding: 12px 14px; line-height: 1.65; }
-.bubble.learner { background: #e6f7f6; border: 0; margin-left: 42px; }
+.bubble.learner { background: #e6f7f6; border: 0; margin-left: min(72px, 18%); }
 .bubble strong { display: block; font-size: 12px; margin-bottom: 4px; }
 .bubble p { margin: 0; }
 .topic-picker { display: grid; gap: 10px; margin-top: 18px; }
@@ -43,9 +56,10 @@ h2 { font-size: 18px; }
 .topic-grid button:hover { border-color: #008b8f; color: #007f83; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .chip-row button { border: 1px solid #bee0df; background: #eefafa; color: #006f72; border-radius: 999px; padding: 9px 12px; font-weight: 800; }
-.chat-input { display: grid; grid-template-columns: 1fr 44px; gap: 8px; margin-top: 18px; }
-.chat-input input { border: 1px solid #dce6ea; border-radius: 8px; min-height: 50px; padding: 0 14px; }
-.chat-input button { border: 0; border-radius: 8px; background: #008b8f; color: white; display: grid; place-items: center; }
+.composer-wrap { border-top: 1px solid #e6eef1; padding-top: 12px; background: #fff; }
+.composer { display: grid; grid-template-columns: 1fr 46px; gap: 8px; align-items: end; }
+.composer textarea { width: 100%; max-height: 180px; resize: none; border: 1px solid #cfdfe3; border-radius: 8px; min-height: 52px; padding: 14px 16px; line-height: 1.55; }
+.composer button { border: 0; border-radius: 8px; width: 46px; height: 46px; background: #008b8f; color: white; display: grid; place-items: center; }
 
 .practice-panel { display: grid; align-content: start; gap: 22px; }
 .mode-tabs { display: inline-flex; width: fit-content; border: 1px solid #dce6ea; border-radius: 8px; overflow: hidden; background: #fff; }
@@ -130,14 +144,17 @@ progress { width: 100%; height: 12px; accent-color: #008b8f; }
   .topbar { gap: 12px; }
   nav { display: none; }
   .layout { grid-template-columns: 1fr; }
-  .coach-panel, .progress-panel { border: 0; }
+  .app-sidebar { min-height: auto; border-right: 0; border-bottom: 1px solid #dde6ea; grid-template-rows: auto auto auto; }
+  .session-list > div { max-height: 180px; }
+  .conversation-panel { min-height: 720px; }
+  .progress-panel { border: 0; }
   .progress-panel { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
   .topbar { height: auto; padding: 14px; flex-wrap: wrap; }
   .brand { min-width: 0; width: 100%; }
-  .coach-panel, .practice-panel, .progress-panel { padding: 14px; }
+  .app-sidebar, .conversation-panel, .progress-panel { padding: 14px; }
   .progress-panel { grid-template-columns: 1fr; }
   .topic-grid { grid-template-columns: 1fr; }
   .mode-tabs { width: 100%; }

@@ -115,6 +115,16 @@ export interface SessionPayload {
   progress: ProgressPayload;
 }
 
+export interface SessionSummary {
+  id: string;
+  title: string;
+  topic: string | null;
+  phase: AppState;
+  updated_at: string;
+  average_score: number | null;
+  attempts: number;
+}
+
 export interface ChatMessage {
   role: "coach" | "learner";
   text: string;

@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BookOpen, Check, Flame, History, Keyboard, Loader2, Mic, Play, RefreshCw, Save, Send, Settings, Sparkles, Volume2 } from "lucide-react";
-import type { AppState, AttemptEvaluation, NextStep, Phrase, ProgressPayload, ScriptSentencePayload, SessionPayload, VariantStyle, WordFeedback } from "../../shared/types";
+import { BookOpen, Check, Flame, History, Keyboard, Loader2, Mic, Play, Plus, RefreshCw, Save, Send, Settings, Sparkles, UserRound, Volume2 } from "lucide-react";
+import type { AppState, AttemptEvaluation, NextStep, Phrase, ProgressPayload, ScriptSentencePayload, SessionPayload, SessionSummary, VariantStyle, WordFeedback } from "../../shared/types";
 import { encodeAudioBufferToWav16kMono } from "./audio/wav";
 import "./styles.css";
 
 type LoadState = "loading" | "ready" | "error";
 type AppSession = SessionPayload["session"];
+type SessionsPayload = { sessions: SessionSummary[]; active_session_id?: string | null };
 
 function App() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -14,6 +15,7 @@ function App() {
   const [session, setSession] = useState<AppSession | null>(null);
   const [progress, setProgress] = useState<ProgressPayload | null>(null);
   const [message, setMessage] = useState("");
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [draftText, setDraftText] = useState("");
   const [busy, setBusy] = useState(false);
   const [recordingPhase, setRecordingPhase] = useState<"idle" | "recording" | "submitting">("idle");
@@ -23,7 +25,17 @@ function App() {
   const chunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
-    startSession().catch((err: Error) => {
+    async function loadInitialSession() {
+      setLoadState("loading");
+      const payload = await api<SessionPayload>("/api/session/start", { method: "POST" });
+      const list = await api<SessionsPayload>("/api/sessions", { method: "GET" });
+      setSession(payload.session);
+      setProgress(payload.progress);
+      setEvaluation(payload.session.latest_evaluation);
+      setSessions(list.sessions);
+      setLoadState("ready");
+    }
+    loadInitialSession().catch((err: Error) => {
       setError(err.message);
       setLoadState("error");
     });
@@ -34,13 +46,50 @@ function App() {
     if (draft?.length) setDraftText(draft.join("\n"));
   }, [session?.script?.id, session?.script?.interview?.draft_sentences_ja]);
 
-  async function startSession() {
-    setLoadState("loading");
-    const payload = await api<SessionPayload>("/api/session/start", { method: "POST" });
-    setSession(payload.session);
-    setProgress(payload.progress);
-    setEvaluation(payload.session.latest_evaluation);
-    setLoadState("ready");
+  async function refreshSessions() {
+    const payload = await api<SessionsPayload>("/api/sessions", { method: "GET" });
+    setSessions(payload.sessions);
+  }
+
+  async function createNewSession() {
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = await api<{ session: SessionPayload; sessions: SessionSummary[] }>("/api/session/new", { method: "POST" });
+      setSession(payload.session.session);
+      setProgress(payload.session.progress);
+      setEvaluation(payload.session.session.latest_evaluation);
+      setDraftText("");
+      setMessage("");
+      setSessions(payload.sessions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "新しい会話を作れませんでした。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function switchSession(id: string) {
+    if (id === session?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = await api<{ session: SessionPayload; sessions: SessionSummary[] }>("/api/session/switch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      setSession(payload.session.session);
+      setProgress(payload.session.progress);
+      setEvaluation(payload.session.session.latest_evaluation);
+      setDraftText(payload.session.session.script?.interview?.draft_sentences_ja.join("\n") ?? "");
+      setMessage("");
+      setSessions(payload.sessions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "会話を切り替えられませんでした。");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function sendChat(text: string) {
@@ -58,6 +107,7 @@ function App() {
       setProgress(response.session.progress);
       setEvaluation(null);
       setMessage("");
+      await refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "会話の送信に失敗しました。");
     } finally {
@@ -246,55 +296,53 @@ function App() {
       </header>
 
       <main className="layout">
-        <aside className="coach-panel">
-          <PanelTitle title="コーチとの会話" online />
-          <div className="chat-log">
-            {(session?.chat_history ?? []).map((item, index) => (
-              <div key={`${item.created_at}-${index}`} className={`bubble ${item.role}`}>
-                <strong>{item.role === "coach" ? "Kai" : "あなた"}</strong>
-                <p>{item.text}</p>
-              </div>
-            ))}
+        <aside className="app-sidebar">
+          <button className="new-chat-button" onClick={() => void createNewSession()} disabled={busy}><Plus size={18} />新しく作る</button>
+          <SessionList activeId={session?.id ?? null} sessions={sessions} onPick={(id) => void switchSession(id)} />
+          <div className="sidebar-actions">
+            <button><UserRound size={17} />Kaiに自分のことを教える</button>
+            <button><Settings size={17} />設定</button>
           </div>
-          {phase === "interview" && chips.length > 0 && (
-            <div className="chip-row" aria-label="回答チップ">
-              {chips.map((chip) => <button key={chip} disabled={busy} onClick={() => sendChat(chip)}>{chip}</button>)}
-            </div>
-          )}
-          <TopicGrid onPick={(topic) => sendChat(topic)} disabled={busy} />
-          <form className="chat-input" onSubmit={(event) => { event.preventDefault(); void sendChat(message); }}>
-            <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="日本語で話したいことを入力..." />
-            <button type="submit" disabled={busy || !message.trim()}><Send size={18} /></button>
-          </form>
         </aside>
 
-        <section className="practice-panel">
-          <div className="mode-tabs">
-            <button className="selected"><Sparkles size={18} />フリートーク</button>
-            <button>シャドーイング</button>
-            <button>ロールプレイ</button>
-          </div>
+        <section className="conversation-panel">
+          <div className="conversation-stream">
+            <div className="mode-tabs">
+              <button className="selected"><Sparkles size={18} />フリートーク</button>
+              <button>シャドーイング</button>
+              <button>ロールプレイ</button>
+            </div>
+            <ChatLog history={session?.chat_history ?? []} />
+            {phase === "topic" && !session?.script_id && <TopicGrid onPick={(topic) => sendChat(topic)} disabled={busy} />}
 
-          {phase === "draft" ? (
-            <DraftStage value={draftText} busy={busy} onChange={setDraftText} onSave={() => void saveDraft()} onApprove={() => void approveDraft()} />
-          ) : phase === "variants" ? (
-            <VariantsStage session={session} busy={busy} onSelect={(sentenceId, style) => void selectVariant(sentenceId, style)} />
-          ) : phase === "practice" || phase === "feedback" ? (
-            <PracticeStage
-              busy={busy}
-              evaluation={evaluation}
-              phrase={phrase}
-              recordingActive={recordingActive}
-              recordingPhase={recordingPhase}
-              ttsBusy={ttsBusy}
-              words={words}
-              onPlayTts={playTts}
-              onToggleRecording={toggleRecording}
-            />
-          ) : (
-            <InterviewStage phase={phase} busy={busy} />
-          )}
-          {error && <div className="error-banner">{error}</div>}
+            {phase === "draft" ? (
+              <DraftStage value={draftText} busy={busy} onChange={setDraftText} onSave={() => void saveDraft()} onApprove={() => void approveDraft()} />
+            ) : phase === "variants" ? (
+              <VariantsStage session={session} busy={busy} onSelect={(sentenceId, style) => void selectVariant(sentenceId, style)} />
+            ) : phase === "practice" || phase === "feedback" ? (
+              <PracticeStage
+                busy={busy}
+                evaluation={evaluation}
+                phrase={phrase}
+                recordingActive={recordingActive}
+                recordingPhase={recordingPhase}
+                ttsBusy={ttsBusy}
+                words={words}
+                onPlayTts={playTts}
+                onToggleRecording={toggleRecording}
+              />
+            ) : (
+              <InterviewStage phase={phase} busy={busy} />
+            )}
+            {error && <div className="error-banner">{error}</div>}
+          </div>
+          <Composer
+            busy={busy}
+            chips={phase === "interview" ? chips : []}
+            message={message}
+            onChange={setMessage}
+            onSend={(text) => void sendChat(text)}
+          />
         </section>
 
         <aside className="progress-panel">
@@ -311,8 +359,87 @@ function Shell({ children }: { children: React.ReactNode }) {
   return <div className="app">{children}</div>;
 }
 
-function PanelTitle({ title, online }: { title: string; online?: boolean }) {
-  return <div className="panel-title"><h2>{title}</h2>{online && <span className="online">オンライン</span>}</div>;
+function SessionList({ activeId, sessions, onPick }: { activeId: string | null; sessions: SessionSummary[]; onPick: (id: string) => void }) {
+  return (
+    <section className="session-list" aria-label="セッション履歴">
+      <h2>セッション履歴</h2>
+      <div>
+        {sessions.map((item) => (
+          <button className={item.id === activeId ? "active" : ""} key={item.id} onClick={() => onPick(item.id)}>
+            <strong>{item.title}</strong>
+            <span>{formatSessionDate(item.updated_at)} · {phaseLabel(item.phase)}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ChatLog({ history }: { history: AppSession["chat_history"] }) {
+  return (
+    <section className="chat-log" aria-label="コーチとの会話">
+      {history.map((item, index) => (
+        <div key={`${item.created_at}-${index}`} className={`bubble ${item.role}`}>
+          <strong>{item.role === "coach" ? "Kai" : "あなた"}</strong>
+          <p>{item.text}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function Composer({
+  busy,
+  chips,
+  message,
+  onChange,
+  onSend
+}: {
+  busy: boolean;
+  chips: string[];
+  message: string;
+  onChange: (value: string) => void;
+  onSend: (value: string) => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const textarea = ref.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+  }, [message]);
+  const submit = () => {
+    const trimmed = message.trim();
+    if (!trimmed || busy) return;
+    onSend(trimmed);
+  };
+  return (
+    <div className="composer-wrap">
+      {chips.length > 0 && (
+        <div className="chip-row" aria-label="回答チップ">
+          {chips.map((chip) => <button key={chip} disabled={busy} onClick={() => onSend(chip)}>{chip}</button>)}
+        </div>
+      )}
+      <form className="composer" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+        <textarea
+          ref={ref}
+          value={message}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          rows={1}
+          placeholder="日本語で話したいことを入力... Shift+Enterで改行"
+        />
+        <button type="submit" disabled={busy || !message.trim()} aria-label="送信">
+          {busy ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
+        </button>
+      </form>
+    </div>
+  );
 }
 
 function TopicGrid({ onPick, disabled }: { onPick: (topic: string) => void; disabled: boolean }) {
@@ -332,7 +459,7 @@ function InterviewStage({ phase, busy }: { phase: AppState; busy: boolean }) {
     <section className="co-writing-stage">
       <span className="label">内容すり合わせ</span>
       <h1>{phase === "topic" ? "まずは話したい場面を選びます" : "Kaiと日本語で言いたい内容を作っています"}</h1>
-      <p>{busy ? "Kaiが次の質問を考えています..." : "左のチップか入力欄で答えてください。ここではまだ英語は出しません。"}</p>
+      <p>{busy ? "Kaiが次の質問を考えています..." : "下のチップか入力欄で答えてください。ここではまだ英語は出しません。"}</p>
     </section>
   );
 }
@@ -473,7 +600,7 @@ function PhraseCard({ phrase }: { phrase: Phrase }) {
 }
 
 function EmptyPhrase({ busy }: { busy: boolean }) {
-  return <div className="empty">{busy ? "Kaiが英文を考えています..." : "左のトピックを選ぶか、日本語で話したい内容を送ってください。"}</div>;
+  return <div className="empty">{busy ? "Kaiが英文を考えています..." : "下の入力欄から、日本語で話したい内容を送ってください。"}</div>;
 }
 
 function HeardWords({ phrase, evaluation, words }: { phrase: string; evaluation: AttemptEvaluation | null; words: WordFeedback[] }) {
@@ -528,6 +655,16 @@ async function api<T>(path: string, init: RequestInit): Promise<T> {
 
 function nextStepLabel(step: NextStep): string {
   return ({ retry: "もう一度練習", slow_practice: "ゆっくり練習", next_phrase: "次の文章へ", level_up: "レベルアップ候補" })[step];
+}
+
+function phaseLabel(phase: AppState): string {
+  return ({ topic: "新規", propose: "提案", interview: "すり合わせ", draft: "下書き", variants: "英語候補", practice: "練習", feedback: "結果", script_done: "完了" })[phase];
+}
+
+function formatSessionDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 function styleLabel(style: VariantStyle): string {

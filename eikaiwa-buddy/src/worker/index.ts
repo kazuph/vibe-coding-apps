@@ -4,7 +4,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { alignWords } from "../shared/alignment";
 import { average, decideNextStep, nextLevel } from "../shared/levels";
-import type { AttemptEvaluation, ChatMessage, EnglishVariant, InterviewCoachResponse, InterviewState, Phrase, ProgressPayload, ScriptPayload, ScriptSentencePayload, SessionPayload, UserContextFact, VariantStyle } from "../shared/types";
+import type { AttemptEvaluation, ChatMessage, EnglishVariant, InterviewCoachResponse, InterviewState, Phrase, ProgressPayload, ScriptPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UserContextFact, VariantStyle } from "../shared/types";
 import { evaluatePronunciation, generateVariantBatch, interviewCoach, synthesizeSpeech, type GeminiEnv } from "./gemini";
 
 type Bindings = GeminiEnv & {
@@ -20,21 +20,35 @@ app.post("/api/session/start", async (c) => {
   const user = await ensureUser(c);
   let session = await getOpenSession(c.env.DB, user.id);
   if (!session) {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const history: ChatMessage[] = [{ role: "coach", text: "今日はどんな場面の英語を一緒に作ろう？左のボタンから選んでね。", created_at: now }];
-    await c.env.DB.prepare(
-      "INSERT INTO sessions (id, user_id, topic, state, phase, current_phrase_json, chat_history_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, user.id, null, "topic", "topic", null, JSON.stringify(history), now, now).run();
-    session = await getSession(c.env.DB, id);
+    session = await createSession(c.env.DB, user.id);
   } else if (!session.script_id && (session.state !== "topic" || session.current_phrase_json)) {
     const now = new Date().toISOString();
-    const history: ChatMessage[] = [{ role: "coach", text: "今日はどんな場面の英語を一緒に作ろう？左のボタンから選んでね。", created_at: now }];
+    const history: ChatMessage[] = [{ role: "coach", text: openingMessage(), created_at: now }];
     await c.env.DB.prepare("UPDATE sessions SET state = ?, phase = ?, topic = ?, current_phrase_json = ?, chat_history_json = ?, updated_at = ? WHERE id = ?")
       .bind("topic", "topic", null, null, JSON.stringify(history), now, session.id).run();
     session = await getSession(c.env.DB, session.id);
   }
   return c.json(await buildSessionPayload(c.env.DB, user, session));
+});
+
+app.get("/api/sessions", async (c) => {
+  const user = await ensureUser(c);
+  return c.json({ sessions: await sessionSummaries(c.env.DB, user.id), active_session_id: (await getOpenSession(c.env.DB, user.id))?.id ?? null });
+});
+
+app.post("/api/session/new", async (c) => {
+  const user = await ensureUser(c);
+  const session = await createSession(c.env.DB, user.id);
+  return c.json({ session: await buildSessionPayload(c.env.DB, user, session), sessions: await sessionSummaries(c.env.DB, user.id) });
+});
+
+app.post("/api/session/switch", async (c) => {
+  const user = await ensureUser(c);
+  const body = await c.req.json<{ id: string }>();
+  const session = await c.env.DB.prepare("SELECT * FROM sessions WHERE id = ? AND user_id = ?").bind(body.id, user.id).first<any>();
+  if (!session) return c.json({ error: "セッションが見つかりません。" }, 404);
+  await c.env.DB.prepare("UPDATE users SET active_session_id = ? WHERE id = ?").bind(session.id, user.id).run();
+  return c.json({ session: await buildSessionPayload(c.env.DB, user, session), sessions: await sessionSummaries(c.env.DB, user.id) });
 });
 
 app.post("/api/chat", async (c) => {
@@ -56,7 +70,10 @@ app.post("/api/chat", async (c) => {
     const result = await continueInterview(c, user, session, message, history);
     return c.json(result);
   }
-  return c.json({ error: "いまはチャットで進めるフェーズではありません。" }, 400);
+  history.push({ role: "coach", text: "受け取りました。下書きや練習内容に反映したいときは、中央のカードを編集・選択してください。", created_at: new Date().toISOString() });
+  await c.env.DB.prepare("UPDATE sessions SET chat_history_json = ?, updated_at = ? WHERE id = ?")
+    .bind(JSON.stringify(history), new Date().toISOString(), session.id).run();
+  return c.json({ session: await buildSessionPayload(c.env.DB, user, await getSession(c.env.DB, session.id)) });
 });
 
 app.post("/api/script/draft", async (c) => {
@@ -274,8 +291,29 @@ async function ensureUser(c: Context<{ Bindings: Bindings }>): Promise<{ id: str
   return { id, level: 1 };
 }
 
+function openingMessage(): string {
+  return "今日はどんな場面の英語を一緒に作ろう？カードから選ぶか、下の入力欄にそのまま書いてね。";
+}
+
+async function createSession(db: D1Database, userId: string): Promise<any> {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const history: ChatMessage[] = [{ role: "coach", text: openingMessage(), created_at: now }];
+  await db.prepare(
+    "INSERT INTO sessions (id, user_id, topic, state, phase, current_phrase_json, chat_history_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, userId, null, "topic", "topic", null, JSON.stringify(history), now, now).run();
+  await db.prepare("UPDATE users SET active_session_id = ? WHERE id = ?").bind(id, userId).run();
+  return getSession(db, id);
+}
+
 async function getOpenSession(db: D1Database, userId: string): Promise<any | null> {
-  return db.prepare("SELECT * FROM sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1").bind(userId).first();
+  const active = await db.prepare(
+    "SELECT s.* FROM users u JOIN sessions s ON s.id = u.active_session_id WHERE u.id = ? AND s.user_id = ?"
+  ).bind(userId, userId).first();
+  if (active) return active;
+  const latest = await db.prepare("SELECT * FROM sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1").bind(userId).first<any>();
+  if (latest) await db.prepare("UPDATE users SET active_session_id = ? WHERE id = ?").bind(latest.id, userId).run();
+  return latest;
 }
 
 async function getSession(db: D1Database, id: string): Promise<any> {
@@ -303,6 +341,40 @@ async function buildSessionPayload(db: D1Database, user: { id: string; level: nu
     },
     progress: await progress(db, user.id)
   };
+}
+
+async function sessionSummaries(db: D1Database, userId: string): Promise<SessionSummary[]> {
+  const rows = await db.prepare(
+    `SELECT
+      s.id,
+      s.topic,
+      s.phase,
+      s.state,
+      s.chat_history_json,
+      s.updated_at,
+      COUNT(a.id) AS attempts,
+      AVG(a.pronunciation_score) AS average_score
+    FROM sessions s
+    LEFT JOIN attempts a ON a.session_id = s.id
+    WHERE s.user_id = ?
+    GROUP BY s.id
+    ORDER BY s.updated_at DESC
+    LIMIT 30`
+  ).bind(userId).all<any>();
+  return rows.results.map((row) => {
+    const history = parseHistory(row.chat_history_json);
+    const firstLearner = history.find((item) => item.role === "learner")?.text ?? "";
+    const titleSource = row.topic || firstLearner || "新しい会話";
+    return {
+      id: row.id,
+      title: titleSource.length > 20 ? `${titleSource.slice(0, 20)}...` : titleSource,
+      topic: row.topic ?? null,
+      phase: row.phase ?? row.state,
+      updated_at: row.updated_at,
+      average_score: row.average_score == null ? null : Math.round(Number(row.average_score)),
+      attempts: Number(row.attempts ?? 0)
+    };
+  });
 }
 
 async function getScriptPayload(db: D1Database, scriptId: string): Promise<ScriptPayload | null> {
