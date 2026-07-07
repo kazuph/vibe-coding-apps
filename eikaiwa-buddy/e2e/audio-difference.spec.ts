@@ -32,7 +32,7 @@ async function runAttemptWithFixture(fixture: string, label: string): Promise<{ 
   await expect(page.locator(".score-gauge strong")).toHaveText(/\d+/, { timeout: 120_000 });
   await expect(page.locator(".word small").first()).not.toHaveText("未判定", { timeout: 120_000 });
   await expect(page.getByRole("button", { name: "録音を開始" })).toBeVisible();
-  await page.screenshot({ path: `.artifacts/eikaiwa-buddy/images/audio-${label}-feedback.png`, fullPage: true });
+  await page.screenshot({ path: `.artifacts/eikaiwa-buddy/images/audio-${label}-feedback.png`, fullPage: false });
   const text = (await page.locator(".score-gauge strong").textContent()) ?? "0";
   await browser.close();
   return { score: Number.parseInt(text, 10) };

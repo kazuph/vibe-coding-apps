@@ -12,7 +12,7 @@ button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .62; }
 
 .app { min-height: 100vh; background: linear-gradient(180deg, #ffffff 0%, #f7fafb 100%); }
-.topbar { height: 68px; display: flex; align-items: center; gap: 28px; padding: 0 22px; border-bottom: 1px solid #dde6ea; background: rgba(255,255,255,.9); position: sticky; top: 0; z-index: 3; }
+.topbar { height: 68px; display: flex; align-items: center; gap: 28px; padding: 0 22px; border-bottom: 1px solid #dde6ea; background: #fff; position: sticky; top: 0; z-index: 20; }
 .brand { font-weight: 850; font-size: 26px; line-height: 1; min-width: 260px; }
 .brand span { color: #16202b; }
 .brand { color: #078b8f; }
