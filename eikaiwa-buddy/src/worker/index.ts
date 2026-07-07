@@ -4,8 +4,8 @@ import { getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { alignWords } from "../shared/alignment";
 import { average, decideNextStep, nextLevel } from "../shared/levels";
-import type { AttemptEvaluation, ChatMessage, EnglishVariant, InterviewCoachResponse, InterviewState, Phrase, ProgressPayload, ScriptPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UserContextFact, VariantStyle } from "../shared/types";
-import { evaluatePronunciation, extractContextFacts, generateVariantBatch, interviewCoach, synthesizeSpeech, type GeminiEnv } from "./gemini";
+import type { AttemptEvaluation, ChatMessage, EnglishVariant, InterviewCoachResponse, InterviewState, Phrase, ProgressPayload, ScriptPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UsageCostSummary, UserContextFact, VariantStyle } from "../shared/types";
+import { evaluatePronunciation, extractContextFacts, generateVariantBatch, interviewCoach, synthesizeSpeech, type GeminiEnv, type GeminiUsage } from "./gemini";
 
 type Bindings = GeminiEnv & {
   DB: D1Database;
@@ -13,6 +13,12 @@ type Bindings = GeminiEnv & {
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+const MODEL_PRICES: Record<string, { input: number; output: number; audioInput: number }> = {
+  "gemini-3.5-flash": { input: 1.50, output: 9.00, audioInput: 1.50 },
+  "gemini-3.1-flash-lite": { input: 0.25, output: 1.50, audioInput: 0.50 },
+  "gemini-3.1-flash-tts": { input: 1.00, output: 20.00, audioInput: 0 }
+};
 
 app.use("/api/*", cors({ origin: (origin) => origin || "", credentials: true }));
 
@@ -57,12 +63,13 @@ app.get("/api/context", async (c) => {
 });
 
 app.post("/api/context/ingest", async (c) => {
-  await ensureUser(c);
+  const user = await ensureUser(c);
   const body = await c.req.json<{ text: string }>();
   const text = body.text?.trim();
   if (!text) return c.json({ error: "プロフィールや投稿文を入力してください。" }, 400);
   const extracted = await extractContextFacts(c.env, text);
-  return c.json({ facts: normalizeContextFacts(extracted.facts) });
+  await recordUsage(c.env.DB, user.id, "context_ingest", extracted.model, extracted.usage);
+  return c.json({ facts: normalizeContextFacts(extracted.data.facts), model: extracted.model });
 });
 
 app.put("/api/context", async (c) => {
@@ -137,7 +144,8 @@ app.post("/api/script/approve", async (c) => {
   if (sentences.length < 2 || sentences.length > 4) return c.json({ error: "ドラフトは2〜4文で承認してください。" }, 400);
 
   const batch = await generateVariantBatch(c.env, { level: user.level, topic: script.topic, sentences });
-  const normalized = normalizeVariantBatch(batch.sentences, sentences);
+  await recordUsage(c.env.DB, user.id, "variants", batch.model, batch.usage);
+  const normalized = normalizeVariantBatch(batch.data.sentences, sentences, batch.model);
   if (normalized.length !== sentences.length) return c.json({ error: "英語変種の生成結果が文数と一致しません。もう一度試してください。" }, 502);
 
   const now = new Date().toISOString();
@@ -191,15 +199,17 @@ app.post("/api/attempt", async (c) => {
 
   const scores = await recentScores(c.env.DB, session.id, 5);
   const gemini = await evaluatePronunciation(c.env, phrase, user.level, scores.length ? average(scores) : null, await audio.arrayBuffer());
-  const next = decideNextStep(gemini.pronunciation_score, scores);
+  await recordUsage(c.env.DB, user.id, "eval", gemini.model, gemini.usage);
+  const next = decideNextStep(gemini.data.pronunciation_score, scores);
   const evaluation: AttemptEvaluation = {
-    ...gemini,
-    words: alignWords(phrase, gemini.verbatim, gemini.words),
+    ...gemini.data,
+    model: gemini.model,
+    words: alignWords(phrase, gemini.data.verbatim, gemini.data.words),
     next_step: next
   };
   await c.env.DB.prepare(
-    "INSERT INTO attempts (session_id, script_sentence_id, phrase_en, verbatim, words_json, pronunciation_score, fluency_score, next_step) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(session.id, sentenceId, phrase, evaluation.verbatim, JSON.stringify(evaluation.words), evaluation.pronunciation_score, evaluation.fluency_score, evaluation.next_step).run();
+    "INSERT INTO attempts (session_id, script_sentence_id, phrase_en, verbatim, words_json, pronunciation_score, fluency_score, next_step, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(session.id, sentenceId, phrase, evaluation.verbatim, JSON.stringify(evaluation.words), evaluation.pronunciation_score, evaluation.fluency_score, evaluation.next_step, evaluation.model).run();
   await c.env.DB.prepare(
     "UPDATE script_sentences SET best_score = MAX(best_score, ?), practice_count = practice_count + 1 WHERE id = ?"
   ).bind(evaluation.pronunciation_score, sentenceId).run();
@@ -228,7 +238,7 @@ async function startInterview(
     "INSERT INTO scripts (id, user_id, topic, status, interview_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).bind(scriptId, user.id, topic, "interview", JSON.stringify(interview), now, now).run();
   const facts = await userFacts(c.env.DB, user.id);
-  const coachResult = await interviewCoach(c.env, {
+  const coach = await interviewCoach(c.env, {
     level: user.level,
     topic,
     facts,
@@ -239,9 +249,11 @@ async function startInterview(
     history: JSON.stringify(history.slice(-12)),
     learnerMessage: topic
   });
+  await recordUsage(c.env.DB, user.id, "chat", coach.model, coach.usage);
+  const coachResult = coach.data;
   if (coachResult.draft) return c.json({ error: "インタビュー開始時にドラフトが返りました。もう一度試してください。" }, 502);
   const nextInterview = mergeInterview(interview, coachResult, false);
-  history.push({ role: "coach", text: coachResult.message_ja, created_at: new Date().toISOString() });
+  history.push({ role: "coach", text: coachResult.message_ja, model: coach.model, created_at: new Date().toISOString() });
   await saveExtractedFacts(c.env.DB, user.id, coachResult);
   await c.env.DB.prepare("UPDATE scripts SET interview_json = ?, updated_at = ? WHERE id = ?")
     .bind(JSON.stringify(nextInterview), new Date().toISOString(), scriptId).run();
@@ -264,7 +276,7 @@ async function continueInterview(
   if (answeredTurns > script.interview.max_turns) return c.json({ error: "インタビューの上限に達しています。" }, 400);
   const mustDraft = answeredTurns >= script.interview.max_turns;
   const facts = await userFacts(c.env.DB, user.id);
-  const coachResult = await interviewCoach(c.env, {
+  const coach = await interviewCoach(c.env, {
     level: user.level,
     topic: script.topic,
     facts,
@@ -275,10 +287,12 @@ async function continueInterview(
     history: JSON.stringify(history.slice(-12)),
     learnerMessage: message
   });
+  await recordUsage(c.env.DB, user.id, "chat", coach.model, coach.usage);
+  const coachResult = coach.data;
   if (mustDraft && !coachResult.draft) return c.json({ error: "ドラフト生成に失敗しました。もう一度送信してください。" }, 502);
   const nextInterview = mergeInterview({ ...script.interview, turn_count: answeredTurns }, coachResult, Boolean(coachResult.draft));
   const phase = coachResult.draft ? "draft" : "interview";
-  history.push({ role: "coach", text: coachResult.message_ja, created_at: new Date().toISOString() });
+  history.push({ role: "coach", text: coachResult.message_ja, model: coach.model, created_at: new Date().toISOString() });
   await saveExtractedFacts(c.env.DB, user.id, coachResult);
   await c.env.DB.prepare("UPDATE scripts SET status = ?, interview_json = ?, updated_at = ? WHERE id = ? AND user_id = ?")
     .bind(coachResult.draft ? "draft" : "interview", JSON.stringify(nextInterview), new Date().toISOString(), session.script_id, user.id).run();
@@ -288,9 +302,11 @@ async function continueInterview(
 }
 
 app.post("/api/tts", async (c) => {
+  const user = await ensureUser(c);
   const body = await c.req.json<{ phrase: string; slow?: boolean }>();
   if (!body.phrase) return c.json({ error: "英文が必要です。" }, 400);
   const audio = await synthesizeSpeech(c.env, body.phrase, Boolean(body.slow));
+  await recordUsage(c.env.DB, user.id, "tts", audio.model, audio.usage);
   return new Response(audio.bytes, {
     headers: {
       "content-type": audio.mimeType,
@@ -302,6 +318,11 @@ app.post("/api/tts", async (c) => {
 app.get("/api/progress", async (c) => {
   const user = await ensureUser(c);
   return c.json(await progress(c.env.DB, user.id));
+});
+
+app.get("/api/usage", async (c) => {
+  const user = await ensureUser(c);
+  return c.json(await usageSummary(c.env.DB, user.id));
 });
 
 app.onError((err, c) => {
@@ -442,7 +463,7 @@ async function progress(db: D1Database, userId: string): Promise<ProgressPayload
 
 async function latestEvaluation(db: D1Database, sessionId: string): Promise<AttemptEvaluation | null> {
   const row = await db.prepare(
-    "SELECT verbatim, words_json, pronunciation_score, fluency_score, next_step FROM attempts WHERE session_id = ? ORDER BY created_at DESC LIMIT 1"
+    "SELECT verbatim, words_json, pronunciation_score, fluency_score, next_step, model FROM attempts WHERE session_id = ? ORDER BY created_at DESC LIMIT 1"
   ).bind(sessionId).first<any>();
   if (!row) return null;
   return {
@@ -452,7 +473,8 @@ async function latestEvaluation(db: D1Database, sessionId: string): Promise<Atte
     fluency_score: Number(row.fluency_score ?? 0),
     prosody_comment_ja: "",
     overall_advice_ja: "直近の録音評価を復元しました。",
-    next_step: row.next_step
+    next_step: row.next_step,
+    model: row.model ?? undefined
   };
 }
 
@@ -489,9 +511,10 @@ function normalizeDraftSentences(sentences: string[] | undefined): string[] {
 
 function normalizeVariantBatch(
   generated: Array<{ position: number; ja_text: string; variants: EnglishVariant[] }>,
-  sourceSentences: string[]
+  sourceSentences: string[],
+  model: string
 ): Array<{ position: number; ja_text: string; variants: EnglishVariant[] }> {
-  return sourceSentences.map((source, index) => {
+  const normalized: Array<{ position: number; ja_text: string; variants: EnglishVariant[] } | null> = sourceSentences.map((source, index) => {
     const position = index + 1;
     const item = generated.find((candidate) => Number(candidate.position) === position);
     if (!item) return null;
@@ -501,14 +524,16 @@ function normalizeVariantBatch(
     return {
       position,
       ja_text: source,
-      variants: variants.map((variant) => ({
+      variants: variants.map((variant): EnglishVariant => ({
         style: variant.style,
         en: variant.en.trim(),
         why_ja: variant.why_ja.trim(),
-        traps: (variant.traps ?? []).filter((trap) => trap.word && trap.tip_ja).slice(0, 3)
+        traps: (variant.traps ?? []).filter((trap) => trap.word && trap.tip_ja).slice(0, 3),
+        model
       }))
     };
-  }).filter((item): item is { position: number; ja_text: string; variants: EnglishVariant[] } => Boolean(item));
+  });
+  return normalized.filter((item): item is { position: number; ja_text: string; variants: EnglishVariant[] } => Boolean(item));
 }
 
 function phraseFromVariant(jaText: string, variant: EnglishVariant): Phrase {
@@ -516,8 +541,65 @@ function phraseFromVariant(jaText: string, variant: EnglishVariant): Phrase {
     en: variant.en,
     ja: jaText,
     why_ja: variant.why_ja,
-    pronunciation_tips_ja: variant.traps.map((trap) => `${trap.word}: ${trap.tip_ja}`)
+    pronunciation_tips_ja: variant.traps.map((trap) => `${trap.word}: ${trap.tip_ja}`),
+    model: variant.model
   };
+}
+
+async function recordUsage(db: D1Database, userId: string, kind: string, model: string, usage: GeminiUsage): Promise<void> {
+  await db.prepare(
+    "INSERT INTO api_usage (user_id, kind, model, input_tokens, output_tokens, audio_input_tokens) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(userId, kind, model, usage.input_tokens, usage.output_tokens, usage.audio_input_tokens).run();
+}
+
+async function usageSummary(db: D1Database, userId: string): Promise<UsageCostSummary> {
+  const rows = await db.prepare(
+    `SELECT model, kind,
+      SUM(input_tokens) AS input_tokens,
+      SUM(output_tokens) AS output_tokens,
+      SUM(audio_input_tokens) AS audio_input_tokens,
+      SUM(CASE WHEN date(created_at) = date('now') THEN input_tokens ELSE 0 END) AS today_input_tokens,
+      SUM(CASE WHEN date(created_at) = date('now') THEN output_tokens ELSE 0 END) AS today_output_tokens,
+      SUM(CASE WHEN date(created_at) = date('now') THEN audio_input_tokens ELSE 0 END) AS today_audio_input_tokens,
+      SUM(CASE WHEN strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now') THEN input_tokens ELSE 0 END) AS month_input_tokens,
+      SUM(CASE WHEN strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now') THEN output_tokens ELSE 0 END) AS month_output_tokens,
+      SUM(CASE WHEN strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now') THEN audio_input_tokens ELSE 0 END) AS month_audio_input_tokens
+    FROM api_usage
+    WHERE user_id = ?
+    GROUP BY model, kind
+    ORDER BY model, kind`
+  ).bind(userId).all<any>();
+  const breakdown = rows.results.map((row) => ({
+    model: String(row.model),
+    kind: String(row.kind),
+    input_tokens: Number(row.input_tokens ?? 0),
+    output_tokens: Number(row.output_tokens ?? 0),
+    audio_input_tokens: Number(row.audio_input_tokens ?? 0),
+    cost_usd: costForUsage(String(row.model), Number(row.input_tokens ?? 0), Number(row.output_tokens ?? 0), Number(row.audio_input_tokens ?? 0))
+  }));
+  const today = rows.results.reduce((sum, row) => sum + costForUsage(String(row.model), Number(row.today_input_tokens ?? 0), Number(row.today_output_tokens ?? 0), Number(row.today_audio_input_tokens ?? 0)), 0);
+  const month = rows.results.reduce((sum, row) => sum + costForUsage(String(row.model), Number(row.month_input_tokens ?? 0), Number(row.month_output_tokens ?? 0), Number(row.month_audio_input_tokens ?? 0)), 0);
+  const allTime = breakdown.reduce((sum, row) => sum + row.cost_usd, 0);
+  return {
+    totals: {
+      today_usd: roundUsd(today),
+      month_usd: roundUsd(month),
+      all_time_usd: roundUsd(allTime)
+    },
+    breakdown: breakdown.map((row) => ({ ...row, cost_usd: roundUsd(row.cost_usd) })),
+    tts_pricing: "configured",
+    note: "従量課金定価での換算値。無料枠適用時の実請求とは異なる場合があります。"
+  };
+}
+
+function costForUsage(model: string, inputTokens: number, outputTokens: number, audioInputTokens: number): number {
+  const price = MODEL_PRICES[model];
+  if (!price) return 0;
+  return ((inputTokens * price.input) + (outputTokens * price.output) + (audioInputTokens * price.audioInput)) / 1_000_000;
+}
+
+function roundUsd(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 async function userFacts(db: D1Database, userId: string, limit = 12): Promise<UserContextFact[]> {

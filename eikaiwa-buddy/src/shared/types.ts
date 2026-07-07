@@ -9,6 +9,7 @@ export interface Phrase {
   ja: string;
   why_ja: string;
   pronunciation_tips_ja: string[];
+  model?: string;
 }
 
 export interface UserContextFact {
@@ -42,6 +43,7 @@ export interface EnglishVariant {
   en: string;
   why_ja: string;
   traps: VariantTrap[];
+  model?: string;
 }
 
 export interface ScriptSentencePayload {
@@ -100,6 +102,7 @@ export interface AttemptEvaluation {
   prosody_comment_ja: string;
   overall_advice_ja: string;
   next_step: NextStep;
+  model?: string;
 }
 
 export interface SessionPayload {
@@ -134,6 +137,7 @@ export interface ChatMessage {
   role: "coach" | "learner";
   text: string;
   created_at: string;
+  model?: string;
 }
 
 export interface ProgressPayload {
@@ -142,4 +146,22 @@ export interface ProgressPayload {
   average_score: number | null;
   best_score: number | null;
   recent: Array<{ phrase_en: string; score: number; next_step: NextStep; created_at: string }>;
+}
+
+export interface UsageCostSummary {
+  totals: {
+    today_usd: number;
+    month_usd: number;
+    all_time_usd: number;
+  };
+  breakdown: Array<{
+    model: string;
+    kind: string;
+    input_tokens: number;
+    output_tokens: number;
+    audio_input_tokens: number;
+    cost_usd: number;
+  }>;
+  tts_pricing: "configured" | "unset";
+  note: string;
 }

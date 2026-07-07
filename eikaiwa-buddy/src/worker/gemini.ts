@@ -8,6 +8,18 @@ export interface GeminiEnv {
   GEMINI_TTS_MODEL: string;
 }
 
+export interface GeminiUsage {
+  input_tokens: number;
+  output_tokens: number;
+  audio_input_tokens: number;
+}
+
+export interface GeminiResult<T> {
+  data: T;
+  model: string;
+  usage: GeminiUsage;
+}
+
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
 const coachSchema = {
@@ -145,7 +157,7 @@ const contextIngestSchema = {
   required: ["facts"]
 };
 
-export async function coach(env: GeminiEnv, level: number, learnerMessage: string, history: string): Promise<CoachResponse> {
+export async function coach(env: GeminiEnv, level: number, learnerMessage: string, history: string): Promise<GeminiResult<CoachResponse>> {
   return generateJson<CoachResponse>(env, env.GEMINI_COACH_MODEL, [
     { text: coachPrompt(level) },
     { text: `Conversation history JSON: ${history}` },
@@ -153,7 +165,7 @@ export async function coach(env: GeminiEnv, level: number, learnerMessage: strin
   ], coachSchema);
 }
 
-export async function regenerateTopic(env: GeminiEnv, level: number): Promise<CoachResponse> {
+export async function regenerateTopic(env: GeminiEnv, level: number): Promise<GeminiResult<CoachResponse>> {
   return generateJson<CoachResponse>(env, env.GEMINI_LITE_MODEL, [
     { text: coachPrompt(level) },
     { text: "Create three fresh topic suggestions and a short greeting in Japanese. Do not propose a phrase yet." }
@@ -173,7 +185,7 @@ export async function interviewCoach(
     history: string;
     learnerMessage: string;
   }
-): Promise<InterviewCoachResponse> {
+): Promise<GeminiResult<InterviewCoachResponse>> {
   return generateJson<InterviewCoachResponse>(env, env.GEMINI_COACH_MODEL, [
     {
       text: interviewPrompt({
@@ -194,7 +206,7 @@ export async function interviewCoach(
 export async function generateVariantBatch(
   env: GeminiEnv,
   input: { level: number; topic: string; sentences: string[] }
-): Promise<VariantBatchResponse> {
+): Promise<GeminiResult<VariantBatchResponse>> {
   return generateJson<VariantBatchResponse>(env, env.GEMINI_COACH_MODEL, [
     { text: variantBatchPrompt(input) }
   ], variantBatchSchema);
@@ -206,14 +218,14 @@ export async function evaluatePronunciation(
   level: number,
   recentAverage: number | null,
   wav: ArrayBuffer
-): Promise<AttemptEvaluation> {
+): Promise<GeminiResult<AttemptEvaluation>> {
   return generateJson<AttemptEvaluation>(env, env.GEMINI_COACH_MODEL, [
     { text: evaluationPrompt(target, level, recentAverage) },
     { inlineData: { mimeType: "audio/wav", data: arrayBufferToBase64(wav) } }
   ], evaluationSchema);
 }
 
-export async function extractContextFacts(env: GeminiEnv, text: string): Promise<ContextIngestResponse> {
+export async function extractContextFacts(env: GeminiEnv, text: string): Promise<GeminiResult<ContextIngestResponse>> {
   return generateJson<ContextIngestResponse>(env, env.GEMINI_LITE_MODEL, [
     {
       text: `日本人英会話学習者のプロフィール・SNS投稿・自己紹介文から、英会話コーチが以後の会話で使える確実な事実だけを抽出してください。
@@ -232,7 +244,7 @@ ${text.slice(0, 6000)}`
   ], contextIngestSchema);
 }
 
-export async function synthesizeSpeech(env: GeminiEnv, phrase: string, slow: boolean): Promise<{ mimeType: string; bytes: Uint8Array }> {
+export async function synthesizeSpeech(env: GeminiEnv, phrase: string, slow: boolean): Promise<{ mimeType: string; bytes: Uint8Array; model: string; usage: GeminiUsage }> {
   const data = await callGemini(env, env.GEMINI_TTS_MODEL, {
     contents: [{ role: "user", parts: [{ text: ttsPrompt(phrase, slow) }] }],
     generationConfig: {
@@ -247,10 +259,10 @@ export async function synthesizeSpeech(env: GeminiEnv, phrase: string, slow: boo
   if (!inline?.data || !inline?.mimeType) {
     throw new Error("Gemini TTS did not return audio.");
   }
-  return { mimeType: inline.mimeType, bytes: base64ToBytes(inline.data) };
+  return { mimeType: inline.mimeType, bytes: base64ToBytes(inline.data), model: env.GEMINI_TTS_MODEL, usage: usageFromMetadata(data.usageMetadata) };
 }
 
-async function generateJson<T>(env: GeminiEnv, model: string, parts: unknown[], schema: unknown): Promise<T> {
+async function generateJson<T>(env: GeminiEnv, model: string, parts: unknown[], schema: unknown): Promise<GeminiResult<T>> {
   const data = await callGemini(env, model, {
     contents: [{ role: "user", parts }],
     generationConfig: {
@@ -261,7 +273,7 @@ async function generateJson<T>(env: GeminiEnv, model: string, parts: unknown[], 
   });
   const text = data.candidates?.[0]?.content?.parts?.find((part: any) => typeof part.text === "string")?.text;
   if (!text) throw new Error("Gemini returned no JSON text.");
-  return JSON.parse(text) as T;
+  return { data: JSON.parse(text) as T, model, usage: usageFromMetadata(data.usageMetadata) };
 }
 
 async function callGemini(env: GeminiEnv, model: string, body: unknown): Promise<any> {
@@ -282,6 +294,22 @@ async function callGemini(env: GeminiEnv, model: string, body: unknown): Promise
     throw new Error(`Gemini API error ${response.status}: ${message.slice(0, 500)}`);
   }
   return response.json();
+}
+
+function usageFromMetadata(metadata: any): GeminiUsage {
+  const prompt = Number(metadata?.promptTokenCount ?? 0);
+  const output = Number(metadata?.candidatesTokenCount ?? 0);
+  const audio = tokenCountForModality(metadata?.promptTokensDetails, "AUDIO");
+  return {
+    input_tokens: Math.max(0, prompt - audio),
+    output_tokens: Math.max(0, output),
+    audio_input_tokens: Math.max(0, audio)
+  };
+}
+
+function tokenCountForModality(details: unknown, modality: string): number {
+  if (!Array.isArray(details)) return 0;
+  return details.reduce((sum, item: any) => sum + (String(item?.modality ?? "").toUpperCase() === modality ? Number(item?.tokenCount ?? 0) : 0), 0);
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {

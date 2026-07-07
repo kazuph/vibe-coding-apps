@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BookOpen, Check, Flame, History, Keyboard, Loader2, Mic, Play, Plus, RefreshCw, Save, Send, Settings, Sparkles, Trash2, UserRound, Volume2, X } from "lucide-react";
-import type { AppState, AttemptEvaluation, NextStep, Phrase, ProgressPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UserContextFact, VariantStyle, WordFeedback } from "../../shared/types";
+import type { AppState, AttemptEvaluation, NextStep, Phrase, ProgressPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UsageCostSummary, UserContextFact, VariantStyle, WordFeedback } from "../../shared/types";
 import { encodeAudioBufferToWav16kMono } from "./audio/wav";
 import "./styles.css";
 
@@ -28,7 +28,9 @@ function App() {
   const [contextFacts, setContextFacts] = useState<UserContextFact[]>([]);
   const [contextText, setContextText] = useState("");
   const [contextPreview, setContextPreview] = useState<ContextDraftFact[]>([]);
+  const [contextPreviewModel, setContextPreviewModel] = useState<string | null>(null);
   const [manualFact, setManualFact] = useState<ContextDraftFact>({ key: "", value: "" });
+  const [usage, setUsage] = useState<UsageCostSummary | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -37,10 +39,12 @@ function App() {
       setLoadState("loading");
       const payload = await api<SessionPayload>("/api/session/start", { method: "POST" });
       const list = await api<SessionsPayload>("/api/sessions", { method: "GET" });
+      const usagePayload = await api<UsageCostSummary>("/api/usage", { method: "GET" });
       setSession(payload.session);
       setProgress(payload.progress);
       setEvaluation(payload.session.latest_evaluation);
       setSessions(list.sessions);
+      setUsage(usagePayload);
       setLoadState("ready");
     }
     loadInitialSession().catch((err: Error) => {
@@ -57,6 +61,11 @@ function App() {
   async function refreshSessions() {
     const payload = await api<SessionsPayload>("/api/sessions", { method: "GET" });
     setSessions(payload.sessions);
+  }
+
+  async function refreshUsage() {
+    const payload = await api<UsageCostSummary>("/api/usage", { method: "GET" });
+    setUsage(payload);
   }
 
   async function createNewSession() {
@@ -116,6 +125,7 @@ function App() {
       setEvaluation(null);
       setMessage("");
       await refreshSessions();
+      await refreshUsage();
     } catch (err) {
       setError(err instanceof Error ? err.message : "会話の送信に失敗しました。");
     } finally {
@@ -163,6 +173,7 @@ function App() {
       setSession(response.session.session);
       setProgress(response.session.progress);
       setEvaluation(null);
+      await refreshUsage();
     } catch (err) {
       setError(err instanceof Error ? err.message : "英語変種の生成に失敗しました。");
     } finally {
@@ -192,6 +203,7 @@ function App() {
   async function openContextModal() {
     setContextOpen(true);
     setContextPreview([]);
+    setContextPreviewModel(null);
     setContextBusy(true);
     setError(null);
     try {
@@ -210,12 +222,14 @@ function App() {
     setContextBusy(true);
     setError(null);
     try {
-      const payload = await api<{ facts: ContextDraftFact[] }>("/api/context/ingest", {
+      const payload = await api<{ facts: ContextDraftFact[]; model: string }>("/api/context/ingest", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text })
       });
       setContextPreview(payload.facts);
+      setContextPreviewModel(payload.model);
+      await refreshUsage();
     } catch (err) {
       setError(err instanceof Error ? err.message : "fact抽出に失敗しました。");
     } finally {
@@ -235,6 +249,7 @@ function App() {
       });
       setContextFacts(payload.facts);
       setContextPreview([]);
+      setContextPreviewModel(null);
       setContextText("");
       setManualFact({ key: "", value: "" });
     } catch (err) {
@@ -321,6 +336,7 @@ function App() {
       setEvaluation(result.evaluation);
       setProgress(result.progress);
       setSession((current) => current ? { ...current, state: "feedback", phase: "feedback" } : current);
+      await refreshUsage();
     } catch (err) {
       setError(`録音評価に失敗しました: ${err instanceof Error ? err.message : "Gemini APIの応答を確認してください。"}`);
     } finally {
@@ -346,6 +362,7 @@ function App() {
       }
       const audio = new Audio(URL.createObjectURL(await response.blob()));
       await audio.play();
+      await refreshUsage();
     } catch (err) {
       setError(`お手本音声を再生できませんでした: ${err instanceof Error ? err.message : "Gemini TTSの応答を確認してください。"}`);
     } finally {
@@ -366,7 +383,7 @@ function App() {
   return (
     <Shell>
       <header className="topbar">
-        <div className="brand"><span>eikaiwa</span>-buddy<small>Gemini-powered English Coach</small></div>
+        <div className="brand"><span>eikaiwa</span>-buddy<small>Gemini-powered (3.5-flash / 3.1-flash-lite)</small></div>
         <nav>
           <button className="nav active"><Mic size={18} />スピーキング練習</button>
           <button className="nav"><BookOpen size={18} />単語帳</button>
@@ -428,6 +445,7 @@ function App() {
 
         <aside className="progress-panel">
           <ScoreCard evaluation={evaluation} progress={progress} />
+          <UsageCostCard usage={usage} />
           <ProgressCard progress={progress} />
           <HistoryList progress={progress} />
         </aside>
@@ -438,6 +456,7 @@ function App() {
           facts={contextFacts}
           manualFact={manualFact}
           previewFacts={contextPreview}
+          previewModel={contextPreviewModel}
           text={contextText}
           onAddManual={() => void saveContextFacts([manualFact])}
           onChangeManual={setManualFact}
@@ -478,7 +497,7 @@ function ChatLog({ history }: { history: AppSession["chat_history"] }) {
     <section className="chat-log" aria-label="コーチとの会話">
       {history.map((item, index) => (
         <div key={`${item.created_at}-${index}`} className={`bubble ${item.role}`}>
-          <strong>{item.role === "coach" ? "Kai" : "あなた"}</strong>
+          <strong>{item.role === "coach" ? "Kai" : "あなた"} {item.model && <ModelTag model={item.model} />}</strong>
           <p>{item.text}</p>
         </div>
       ))}
@@ -545,6 +564,7 @@ function ContextModal({
   facts,
   manualFact,
   previewFacts,
+  previewModel,
   text,
   onAddManual,
   onChangeManual,
@@ -559,6 +579,7 @@ function ContextModal({
   facts: UserContextFact[];
   manualFact: ContextDraftFact;
   previewFacts: ContextDraftFact[];
+  previewModel: string | null;
   text: string;
   onAddManual: () => void;
   onChangeManual: (fact: ContextDraftFact) => void;
@@ -597,7 +618,7 @@ function ContextModal({
           </section>
 
           <section className="context-card">
-            <h2>抽出プレビュー</h2>
+            <h2>抽出プレビュー {previewModel && <ModelTag model={previewModel} />}</h2>
             {previewFacts.length ? (
               <>
                 <FactEditor facts={previewFacts} onChange={onUpdatePreview} />
@@ -708,7 +729,7 @@ function VariantsStage({ session, busy, onSelect }: { session: AppSession | null
       <div className="variant-grid">
         {active.variants.map((variant) => (
           <button className="variant-card" key={variant.style} disabled={busy} onClick={() => onSelect(active.id, variant.style)}>
-            <span>{styleLabel(variant.style)}</span>
+            <span>{styleLabel(variant.style)} {variant.model && <ModelTag model={variant.model} />}</span>
             <strong>{variant.en}</strong>
             <small>{variant.why_ja}</small>
             {variant.traps.length > 0 && <em>{variant.traps.map((trap) => trap.word).join(" / ")}</em>}
@@ -791,6 +812,7 @@ function PhraseCard({ phrase }: { phrase: Phrase }) {
   return (
     <div className="phrase-card">
       <span className="label">提案例</span>
+      {phrase.model && <ModelTag model={phrase.model} />}
       <p className="english">{phrase.en}</p>
       <p className="translation">{phrase.ja}</p>
       <div className="tips">
@@ -811,7 +833,7 @@ function HeardWords({ phrase, evaluation, words }: { phrase: string; evaluation:
   const list = words.length ? words : fallback;
   return (
     <div className="heard-card">
-      <div className="transcript"><button className="round"><Play size={16} /></button><strong>{evaluation?.verbatim ?? "録音後に聞き取り結果を表示します"}</strong><RefreshCw size={18} /></div>
+      <div className="transcript"><button className="round"><Play size={16} /></button><strong>{evaluation?.verbatim ?? "録音後に聞き取り結果を表示します"} {evaluation?.model && <ModelTag model={evaluation.model} label="評価" />}</strong><RefreshCw size={18} /></div>
       <div className="word-row">
         {list.map((word, index) => <button className={`word ${word.verdict}`} key={`${word.target_word}-${index}`} title={word.advice_ja}>{word.target_word}<small>{word.heard_as || "未判定"}</small></button>)}
       </div>
@@ -838,9 +860,42 @@ function ScoreCard({ evaluation, progress }: { evaluation: AttemptEvaluation | n
   );
 }
 
+function UsageCostCard({ usage }: { usage: UsageCostSummary | null }) {
+  const breakdown = usage?.breakdown ?? [];
+  return (
+    <section className="side-card usage-card">
+      <h2>API利用料金</h2>
+      <dl>
+        <div><dt>今日</dt><dd>{formatUsd(usage?.totals.today_usd ?? 0)}</dd></div>
+        <div><dt>今月</dt><dd>{formatUsd(usage?.totals.month_usd ?? 0)}</dd></div>
+        <div><dt>累計</dt><dd>{formatUsd(usage?.totals.all_time_usd ?? 0)}</dd></div>
+      </dl>
+      {usage?.tts_pricing === "unset" && <p className="advice">TTS単価未設定</p>}
+      <details>
+        <summary>モデル別内訳</summary>
+        <div className="usage-breakdown">
+          {breakdown.map((item) => (
+            <div className="usage-row" key={`${item.model}-${item.kind}`}>
+              <span>{item.model}</span>
+              <small>{item.kind} / in {item.input_tokens}+audio {item.audio_input_tokens} / out {item.output_tokens}</small>
+              <strong>{formatUsd(item.cost_usd)}</strong>
+            </div>
+          ))}
+          {!breakdown.length && <p className="muted">まだGemini利用記録はありません。</p>}
+        </div>
+      </details>
+      <p className="usage-note">{usage?.note ?? "従量課金定価での換算値です。"}</p>
+    </section>
+  );
+}
+
 function ProgressCard({ progress }: { progress: ProgressPayload | null }) {
   const attempts = progress?.attempts ?? 0;
   return <section className="side-card"><h2>学習の進捗</h2><div className="level">Level {progress?.level ?? 1}</div><progress max={30} value={Math.min(attempts, 30)} /><p>今週の目標: 30回 / 現在 {attempts}回</p></section>;
+}
+
+function ModelTag({ model, label }: { model: string; label?: string }) {
+  return <span className="model-tag">{label ? `${label}: ` : ""}{model}</span>;
 }
 
 function HistoryList({ progress }: { progress: ProgressPayload | null }) {
@@ -872,6 +927,10 @@ function formatSessionDate(value: string): string {
 
 function styleLabel(style: VariantStyle): string {
   return ({ simple: "シンプル版", natural: "ナチュラル版", advanced: "こなれ版" })[style];
+}
+
+function formatUsd(value: number): string {
+  return `$${value.toFixed(6)}`;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
