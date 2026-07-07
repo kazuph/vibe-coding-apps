@@ -15,7 +15,7 @@ test.describe("context ingestion", () => {
     await expect(page.locator(".context-modal .model-tag", { hasText: "gemini-3.1-flash-lite" })).toBeVisible();
     await expect(page.getByText("API利用料金")).toBeVisible();
     await expect(page.locator(".fact-editor input").nth(1)).not.toHaveValue("");
-    await page.screenshot({ path: `.artifacts/${feature}/images/${testInfo.project.name}-v21b-context-preview.png`, fullPage: false });
+    await page.screenshot({ path: `.artifacts/${feature}/images/${testInfo.project.name}-v21d-context-preview-model-cost.png`, fullPage: false });
 
     await page.getByRole("button", { name: "プレビューを保存" }).click();
     await expect(page.locator(".fact-list")).toContainText(/宇宙カレー|深夜ラジオ/, { timeout: 20_000 });
@@ -28,6 +28,6 @@ test.describe("context ingestion", () => {
     await expect(page.getByText(/登録済み/)).toBeVisible({ timeout: 120_000 });
     await expect(page.locator(".bubble.coach").last()).toContainText("gemini-3.5-flash");
     await expect(page.getByText("chat /")).toBeVisible();
-    await page.screenshot({ path: `.artifacts/${feature}/images/${testInfo.project.name}-v21b-context-reflected.png`, fullPage: false });
+    await page.screenshot({ path: `.artifacts/${feature}/images/${testInfo.project.name}-v21d-context-reflected-model-cost.png`, fullPage: false });
   });
 });

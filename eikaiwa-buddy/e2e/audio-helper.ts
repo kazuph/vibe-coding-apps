@@ -5,7 +5,8 @@ const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${process.env.E2E_
 
 export async function runHelloAttempt(page: Page, label: string): Promise<number> {
   await page.goto(baseURL);
-  await expect(page.getByText("コーチとの会話")).toBeVisible();
+  await expect(page.getByRole("button", { name: "新しく作る" })).toBeVisible();
+  await expect(page.getByPlaceholder("日本語で話したいことを入力... Shift+Enterで改行")).toBeVisible();
   const cookie = (await page.context().cookies()).find((item) => item.name === "eb_uid");
   if (!cookie) throw new Error("eb_uid cookie was not created.");
   await installHelloPractice(page);
