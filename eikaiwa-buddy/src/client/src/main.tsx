@@ -22,7 +22,7 @@ function App() {
   const [progress, setProgress] = useState<ProgressPayload | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [recordingPhase, setRecordingPhase] = useState<"idle" | "recording" | "submitting">("idle");
   const [evaluation, setEvaluation] = useState<AttemptEvaluation | null>(null);
   const [ttsBusy, setTtsBusy] = useState(false);
   const mediaRef = useRef<MediaRecorder | null>(null);
@@ -66,12 +66,13 @@ function App() {
   }
 
   async function toggleRecording() {
-    if (recording) {
+    if (recordingPhase === "recording") {
       mediaRef.current?.stop();
-      setRecording(false);
+      setRecordingPhase("submitting");
       return;
     }
     setError(null);
+    setEvaluation(null);
     chunksRef.current = [];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 48000 } });
@@ -81,15 +82,16 @@ function App() {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
+        setRecordingPhase("submitting");
         stream.getTracks().forEach((track) => track.stop());
         void submitRecording(new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }));
       };
       recorder.start();
-      setRecording(true);
+      setRecordingPhase("recording");
       window.setTimeout(() => {
         if (mediaRef.current?.state === "recording") {
           mediaRef.current.stop();
-          setRecording(false);
+          setRecordingPhase("submitting");
         }
       }, 30_000);
     } catch (err) {
@@ -117,12 +119,14 @@ function App() {
         method: "POST",
         body: form
       });
+      setRecordingPhase("idle");
       setEvaluation(result.evaluation);
       setProgress(result.progress);
       setSession((current) => current ? { ...current, state: "feedback" } : current);
     } catch (err) {
       setError(`録音評価に失敗しました: ${err instanceof Error ? err.message : "Gemini APIの応答を確認してください。"}`);
     } finally {
+      setRecordingPhase("idle");
       setBusy(false);
     }
   }
@@ -153,6 +157,7 @@ function App() {
 
   const phrase = session?.current_phrase;
   const words = useMemo(() => evaluation?.words ?? [], [evaluation]);
+  const recordingActive = recordingPhase === "recording";
 
   if (loadState === "loading") {
     return <Shell><div className="loading"><Loader2 className="spin" /> Kaiを起動しています...</div></Shell>;
@@ -210,11 +215,16 @@ function App() {
             <h2>あなたの発話</h2>
             <HeardWords phrase={phrase?.en ?? ""} evaluation={evaluation} words={words} />
             <div className="mic-box">
-              <button className={`mic-button ${recording ? "recording" : ""}`} onClick={() => void toggleRecording()} disabled={busy}>
+              <button
+                className={`mic-button ${recordingActive ? "recording" : ""}`}
+                onClick={() => void toggleRecording()}
+                disabled={busy && recordingPhase !== "recording"}
+                aria-label={recordingActive ? "録音を停止" : "録音を開始"}
+              >
                 {busy ? <Loader2 className="spin" /> : <Mic size={44} />}
               </button>
               <div>
-                <strong>{recording ? "録音中...もう一度タップで停止" : "タップして話す"}</strong>
+                <strong>{recordingActive ? "録音中...もう一度タップで停止" : recordingPhase === "submitting" ? "録音をGeminiで評価中" : "タップして話す"}</strong>
                 <p>録音はブラウザ内で16kHz mono WAVに変換してからGeminiへ送ります</p>
               </div>
               <button className="secondary" onClick={() => playTts(true)} disabled={!phrase || ttsBusy}><Play size={18} />ゆっくり聞く</button>

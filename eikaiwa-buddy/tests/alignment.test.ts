@@ -17,4 +17,12 @@ describe("word normalization and alignment", () => {
     ]);
     expect(words[2]).toMatchObject({ verdict: "unclear", heard_as: "lice" });
   });
+
+  it("downgrades ok Gemini verdicts when heard_as differs from the target", () => {
+    const words = alignWords("Hello nice", "haro naisu", [
+      { target_word: "Hello", verdict: "ok", heard_as: "haro", advice_ja: "母音を足しすぎないようにしましょう。" },
+      { target_word: "nice", verdict: "ok", heard_as: "naisu", advice_ja: "最後の音を短くしましょう。" }
+    ]);
+    expect(words.map((word) => word.verdict)).toEqual(["unclear", "unclear"]);
+  });
 });

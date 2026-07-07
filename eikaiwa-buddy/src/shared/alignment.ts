@@ -45,7 +45,9 @@ export function alignWords(target: string, heard: string, geminiWords: WordFeedb
     const gemini = geminiWords.find((item) => normalizeWords(item.target_word)[0] === word);
     const heardIndex = matches.get(index);
     if (gemini) {
-      aligned.push({ ...gemini, target_word: word });
+      const heardAs = normalizeWords(gemini.heard_as)[0] ?? "";
+      const verdict = gemini.verdict === "ok" && heardAs && heardAs !== word ? "unclear" : gemini.verdict;
+      aligned.push({ ...gemini, verdict, target_word: word });
       return;
     }
     const verdict: WordVerdict = heardIndex === undefined ? "missing" : "ok";
