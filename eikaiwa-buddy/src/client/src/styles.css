@@ -36,8 +36,10 @@ h2 { font-size: 18px; }
 .bubble.learner { background: #e6f7f6; border: 0; margin-left: 42px; }
 .bubble strong { display: block; font-size: 12px; margin-bottom: 4px; }
 .bubble p { margin: 0; }
-.topic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
-.topic-grid button { background: #fff; border: 1px solid #dce6ea; border-radius: 8px; min-height: 56px; font-weight: 750; color: #26333e; }
+.topic-picker { display: grid; gap: 10px; margin-top: 18px; }
+.topic-picker h3 { margin: 0; font-size: 15px; line-height: 1.4; color: #26333e; }
+.topic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.topic-grid button { background: #fff; border: 1px solid #dce6ea; border-radius: 8px; min-height: 48px; padding: 8px 10px; font-weight: 750; color: #26333e; white-space: nowrap; }
 .topic-grid button:hover { border-color: #008b8f; color: #007f83; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .chip-row button { border: 1px solid #bee0df; background: #eefafa; color: #006f72; border-radius: 999px; padding: 9px 12px; font-weight: 800; }

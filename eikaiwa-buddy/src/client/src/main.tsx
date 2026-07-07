@@ -316,8 +316,15 @@ function PanelTitle({ title, online }: { title: string; online?: boolean }) {
 }
 
 function TopicGrid({ onPick, disabled }: { onPick: (topic: string) => void; disabled: boolean }) {
-  const topics = ["自己紹介を一緒に作る", "仕事の話を一緒に作る", "旅行の会話を一緒に作る", "週末の話を一緒に作る", "好きなものを一緒に作る", "趣味の話を一緒に作る"];
-  return <div className="topic-grid">{topics.map((topic) => <button key={topic} disabled={disabled} onClick={() => onPick(topic)}>{topic}</button>)}</div>;
+  const topics = ["自己紹介", "仕事の話", "旅行の会話", "週末の話", "好きなもの", "趣味の話"];
+  return (
+    <section className="topic-picker" aria-labelledby="topic-picker-title">
+      <h3 id="topic-picker-title">今日は何を一緒に作る？</h3>
+      <div className="topic-grid">
+        {topics.map((topic) => <button key={topic} disabled={disabled} onClick={() => onPick(topic)}>{topic}</button>)}
+      </div>
+    </section>
+  );
 }
 
 function InterviewStage({ phase, busy }: { phase: AppState; busy: boolean }) {

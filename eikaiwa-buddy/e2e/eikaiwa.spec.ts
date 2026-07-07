@@ -10,7 +10,7 @@ test.describe("eikaiwa-buddy v2 real Gemini flow", () => {
     await expect(page.locator(".english")).toHaveCount(0);
     await seedUserContext(page, "job", "エンジニア");
 
-    await page.getByRole("button", { name: "自己紹介を一緒に作る" }).click();
+    await page.getByRole("button", { name: "自己紹介" }).click();
     await expect(page.locator(".chip-row button").first()).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText(/登録済み/)).toBeVisible();
     await expect(page.locator(".english")).toHaveCount(0);
