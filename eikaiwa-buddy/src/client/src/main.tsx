@@ -139,7 +139,7 @@ function App() {
         body: JSON.stringify({ phrase, slow })
       });
       if (!response.ok) {
-        const body = await response.json().catch(() => ({ error: "TTSに失敗しました。" }));
+        const body = await response.json().catch(() => ({ error: "TTSに失敗しました。" })) as { error?: string };
         throw new Error(body.error);
       }
       const audio = new Audio(URL.createObjectURL(await response.blob()));
@@ -310,7 +310,7 @@ function HistoryList({ progress }: { progress: ProgressPayload | null }) {
 async function api<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "include", ...init });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `${response.status} ${response.statusText}` }));
+    const body = await response.json().catch(() => ({ error: `${response.status} ${response.statusText}` })) as { error?: string };
     throw new Error(body.error ?? "API request failed.");
   }
   return response.json() as Promise<T>;

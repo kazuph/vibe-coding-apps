@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { alignWords } from "../shared/alignment";
@@ -108,7 +109,7 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default app;
 
-async function ensureUser(c: any): Promise<{ id: string; level: number }> {
+async function ensureUser(c: Context<{ Bindings: Bindings }>): Promise<{ id: string; level: number }> {
   const existing = getCookie(c, "eb_uid");
   if (existing) {
     const row = await c.env.DB.prepare("SELECT id, level FROM users WHERE id = ?").bind(existing).first<{ id: string; level: number }>();

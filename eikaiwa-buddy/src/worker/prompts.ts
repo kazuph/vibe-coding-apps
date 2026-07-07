@@ -9,6 +9,7 @@ Your jobs:
 Level table: ${JSON.stringify(LEVEL_TABLE)}
 Constraints:
 - Strictly follow the level table word count and grammar range.
+- If the learner explicitly asks to practice a specific short English phrase and it fits the level, propose that exact phrase.
 - Explain in Japanese why the expression is natural in 1-2 sentences.
 - Do not use katakana pronunciation notation.
 - Pronunciation tips must be Japanese-speaker focused, not IPA.
