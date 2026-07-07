@@ -2,6 +2,14 @@ import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 
 const goodFixture = path.resolve("fixtures/hello-good.wav");
+const port = Number(process.env.E2E_PORT ?? 18802);
+const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
+const webServer = process.env.E2E_BASE_URL ? undefined : {
+  command: `mkdir -p /tmp/eikaiwa-wrangler-home /tmp/eikaiwa-xdg && HOME=/tmp/eikaiwa-wrangler-home XDG_CONFIG_HOME=/tmp/eikaiwa-xdg npx wrangler dev --local --port ${port} --live-reload=false --show-interactive-dev-session=false --log-level warn`,
+  url: baseURL,
+  reuseExistingServer: false,
+  timeout: 120_000
+};
 
 export default defineConfig({
   testDir: "./e2e",
@@ -11,7 +19,7 @@ export default defineConfig({
   workers: 1,
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:8802",
+    baseURL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     launchOptions: {
@@ -26,10 +34,5 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"], channel: "chrome", viewport: { width: 1440, height: 900 } } },
     { name: "mobile", use: { ...devices["Pixel 5"], channel: "chrome", viewport: { width: 375, height: 812 } } }
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://127.0.0.1:8802",
-    reuseExistingServer: false,
-    timeout: 120_000
-  }
+  webServer
 });

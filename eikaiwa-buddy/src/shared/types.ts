@@ -72,6 +72,14 @@ export interface InterviewCoachResponse {
   extracted_facts: Array<{ key: string; value: string }> | null;
 }
 
+export interface VariantBatchResponse {
+  sentences: Array<{
+    position: number;
+    ja_text: string;
+    variants: EnglishVariant[];
+  }>;
+}
+
 export interface WordFeedback {
   target_word: string;
   verdict: WordVerdict;

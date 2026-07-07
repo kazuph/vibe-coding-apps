@@ -39,6 +39,7 @@ export function interviewPrompt(input: {
 - ユーザーが日本語ドラフトを承認するまで英語を一切出力しない。
 - 1ターンに質問は1つだけ。質問する時はchipsを2〜3個必ず添える。
 - user_contextを使う時は、message_ja内に必ず「登録済み: X」と見せる。
+- 登録済みuser_contextがnoneではない場合、今回のmessage_jaで少なくとも1つ必ず「登録済み: X」と見せる。
 - 日本語ドラフトは2〜4文。短く、話し言葉で、ユーザー本人が言いたい内容にする。
 - extracted_factsは会話から確信できるfactだけ返す。推測で増やさない。
 - Return only JSON matching the schema.
@@ -46,6 +47,24 @@ export function interviewPrompt(input: {
 今回の制御:
 - forbidDraft=${input.forbidDraft}: trueならdraftは必ずnullにして、次の質問を1つだけ返す。
 - mustDraft=${input.mustDraft}: trueなら追加質問せず、draft.sentences_jaを必ず返し、chipsはnullにする。`;
+}
+
+export function variantBatchPrompt(input: { level: number; topic: string; sentences: string[] }): string {
+  return `承認済みの日本語ドラフトを、話者本人の言葉として自然な英語にしてください。
+トピック: ${input.topic}
+学習者レベル: ${input.level}
+日本語ドラフト:
+${input.sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join("\n")}
+
+絶対規則:
+- 入力された各文ごとに、simple / natural / advanced の3変種を必ず返す。
+- simpleは現レベルで言い切れる短い英語。
+- naturalはネイティブがよく使う定番表現。
+- advancedは少しこなれた表現。ただし不自然に難しくしない。
+- why_jaは、その表現が自然な理由を日本語で1文。
+- trapsは日本人が発音で注意すべき単語を1〜3個。tip_jaはカタカナ表記ではなく発音上の注意。
+- positionは入力文の番号と一致させる。
+- Return only JSON matching the schema.`;
 }
 
 export function evaluationPrompt(target: string, level: number, recentAverage: number | null): string {

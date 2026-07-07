@@ -7,7 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .62; }
 
@@ -39,6 +39,8 @@ h2 { font-size: 18px; }
 .topic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
 .topic-grid button { background: #fff; border: 1px solid #dce6ea; border-radius: 8px; min-height: 56px; font-weight: 750; color: #26333e; }
 .topic-grid button:hover { border-color: #008b8f; color: #007f83; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip-row button { border: 1px solid #bee0df; background: #eefafa; color: #006f72; border-radius: 999px; padding: 9px 12px; font-weight: 800; }
 .chat-input { display: grid; grid-template-columns: 1fr 44px; gap: 8px; margin-top: 18px; }
 .chat-input input { border: 1px solid #dce6ea; border-radius: 8px; min-height: 50px; padding: 0 14px; }
 .chat-input button { border: 0; border-radius: 8px; background: #008b8f; color: white; display: grid; place-items: center; }
@@ -80,6 +82,25 @@ h2 { font-size: 18px; }
 .mic-box p { color: #65737e; margin: 6px 0 0; }
 .secondary { border: 1px solid #dce6ea; background: #fff; border-radius: 8px; padding: 11px 13px; display: inline-flex; align-items: center; gap: 8px; font-weight: 750; white-space: nowrap; }
 .error-banner { border: 1px solid #f3b9b4; background: #fff0ef; color: #9c1d18; padding: 12px 14px; border-radius: 8px; font-weight: 750; }
+.co-writing-stage, .draft-stage, .variants-stage { border: 1px solid #dce6ea; border-radius: 8px; background: #fff; padding: 28px; display: grid; gap: 16px; }
+.co-writing-stage { min-height: 360px; place-content: center; text-align: center; }
+.co-writing-stage h1, .draft-stage h1 { font-size: 26px; }
+.co-writing-stage p, .draft-stage p { margin: 0; color: #52616d; line-height: 1.7; }
+.draft-stage textarea { width: 100%; resize: vertical; border: 1px solid #dce6ea; border-radius: 8px; padding: 16px; line-height: 1.8; font-size: 18px; }
+.draft-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.draft-actions span { color: #65737e; margin-right: auto; font-weight: 750; }
+.primary-action { border: 0; background: #008b8f; color: #fff; border-radius: 8px; padding: 12px 16px; display: inline-flex; align-items: center; gap: 8px; font-weight: 850; }
+.variants-stage .section-heading p { margin: 8px 0 0; color: #52616d; line-height: 1.7; }
+.variant-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.variant-card { min-height: 250px; border: 1px solid #dce6ea; border-radius: 8px; background: #fff; padding: 18px; text-align: left; display: grid; align-content: start; gap: 12px; color: #17202a; }
+.variant-card:hover { border-color: #008b8f; box-shadow: 0 10px 28px rgba(0, 139, 143, .12); }
+.variant-card span { color: #007f83; font-weight: 900; }
+.variant-card strong { font-size: 20px; line-height: 1.35; }
+.variant-card small { color: #43515d; line-height: 1.6; font-size: 14px; }
+.variant-card em { color: #8a5d00; background: #fff6dc; border-radius: 6px; padding: 8px; font-style: normal; font-size: 13px; }
+.script-mini-map { display: flex; gap: 8px; justify-content: center; }
+.script-mini-map span { width: 32px; height: 32px; border-radius: 999px; border: 1px solid #dce6ea; display: grid; place-items: center; font-weight: 850; color: #52616d; }
+.script-mini-map .current { background: #008b8f; color: #fff; border-color: #008b8f; }
 
 .side-card { padding: 18px; display: grid; gap: 14px; }
 .score-gauge { width: 150px; height: 150px; border-radius: 50%; margin: 4px auto; background: conic-gradient(#22aeb0 var(--score), #e9eef1 0); display: grid; place-items: center; position: relative; }
@@ -120,6 +141,7 @@ progress { width: 100%; height: 12px; accent-color: #008b8f; }
   .mode-tabs { width: 100%; }
   .mode-tabs button { flex: 1; padding: 10px 8px; font-size: 13px; justify-content: center; }
   .english { font-size: 22px; line-height: 1.25; }
+  .variant-grid { grid-template-columns: 1fr; }
   .mic-box { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 20px; }
   .mic-button { width: 92px; height: 92px; }
 }

@@ -1,5 +1,5 @@
-import type { AttemptEvaluation, CoachResponse, InterviewCoachResponse, UserContextFact } from "../shared/types";
-import { coachPrompt, evaluationPrompt, interviewPrompt, ttsPrompt } from "./prompts";
+import type { AttemptEvaluation, CoachResponse, InterviewCoachResponse, UserContextFact, VariantBatchResponse } from "../shared/types";
+import { coachPrompt, evaluationPrompt, interviewPrompt, ttsPrompt, variantBatchPrompt } from "./prompts";
 
 export interface GeminiEnv {
   GEMINI_API_KEY: string;
@@ -86,6 +86,47 @@ const interviewSchema = {
   required: ["message_ja", "chips", "draft", "extracted_facts"]
 };
 
+const variantBatchSchema = {
+  type: "OBJECT",
+  properties: {
+    sentences: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          position: { type: "INTEGER" },
+          ja_text: { type: "STRING" },
+          variants: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                style: { type: "STRING", enum: ["simple", "natural", "advanced"] },
+                en: { type: "STRING" },
+                why_ja: { type: "STRING" },
+                traps: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      word: { type: "STRING" },
+                      tip_ja: { type: "STRING" }
+                    },
+                    required: ["word", "tip_ja"]
+                  }
+                }
+              },
+              required: ["style", "en", "why_ja", "traps"]
+            }
+          }
+        },
+        required: ["position", "ja_text", "variants"]
+      }
+    }
+  },
+  required: ["sentences"]
+};
+
 export async function coach(env: GeminiEnv, level: number, learnerMessage: string, history: string): Promise<CoachResponse> {
   return generateJson<CoachResponse>(env, env.GEMINI_COACH_MODEL, [
     { text: coachPrompt(level) },
@@ -130,6 +171,15 @@ export async function interviewCoach(
     { text: `Conversation history JSON: ${input.history}` },
     { text: `Learner message: ${input.learnerMessage}` }
   ], interviewSchema);
+}
+
+export async function generateVariantBatch(
+  env: GeminiEnv,
+  input: { level: number; topic: string; sentences: string[] }
+): Promise<VariantBatchResponse> {
+  return generateJson<VariantBatchResponse>(env, env.GEMINI_COACH_MODEL, [
+    { text: variantBatchPrompt(input) }
+  ], variantBatchSchema);
 }
 
 export async function evaluatePronunciation(
