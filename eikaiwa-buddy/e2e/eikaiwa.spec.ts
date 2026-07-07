@@ -18,6 +18,7 @@ test.describe("eikaiwa-buddy v2 real Gemini flow", () => {
 
     for (let index = 0; index < 3; index += 1) {
       if (await page.getByLabel("日本語ドラフト").isVisible().catch(() => false)) break;
+      const coachCount = await page.locator(".bubble.coach").count();
       const chip = page.locator(".chip-row button").first();
       if (await chip.isVisible().catch(() => false)) {
         await chip.click();
@@ -25,11 +26,11 @@ test.describe("eikaiwa-buddy v2 real Gemini flow", () => {
         await page.getByPlaceholder("日本語で話したいことを入力...").fill("AIを使った開発ツールを作っています。");
         await page.getByPlaceholder("日本語で話したいことを入力...").press("Enter");
       }
-      await page.waitForFunction(() => {
-        const draft = document.querySelector("textarea[aria-label='日本語ドラフト']");
-        const disabledChip = document.querySelector(".chip-row button:disabled");
-        return Boolean(draft) || !disabledChip;
-      }, null, { timeout: 120_000 });
+      await expect.poll(async () => {
+        const hasDraft = await page.getByLabel("日本語ドラフト").isVisible().catch(() => false);
+        const nextCoachCount = await page.locator(".bubble.coach").count();
+        return hasDraft || nextCoachCount > coachCount;
+      }, { timeout: 120_000 }).toBe(true);
     }
 
     await expect(page.getByLabel("日本語ドラフト")).toBeVisible({ timeout: 120_000 });

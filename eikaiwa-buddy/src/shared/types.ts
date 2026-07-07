@@ -107,6 +107,7 @@ export interface SessionPayload {
     script_id: string | null;
     active_sentence_position: number;
     current_phrase: Phrase | null;
+    latest_evaluation: AttemptEvaluation | null;
     script: ScriptPayload | null;
     active_sentence: ScriptSentencePayload | null;
     chat_history: ChatMessage[];

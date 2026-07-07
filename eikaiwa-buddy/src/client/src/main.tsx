@@ -39,6 +39,7 @@ function App() {
     const payload = await api<SessionPayload>("/api/session/start", { method: "POST" });
     setSession(payload.session);
     setProgress(payload.progress);
+    setEvaluation(payload.session.latest_evaluation);
     setLoadState("ready");
   }
 
@@ -181,14 +182,14 @@ function App() {
       const form = new FormData();
       form.set("sentence_id", String(sentenceId));
       form.set("audio", new File([wav], "practice.wav", { type: "audio/wav" }));
-      const result = await api<{ evaluation: AttemptEvaluation; progress: ProgressPayload; session: SessionPayload }>("/api/attempt", {
+      const result = await api<{ evaluation: AttemptEvaluation; progress: ProgressPayload }>("/api/attempt", {
         method: "POST",
         body: form
       });
       setRecordingPhase("idle");
       setEvaluation(result.evaluation);
       setProgress(result.progress);
-      setSession(result.session.session);
+      setSession((current) => current ? { ...current, state: "feedback", phase: "feedback" } : current);
     } catch (err) {
       setError(`録音評価に失敗しました: ${err instanceof Error ? err.message : "Gemini APIの応答を確認してください。"}`);
     } finally {

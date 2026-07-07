@@ -161,7 +161,7 @@ app.post("/api/attempt", async (c) => {
       .bind(user.id, user.level, upgraded, "直近5回の平均発音スコアが80点以上").run();
   }
   await c.env.DB.prepare("UPDATE sessions SET state = ?, phase = ?, updated_at = ? WHERE id = ?").bind("feedback", "feedback", new Date().toISOString(), session.id).run();
-  return c.json({ evaluation, progress: await progress(c.env.DB, user.id), session: await buildSessionPayload(c.env.DB, user, await getSession(c.env.DB, session.id)) });
+  return c.json({ evaluation, progress: await progress(c.env.DB, user.id) });
 });
 
 async function startInterview(
@@ -296,6 +296,7 @@ async function buildSessionPayload(db: D1Database, user: { id: string; level: nu
       script_id: row.script_id ?? null,
       active_sentence_position: activePosition,
       current_phrase: parsePhrase(row.current_phrase_json),
+      latest_evaluation: await latestEvaluation(db, row.id),
       script,
       active_sentence: script?.sentences.find((sentence) => sentence.position === activePosition) ?? null,
       chat_history: parseHistory(row.chat_history_json)
@@ -331,6 +332,22 @@ async function progress(db: D1Database, userId: string): Promise<ProgressPayload
     average_score: scores.length ? average(scores) : null,
     best_score: scores.length ? Math.max(...scores) : null,
     recent: rows.results
+  };
+}
+
+async function latestEvaluation(db: D1Database, sessionId: string): Promise<AttemptEvaluation | null> {
+  const row = await db.prepare(
+    "SELECT verbatim, words_json, pronunciation_score, fluency_score, next_step FROM attempts WHERE session_id = ? ORDER BY created_at DESC LIMIT 1"
+  ).bind(sessionId).first<any>();
+  if (!row) return null;
+  return {
+    verbatim: row.verbatim ?? "",
+    words: parseWords(row.words_json),
+    pronunciation_score: Number(row.pronunciation_score ?? 0),
+    fluency_score: Number(row.fluency_score ?? 0),
+    prosody_comment_ja: "",
+    overall_advice_ja: "直近の録音評価を復元しました。",
+    next_step: row.next_step
   };
 }
 
@@ -459,6 +476,15 @@ function parseVariants(value: string | null): EnglishVariant[] {
   if (!value) return [];
   try {
     return JSON.parse(value) as EnglishVariant[];
+  } catch {
+    return [];
+  }
+}
+
+function parseWords(value: string | null): AttemptEvaluation["words"] {
+  if (!value) return [];
+  try {
+    return JSON.parse(value) as AttemptEvaluation["words"];
   } catch {
     return [];
   }

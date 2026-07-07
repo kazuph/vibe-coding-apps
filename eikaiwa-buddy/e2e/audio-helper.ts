@@ -1,46 +1,37 @@
-import { chromium, expect, test } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import path from "node:path";
 
 const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${process.env.E2E_PORT ?? 18802}`;
 
-test.setTimeout(360_000);
-
-test("good and accented fixtures produce visible score evidence through real Gemini API", async ({ browserName }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium" || browserName !== "chromium", "audio fixture comparison runs once on desktop Chrome");
-  const good = await runAttemptWithFixture(path.resolve("fixtures/hello-good.wav"), "good");
-  const accented = await runAttemptWithFixture(path.resolve("fixtures/hello-accented.wav"), "accented");
-  expect(good.score).not.toBe(accented.score);
-});
-
-async function runAttemptWithFixture(fixture: string, label: string): Promise<{ score: number }> {
-  const browser = await chromium.launch({
-    channel: "chrome",
-    args: [
-      "--use-fake-device-for-media-stream",
-      "--use-fake-ui-for-media-stream",
-      `--use-file-for-fake-audio-capture=${fixture}`
-    ]
-  });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+export async function runHelloAttempt(page: Page, label: string): Promise<number> {
   await page.goto(baseURL);
   await expect(page.getByText("コーチとの会話")).toBeVisible();
+  const cookie = (await page.context().cookies()).find((item) => item.name === "eb_uid");
+  if (!cookie) throw new Error("eb_uid cookie was not created.");
   await installHelloPractice(page);
   await page.reload();
   await expect(page.locator(".english")).toContainText(/Hello, nice to meet you\.?/);
   await page.getByRole("button", { name: "録音を開始" }).click();
   await page.waitForTimeout(2800);
   await page.getByRole("button", { name: "録音を停止" }).click();
-  await expect(page.locator(".score-gauge strong")).toHaveText(/\d+/, { timeout: 120_000 });
-  await expect(page.locator(".word small").first()).not.toHaveText("未判定", { timeout: 120_000 });
+  const score = await waitForLatestHelloScore(cookie.value);
+  await page.reload();
+  await expect(page.locator(".score-gauge strong")).toHaveText(String(score), { timeout: 30_000 });
+  await expect(page.locator(".word.ok, .word.unclear, .word.wrong, .word.missing").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "録音を開始" })).toBeVisible();
   await page.screenshot({ path: `.artifacts/eikaiwa-buddy/images/audio-${label}-feedback.png`, fullPage: false });
-  const text = (await page.locator(".score-gauge strong").textContent()) ?? "0";
-  await browser.close();
-  return { score: Number.parseInt(text, 10) };
+  return score;
 }
 
-async function installHelloPractice(page: import("@playwright/test").Page): Promise<void> {
+export function fakeMicArgs(fixture: string): string[] {
+  return [
+    "--use-fake-device-for-media-stream",
+    "--use-fake-ui-for-media-stream",
+    `--use-file-for-fake-audio-capture=${fixture}`
+  ];
+}
+
+async function installHelloPractice(page: Page): Promise<void> {
   const cookie = (await page.context().cookies()).find((item) => item.name === "eb_uid");
   if (!cookie) throw new Error("eb_uid cookie was not created.");
   const scriptId = crypto.randomUUID();
@@ -78,6 +69,33 @@ function execSql(command: string): void {
     env: { ...process.env, HOME: "/tmp/eikaiwa-wrangler-home", XDG_CONFIG_HOME: "/tmp/eikaiwa-xdg" },
     stdio: "pipe"
   });
+}
+
+function querySql<T>(command: string): T[] {
+  const output = execFileSync("npx", ["wrangler", "d1", "execute", "eikaiwa_buddy", "--local", "--command", command], {
+    cwd: process.cwd(),
+    env: { ...process.env, HOME: "/tmp/eikaiwa-wrangler-home", XDG_CONFIG_HOME: "/tmp/eikaiwa-xdg" },
+    encoding: "utf8",
+    stdio: "pipe"
+  });
+  const match = output.match(/\[\s*\{\s*"results"[\s\S]*\}\s*\]\s*$/);
+  if (!match) return [];
+  const parsed = JSON.parse(match[0]) as Array<{ results: T[] }>;
+  return parsed[0]?.results ?? [];
+}
+
+async function waitForLatestHelloScore(userId: string): Promise<number> {
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    const rows = querySql<{ score: number }>(`SELECT a.pronunciation_score AS score
+      FROM attempts a JOIN sessions s ON s.id = a.session_id
+      WHERE s.user_id = ${sql(userId)} AND a.phrase_en LIKE 'Hello, nice to meet you%'
+      ORDER BY a.created_at DESC LIMIT 1`);
+    const score = rows[0]?.score;
+    if (typeof score === "number") return score;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error("Timed out waiting for the real Gemini pronunciation attempt.");
 }
 
 function sql(value: string): string {
