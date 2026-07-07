@@ -12,9 +12,14 @@ export interface Phrase {
 }
 
 export interface UserContextFact {
+  id?: number;
   key: string;
   value: string;
   source: "onboarding" | "interview" | "manual";
+}
+
+export interface ContextIngestResponse {
+  facts: Array<{ key: string; value: string }>;
 }
 
 export interface InterviewState {

@@ -1,4 +1,4 @@
-import type { AttemptEvaluation, CoachResponse, InterviewCoachResponse, UserContextFact, VariantBatchResponse } from "../shared/types";
+import type { AttemptEvaluation, CoachResponse, ContextIngestResponse, InterviewCoachResponse, UserContextFact, VariantBatchResponse } from "../shared/types";
 import { coachPrompt, evaluationPrompt, interviewPrompt, ttsPrompt, variantBatchPrompt } from "./prompts";
 
 export interface GeminiEnv {
@@ -127,6 +127,24 @@ const variantBatchSchema = {
   required: ["sentences"]
 };
 
+const contextIngestSchema = {
+  type: "OBJECT",
+  properties: {
+    facts: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          key: { type: "STRING" },
+          value: { type: "STRING" }
+        },
+        required: ["key", "value"]
+      }
+    }
+  },
+  required: ["facts"]
+};
+
 export async function coach(env: GeminiEnv, level: number, learnerMessage: string, history: string): Promise<CoachResponse> {
   return generateJson<CoachResponse>(env, env.GEMINI_COACH_MODEL, [
     { text: coachPrompt(level) },
@@ -193,6 +211,25 @@ export async function evaluatePronunciation(
     { text: evaluationPrompt(target, level, recentAverage) },
     { inlineData: { mimeType: "audio/wav", data: arrayBufferToBase64(wav) } }
   ], evaluationSchema);
+}
+
+export async function extractContextFacts(env: GeminiEnv, text: string): Promise<ContextIngestResponse> {
+  return generateJson<ContextIngestResponse>(env, env.GEMINI_LITE_MODEL, [
+    {
+      text: `日本人英会話学習者のプロフィール・SNS投稿・自己紹介文から、英会話コーチが以後の会話で使える確実な事実だけを抽出してください。
+
+絶対規則:
+- 推測しない。書かれていない属性や名前を補完しない。
+- keyは英小文字snake_caseで40文字以内。例: name, job, hobby, travel_goal, favorite_topic
+- valueは日本語で120文字以内。
+- 同じ意味のfactは1つにまとめる。
+- 最大12件。
+- Return only JSON matching the schema.
+
+入力:
+${text.slice(0, 6000)}`
+    }
+  ], contextIngestSchema);
 }
 
 export async function synthesizeSpeech(env: GeminiEnv, phrase: string, slow: boolean): Promise<{ mimeType: string; bytes: Uint8Array }> {

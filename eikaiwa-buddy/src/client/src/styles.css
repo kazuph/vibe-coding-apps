@@ -60,6 +60,20 @@ h2 { font-size: 18px; }
 .composer { display: grid; grid-template-columns: 1fr 46px; gap: 8px; align-items: end; }
 .composer textarea { width: 100%; max-height: 180px; resize: none; border: 1px solid #cfdfe3; border-radius: 8px; min-height: 52px; padding: 14px 16px; line-height: 1.55; }
 .composer button { border: 0; border-radius: 8px; width: 46px; height: 46px; background: #008b8f; color: white; display: grid; place-items: center; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(12, 20, 28, .36); display: grid; place-items: center; padding: 24px; }
+.context-modal { width: min(1040px, 100%); max-height: min(860px, calc(100vh - 48px)); overflow: auto; border: 1px solid #dce6ea; border-radius: 8px; background: #fff; padding: 22px; display: grid; gap: 18px; box-shadow: 0 24px 80px rgba(0, 0, 0, .22); }
+.modal-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.context-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.context-card { border: 1px solid #dce6ea; border-radius: 8px; padding: 16px; display: grid; align-content: start; gap: 12px; }
+.context-card h2 { font-size: 16px; }
+.context-card textarea { width: 100%; resize: vertical; border: 1px solid #dce6ea; border-radius: 8px; padding: 14px; line-height: 1.7; }
+.muted { color: #65737e; line-height: 1.7; margin: 0; }
+.manual-fact-row { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(180px, 1.3fr) auto; gap: 8px; align-items: center; }
+.manual-fact-row input { min-height: 42px; border: 1px solid #dce6ea; border-radius: 8px; padding: 0 12px; min-width: 0; }
+.fact-editor, .fact-list { display: grid; gap: 8px; }
+.fact-row { display: grid; grid-template-columns: minmax(100px, .7fr) minmax(180px, 1.5fr) auto auto; gap: 10px; align-items: center; border-top: 1px solid #eef2f4; padding-top: 9px; }
+.fact-row strong, .fact-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fact-row small { color: #65737e; }
 
 .practice-panel { display: grid; align-content: start; gap: 22px; }
 .mode-tabs { display: inline-flex; width: fit-content; border: 1px solid #dce6ea; border-radius: 8px; overflow: hidden; background: #fff; }
@@ -160,6 +174,8 @@ progress { width: 100%; height: 12px; accent-color: #008b8f; }
   .mode-tabs { width: 100%; }
   .mode-tabs button { flex: 1; padding: 10px 8px; font-size: 13px; justify-content: center; }
   .english { font-size: 22px; line-height: 1.25; }
+  .context-grid, .manual-fact-row, .fact-row { grid-template-columns: 1fr; }
+  .modal-backdrop { padding: 10px; }
   .variant-grid { grid-template-columns: 1fr; }
   .mic-box { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 20px; }
   .mic-button { width: 92px; height: 92px; }

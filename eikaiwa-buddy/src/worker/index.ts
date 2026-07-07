@@ -5,7 +5,7 @@ import { cors } from "hono/cors";
 import { alignWords } from "../shared/alignment";
 import { average, decideNextStep, nextLevel } from "../shared/levels";
 import type { AttemptEvaluation, ChatMessage, EnglishVariant, InterviewCoachResponse, InterviewState, Phrase, ProgressPayload, ScriptPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UserContextFact, VariantStyle } from "../shared/types";
-import { evaluatePronunciation, generateVariantBatch, interviewCoach, synthesizeSpeech, type GeminiEnv } from "./gemini";
+import { evaluatePronunciation, extractContextFacts, generateVariantBatch, interviewCoach, synthesizeSpeech, type GeminiEnv } from "./gemini";
 
 type Bindings = GeminiEnv & {
   DB: D1Database;
@@ -49,6 +49,39 @@ app.post("/api/session/switch", async (c) => {
   if (!session) return c.json({ error: "セッションが見つかりません。" }, 404);
   await c.env.DB.prepare("UPDATE users SET active_session_id = ? WHERE id = ?").bind(session.id, user.id).run();
   return c.json({ session: await buildSessionPayload(c.env.DB, user, session), sessions: await sessionSummaries(c.env.DB, user.id) });
+});
+
+app.get("/api/context", async (c) => {
+  const user = await ensureUser(c);
+  return c.json({ facts: await userFacts(c.env.DB, user.id, 50) });
+});
+
+app.post("/api/context/ingest", async (c) => {
+  await ensureUser(c);
+  const body = await c.req.json<{ text: string }>();
+  const text = body.text?.trim();
+  if (!text) return c.json({ error: "プロフィールや投稿文を入力してください。" }, 400);
+  const extracted = await extractContextFacts(c.env, text);
+  return c.json({ facts: normalizeContextFacts(extracted.facts) });
+});
+
+app.put("/api/context", async (c) => {
+  const user = await ensureUser(c);
+  const body = await c.req.json<{ facts?: Array<{ key: string; value: string }> }>();
+  const facts = normalizeContextFacts(body.facts ?? []);
+  if (!facts.length) return c.json({ error: "保存するfactがありません。" }, 400);
+  for (const fact of facts) {
+    await upsertUserFact(c.env.DB, user.id, fact.key, fact.value, "manual");
+  }
+  return c.json({ facts: await userFacts(c.env.DB, user.id, 50) });
+});
+
+app.delete("/api/context", async (c) => {
+  const user = await ensureUser(c);
+  const body = await c.req.json<{ id: number }>().catch(() => ({ id: 0 }));
+  if (!body.id) return c.json({ error: "削除するfact IDが必要です。" }, 400);
+  await c.env.DB.prepare("DELETE FROM user_context WHERE id = ? AND user_id = ?").bind(body.id, user.id).run();
+  return c.json({ facts: await userFacts(c.env.DB, user.id, 50) });
 });
 
 app.post("/api/chat", async (c) => {
@@ -487,22 +520,37 @@ function phraseFromVariant(jaText: string, variant: EnglishVariant): Phrase {
   };
 }
 
-async function userFacts(db: D1Database, userId: string): Promise<UserContextFact[]> {
-  const rows = await db.prepare("SELECT fact_key, fact_value, source FROM user_context WHERE user_id = ? ORDER BY updated_at DESC LIMIT 12")
-    .bind(userId).all<{ fact_key: string; fact_value: string; source: UserContextFact["source"] }>();
-  return rows.results.map((row) => ({ key: row.fact_key, value: row.fact_value, source: row.source }));
+async function userFacts(db: D1Database, userId: string, limit = 12): Promise<UserContextFact[]> {
+  const rows = await db.prepare("SELECT id, fact_key, fact_value, source FROM user_context WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?")
+    .bind(userId, limit).all<{ id: number; fact_key: string; fact_value: string; source: UserContextFact["source"] }>();
+  return rows.results.map((row) => ({ id: Number(row.id), key: row.fact_key, value: row.fact_value, source: row.source }));
 }
 
 async function saveExtractedFacts(db: D1Database, userId: string, result: InterviewCoachResponse): Promise<void> {
   const facts = result.extracted_facts ?? [];
   for (const fact of facts) {
-    const key = fact.key?.trim().slice(0, 40);
-    const value = fact.value?.trim().slice(0, 120);
-    if (!key || !value) continue;
-    await db.prepare(
-      "INSERT INTO user_context (user_id, fact_key, fact_value, source, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, fact_key) DO UPDATE SET fact_value = excluded.fact_value, source = excluded.source, updated_at = excluded.updated_at"
-    ).bind(userId, key, value, "interview", new Date().toISOString()).run();
+    const [normalized] = normalizeContextFacts([fact]);
+    if (!normalized) continue;
+    await upsertUserFact(db, userId, normalized.key, normalized.value, "interview");
   }
+}
+
+async function upsertUserFact(db: D1Database, userId: string, key: string, value: string, source: UserContextFact["source"]): Promise<void> {
+  await db.prepare(
+    "INSERT INTO user_context (user_id, fact_key, fact_value, source, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, fact_key) DO UPDATE SET fact_value = excluded.fact_value, source = excluded.source, updated_at = excluded.updated_at"
+  ).bind(userId, key, value, source, new Date().toISOString()).run();
+}
+
+function normalizeContextFacts(facts: Array<{ key?: string; value?: string }>): Array<{ key: string; value: string }> {
+  const seen = new Set<string>();
+  return facts.map((fact) => ({
+    key: (fact.key ?? "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40),
+    value: (fact.value ?? "").trim().slice(0, 120)
+  })).filter((fact) => {
+    if (!fact.key || !fact.value || seen.has(fact.key)) return false;
+    seen.add(fact.key);
+    return true;
+  }).slice(0, 12);
 }
 
 function parseHistory(value: string | null): ChatMessage[] {

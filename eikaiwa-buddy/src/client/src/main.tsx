@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BookOpen, Check, Flame, History, Keyboard, Loader2, Mic, Play, Plus, RefreshCw, Save, Send, Settings, Sparkles, UserRound, Volume2 } from "lucide-react";
-import type { AppState, AttemptEvaluation, NextStep, Phrase, ProgressPayload, ScriptSentencePayload, SessionPayload, SessionSummary, VariantStyle, WordFeedback } from "../../shared/types";
+import { BookOpen, Check, Flame, History, Keyboard, Loader2, Mic, Play, Plus, RefreshCw, Save, Send, Settings, Sparkles, Trash2, UserRound, Volume2, X } from "lucide-react";
+import type { AppState, AttemptEvaluation, NextStep, Phrase, ProgressPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UserContextFact, VariantStyle, WordFeedback } from "../../shared/types";
 import { encodeAudioBufferToWav16kMono } from "./audio/wav";
 import "./styles.css";
 
 type LoadState = "loading" | "ready" | "error";
 type AppSession = SessionPayload["session"];
 type SessionsPayload = { sessions: SessionSummary[]; active_session_id?: string | null };
+type ContextPayload = { facts: UserContextFact[] };
+type ContextDraftFact = { key: string; value: string };
 
 function App() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -21,6 +23,12 @@ function App() {
   const [recordingPhase, setRecordingPhase] = useState<"idle" | "recording" | "submitting">("idle");
   const [evaluation, setEvaluation] = useState<AttemptEvaluation | null>(null);
   const [ttsBusy, setTtsBusy] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextBusy, setContextBusy] = useState(false);
+  const [contextFacts, setContextFacts] = useState<UserContextFact[]>([]);
+  const [contextText, setContextText] = useState("");
+  const [contextPreview, setContextPreview] = useState<ContextDraftFact[]>([]);
+  const [manualFact, setManualFact] = useState<ContextDraftFact>({ key: "", value: "" });
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -181,6 +189,79 @@ function App() {
     }
   }
 
+  async function openContextModal() {
+    setContextOpen(true);
+    setContextPreview([]);
+    setContextBusy(true);
+    setError(null);
+    try {
+      const payload = await api<ContextPayload>("/api/context", { method: "GET" });
+      setContextFacts(payload.facts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "登録済み情報を読み込めませんでした。");
+    } finally {
+      setContextBusy(false);
+    }
+  }
+
+  async function ingestContext() {
+    const text = contextText.trim();
+    if (!text) return;
+    setContextBusy(true);
+    setError(null);
+    try {
+      const payload = await api<{ facts: ContextDraftFact[] }>("/api/context/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+      setContextPreview(payload.facts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "fact抽出に失敗しました。");
+    } finally {
+      setContextBusy(false);
+    }
+  }
+
+  async function saveContextFacts(facts: ContextDraftFact[]) {
+    if (!facts.length) return;
+    setContextBusy(true);
+    setError(null);
+    try {
+      const payload = await api<ContextPayload>("/api/context", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ facts })
+      });
+      setContextFacts(payload.facts);
+      setContextPreview([]);
+      setContextText("");
+      setManualFact({ key: "", value: "" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "fact保存に失敗しました。");
+    } finally {
+      setContextBusy(false);
+    }
+  }
+
+  async function deleteContextFact(id: number | undefined) {
+    if (!id) return;
+    setContextBusy(true);
+    setError(null);
+    try {
+      const payload = await api<ContextPayload>("/api/context", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      setContextFacts(payload.facts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "fact削除に失敗しました。");
+    } finally {
+      setContextBusy(false);
+    }
+  }
+
   async function toggleRecording() {
     if (recordingPhase === "recording") {
       mediaRef.current?.stop();
@@ -300,7 +381,7 @@ function App() {
           <button className="new-chat-button" onClick={() => void createNewSession()} disabled={busy}><Plus size={18} />新しく作る</button>
           <SessionList activeId={session?.id ?? null} sessions={sessions} onPick={(id) => void switchSession(id)} />
           <div className="sidebar-actions">
-            <button><UserRound size={17} />Kaiに自分のことを教える</button>
+            <button onClick={() => void openContextModal()}><UserRound size={17} />Kaiに自分のことを教える</button>
             <button><Settings size={17} />設定</button>
           </div>
         </aside>
@@ -351,6 +432,23 @@ function App() {
           <HistoryList progress={progress} />
         </aside>
       </main>
+      {contextOpen && (
+        <ContextModal
+          busy={contextBusy}
+          facts={contextFacts}
+          manualFact={manualFact}
+          previewFacts={contextPreview}
+          text={contextText}
+          onAddManual={() => void saveContextFacts([manualFact])}
+          onChangeManual={setManualFact}
+          onChangeText={setContextText}
+          onClose={() => setContextOpen(false)}
+          onDelete={(id) => void deleteContextFact(id)}
+          onIngest={() => void ingestContext()}
+          onSavePreview={(facts) => void saveContextFacts(facts)}
+          onUpdatePreview={setContextPreview}
+        />
+      )}
     </Shell>
   );
 }
@@ -438,6 +536,111 @@ function Composer({
           {busy ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
         </button>
       </form>
+    </div>
+  );
+}
+
+function ContextModal({
+  busy,
+  facts,
+  manualFact,
+  previewFacts,
+  text,
+  onAddManual,
+  onChangeManual,
+  onChangeText,
+  onClose,
+  onDelete,
+  onIngest,
+  onSavePreview,
+  onUpdatePreview
+}: {
+  busy: boolean;
+  facts: UserContextFact[];
+  manualFact: ContextDraftFact;
+  previewFacts: ContextDraftFact[];
+  text: string;
+  onAddManual: () => void;
+  onChangeManual: (fact: ContextDraftFact) => void;
+  onChangeText: (value: string) => void;
+  onClose: () => void;
+  onDelete: (id: number | undefined) => void;
+  onIngest: () => void;
+  onSavePreview: (facts: ContextDraftFact[]) => void;
+  onUpdatePreview: (facts: ContextDraftFact[]) => void;
+}) {
+  const canSaveManual = manualFact.key.trim() && manualFact.value.trim();
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="context-modal" role="dialog" aria-modal="true" aria-labelledby="context-modal-title">
+        <div className="modal-heading">
+          <div>
+            <span className="label">プロフィール注入</span>
+            <h1 id="context-modal-title">Kaiに自分のことを教える</h1>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="閉じる"><X size={20} /></button>
+        </div>
+
+        <div className="context-grid">
+          <section className="context-card">
+            <h2>プロフィールやSNS投稿を貼る</h2>
+            <textarea
+              aria-label="プロフィールやSNS投稿"
+              value={text}
+              onChange={(event) => onChangeText(event.target.value)}
+              placeholder="例: AIツールを作るエンジニアです。週末は喫茶店巡りをしていて、海外の人にも自分の仕事を説明できるようになりたいです。"
+              rows={8}
+            />
+            <button className="primary-action" onClick={onIngest} disabled={busy || !text.trim()}>
+              {busy ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}factを抽出
+            </button>
+          </section>
+
+          <section className="context-card">
+            <h2>抽出プレビュー</h2>
+            {previewFacts.length ? (
+              <>
+                <FactEditor facts={previewFacts} onChange={onUpdatePreview} />
+                <button className="primary-action" onClick={() => onSavePreview(previewFacts)} disabled={busy}>プレビューを保存</button>
+              </>
+            ) : <p className="muted">抽出結果はここに表示されます。保存するまでKaiには登録されません。</p>}
+          </section>
+        </div>
+
+        <section className="context-card">
+          <h2>保存済みfact</h2>
+          <div className="manual-fact-row">
+            <input aria-label="fact key" value={manualFact.key} onChange={(event) => onChangeManual({ ...manualFact, key: event.target.value })} placeholder="key 例: job" />
+            <input aria-label="fact value" value={manualFact.value} onChange={(event) => onChangeManual({ ...manualFact, value: event.target.value })} placeholder="value 例: エンジニア" />
+            <button className="secondary" onClick={onAddManual} disabled={busy || !canSaveManual}><Plus size={17} />追加</button>
+          </div>
+          <div className="fact-list">
+            {facts.map((fact) => (
+              <div className="fact-row" key={fact.id ?? `${fact.key}-${fact.value}`}>
+                <strong>{fact.key}</strong>
+                <span>{fact.value}</span>
+                <small>{fact.source}</small>
+                <button className="round" onClick={() => onDelete(fact.id)} aria-label={`${fact.key}を削除`}><Trash2 size={16} /></button>
+              </div>
+            ))}
+            {!facts.length && <p className="muted">まだ保存済みfactはありません。</p>}
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
+function FactEditor({ facts, onChange }: { facts: ContextDraftFact[]; onChange: (facts: ContextDraftFact[]) => void }) {
+  return (
+    <div className="fact-editor">
+      {facts.map((fact, index) => (
+        <div className="manual-fact-row" key={`${fact.key}-${index}`}>
+          <input aria-label={`preview key ${index + 1}`} value={fact.key} onChange={(event) => onChange(facts.map((item, itemIndex) => itemIndex === index ? { ...item, key: event.target.value } : item))} />
+          <input aria-label={`preview value ${index + 1}`} value={fact.value} onChange={(event) => onChange(facts.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item))} />
+          <button className="round" onClick={() => onChange(facts.filter((_, itemIndex) => itemIndex !== index))} aria-label={`${fact.key}をプレビューから削除`}><Trash2 size={16} /></button>
+        </div>
+      ))}
     </div>
   );
 }
