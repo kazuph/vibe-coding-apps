@@ -1,5 +1,5 @@
-import type { AttemptEvaluation, CoachResponse } from "../shared/types";
-import { coachPrompt, evaluationPrompt, ttsPrompt } from "./prompts";
+import type { AttemptEvaluation, CoachResponse, InterviewCoachResponse, UserContextFact } from "../shared/types";
+import { coachPrompt, evaluationPrompt, interviewPrompt, ttsPrompt } from "./prompts";
 
 export interface GeminiEnv {
   GEMINI_API_KEY: string;
@@ -57,6 +57,35 @@ const evaluationSchema = {
   required: ["verbatim", "words", "pronunciation_score", "fluency_score", "prosody_comment_ja", "overall_advice_ja", "next_step"]
 };
 
+const interviewSchema = {
+  type: "OBJECT",
+  properties: {
+    message_ja: { type: "STRING" },
+    chips: { type: "ARRAY", nullable: true, items: { type: "STRING" } },
+    draft: {
+      type: "OBJECT",
+      nullable: true,
+      properties: {
+        sentences_ja: { type: "ARRAY", items: { type: "STRING" } }
+      },
+      required: ["sentences_ja"]
+    },
+    extracted_facts: {
+      type: "ARRAY",
+      nullable: true,
+      items: {
+        type: "OBJECT",
+        properties: {
+          key: { type: "STRING" },
+          value: { type: "STRING" }
+        },
+        required: ["key", "value"]
+      }
+    }
+  },
+  required: ["message_ja", "chips", "draft", "extracted_facts"]
+};
+
 export async function coach(env: GeminiEnv, level: number, learnerMessage: string, history: string): Promise<CoachResponse> {
   return generateJson<CoachResponse>(env, env.GEMINI_COACH_MODEL, [
     { text: coachPrompt(level) },
@@ -70,6 +99,37 @@ export async function regenerateTopic(env: GeminiEnv, level: number): Promise<Co
     { text: coachPrompt(level) },
     { text: "Create three fresh topic suggestions and a short greeting in Japanese. Do not propose a phrase yet." }
   ], coachSchema);
+}
+
+export async function interviewCoach(
+  env: GeminiEnv,
+  input: {
+    level: number;
+    topic: string;
+    facts: UserContextFact[];
+    turnCount: number;
+    maxTurns: number;
+    mustDraft: boolean;
+    forbidDraft: boolean;
+    history: string;
+    learnerMessage: string;
+  }
+): Promise<InterviewCoachResponse> {
+  return generateJson<InterviewCoachResponse>(env, env.GEMINI_COACH_MODEL, [
+    {
+      text: interviewPrompt({
+        level: input.level,
+        topic: input.topic,
+        facts: input.facts.map((fact) => ({ key: fact.key, value: fact.value })),
+        turnCount: input.turnCount,
+        maxTurns: input.maxTurns,
+        mustDraft: input.mustDraft,
+        forbidDraft: input.forbidDraft
+      })
+    },
+    { text: `Conversation history JSON: ${input.history}` },
+    { text: `Learner message: ${input.learnerMessage}` }
+  ], interviewSchema);
 }
 
 export async function evaluatePronunciation(

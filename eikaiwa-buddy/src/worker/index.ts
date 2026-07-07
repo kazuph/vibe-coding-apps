@@ -4,8 +4,8 @@ import { getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { alignWords } from "../shared/alignment";
 import { average, decideNextStep, nextLevel } from "../shared/levels";
-import type { AttemptEvaluation, ChatMessage, Phrase, ProgressPayload, SessionPayload } from "../shared/types";
-import { coach, evaluatePronunciation, regenerateTopic, synthesizeSpeech, type GeminiEnv } from "./gemini";
+import type { AttemptEvaluation, ChatMessage, EnglishVariant, InterviewCoachResponse, InterviewState, Phrase, ProgressPayload, ScriptPayload, ScriptSentencePayload, SessionPayload, UserContextFact } from "../shared/types";
+import { evaluatePronunciation, interviewCoach, synthesizeSpeech, type GeminiEnv } from "./gemini";
 
 type Bindings = GeminiEnv & {
   DB: D1Database;
@@ -22,11 +22,10 @@ app.post("/api/session/start", async (c) => {
   if (!session) {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const initial = await regenerateTopic(c.env, user.level);
-    const history: ChatMessage[] = [{ role: "coach", text: initial.message_ja, created_at: now }];
+    const history: ChatMessage[] = [{ role: "coach", text: "今日はどんな場面の英語を一緒に作ろう？左のボタンから選んでね。", created_at: now }];
     await c.env.DB.prepare(
-      "INSERT INTO sessions (id, user_id, topic, state, current_phrase_json, chat_history_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, user.id, null, initial.state, jsonOrNull(initial.phrase), JSON.stringify(history), now, now).run();
+      "INSERT INTO sessions (id, user_id, topic, state, phase, current_phrase_json, chat_history_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, user.id, null, "topic", "topic", null, JSON.stringify(history), now, now).run();
     session = await getSession(c.env.DB, id);
   }
   return c.json(await buildSessionPayload(c.env.DB, user, session));
@@ -42,14 +41,33 @@ app.post("/api/chat", async (c) => {
 
   const history = parseHistory(session.chat_history_json);
   history.push({ role: "learner", text: message, created_at: new Date().toISOString() });
-  const result = await coach(c.env, user.level, message, JSON.stringify(history.slice(-12)));
-  history.push({ role: "coach", text: result.message_ja, created_at: new Date().toISOString() });
-  const topic = result.state === "propose" ? message : session.topic;
-  const state = result.phrase ? "practice" : result.state;
-  await c.env.DB.prepare(
-    "UPDATE sessions SET topic = ?, state = ?, current_phrase_json = ?, chat_history_json = ?, updated_at = ? WHERE id = ?"
-  ).bind(topic, state, jsonOrNull(result.phrase), JSON.stringify(history), new Date().toISOString(), session.id).run();
-  return c.json({ coach: result, session: await buildSessionPayload(c.env.DB, user, await getSession(c.env.DB, session.id)) });
+  const phase = session.phase ?? session.state;
+  if ((phase === "topic" || phase === "propose") && !session.script_id) {
+    const result = await startInterview(c, user, session, message, history);
+    return c.json(result);
+  }
+  if (phase === "interview" && session.script_id) {
+    const result = await continueInterview(c, user, session, message, history);
+    return c.json(result);
+  }
+  return c.json({ error: "いまはチャットで進めるフェーズではありません。" }, 400);
+});
+
+app.post("/api/script/draft", async (c) => {
+  const user = await ensureUser(c);
+  const body = await c.req.json<{ sentences_ja: string[] }>();
+  const sentences = normalizeDraftSentences(body.sentences_ja);
+  if (sentences.length < 2 || sentences.length > 4) return c.json({ error: "ドラフトは2〜4文で入力してください。" }, 400);
+  const session = await getOpenSession(c.env.DB, user.id);
+  if (!session?.script_id) return c.json({ error: "編集中の台本が見つかりません。" }, 404);
+  const script = await getScriptPayload(c.env.DB, session.script_id);
+  if (!script?.interview) return c.json({ error: "インタビュー状態が見つかりません。" }, 404);
+  const interview: InterviewState = { ...script.interview, draft_sentences_ja: sentences };
+  await c.env.DB.prepare("UPDATE scripts SET status = ?, interview_json = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+    .bind("draft", JSON.stringify(interview), new Date().toISOString(), session.script_id, user.id).run();
+  await c.env.DB.prepare("UPDATE sessions SET state = ?, phase = ?, updated_at = ? WHERE id = ?")
+    .bind("draft", "draft", new Date().toISOString(), session.id).run();
+  return c.json({ session: await buildSessionPayload(c.env.DB, user, await getSession(c.env.DB, session.id)) });
 });
 
 app.post("/api/attempt", async (c) => {
@@ -83,6 +101,79 @@ app.post("/api/attempt", async (c) => {
   await c.env.DB.prepare("UPDATE sessions SET state = ?, updated_at = ? WHERE id = ?").bind("feedback", new Date().toISOString(), session.id).run();
   return c.json({ evaluation, progress: await progress(c.env.DB, user.id) });
 });
+
+async function startInterview(
+  c: Context<{ Bindings: Bindings }>,
+  user: { id: string; level: number },
+  session: any,
+  topic: string,
+  history: ChatMessage[]
+) {
+  const now = new Date().toISOString();
+  const scriptId = crypto.randomUUID();
+  const interview = initialInterviewState();
+  await c.env.DB.prepare(
+    "INSERT INTO scripts (id, user_id, topic, status, interview_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(scriptId, user.id, topic, "interview", JSON.stringify(interview), now, now).run();
+  const facts = await userFacts(c.env.DB, user.id);
+  const coachResult = await interviewCoach(c.env, {
+    level: user.level,
+    topic,
+    facts,
+    turnCount: interview.turn_count,
+    maxTurns: interview.max_turns,
+    mustDraft: false,
+    forbidDraft: true,
+    history: JSON.stringify(history.slice(-12)),
+    learnerMessage: topic
+  });
+  if (coachResult.draft) return c.json({ error: "インタビュー開始時にドラフトが返りました。もう一度試してください。" }, 502);
+  const nextInterview = mergeInterview(interview, coachResult, false);
+  history.push({ role: "coach", text: coachResult.message_ja, created_at: new Date().toISOString() });
+  await saveExtractedFacts(c.env.DB, user.id, coachResult);
+  await c.env.DB.prepare("UPDATE scripts SET interview_json = ?, updated_at = ? WHERE id = ?")
+    .bind(JSON.stringify(nextInterview), new Date().toISOString(), scriptId).run();
+  await c.env.DB.prepare(
+    "UPDATE sessions SET topic = ?, state = ?, phase = ?, script_id = ?, active_sentence_position = ?, current_phrase_json = ?, chat_history_json = ?, updated_at = ? WHERE id = ?"
+  ).bind(topic, "interview", "interview", scriptId, 1, null, JSON.stringify(history), new Date().toISOString(), session.id).run();
+  return { coach: coachResult, session: await buildSessionPayload(c.env.DB, user, await getSession(c.env.DB, session.id)) };
+}
+
+async function continueInterview(
+  c: Context<{ Bindings: Bindings }>,
+  user: { id: string; level: number },
+  session: any,
+  message: string,
+  history: ChatMessage[]
+) {
+  const script = await getScriptPayload(c.env.DB, session.script_id);
+  if (!script?.interview) return c.json({ error: "インタビュー状態が見つかりません。" }, 404);
+  const answeredTurns = script.interview.turn_count + 1;
+  if (answeredTurns > script.interview.max_turns) return c.json({ error: "インタビューの上限に達しています。" }, 400);
+  const mustDraft = answeredTurns >= script.interview.max_turns;
+  const facts = await userFacts(c.env.DB, user.id);
+  const coachResult = await interviewCoach(c.env, {
+    level: user.level,
+    topic: script.topic,
+    facts,
+    turnCount: answeredTurns,
+    maxTurns: script.interview.max_turns,
+    mustDraft,
+    forbidDraft: false,
+    history: JSON.stringify(history.slice(-12)),
+    learnerMessage: message
+  });
+  if (mustDraft && !coachResult.draft) return c.json({ error: "ドラフト生成に失敗しました。もう一度送信してください。" }, 502);
+  const nextInterview = mergeInterview({ ...script.interview, turn_count: answeredTurns }, coachResult, Boolean(coachResult.draft));
+  const phase = coachResult.draft ? "draft" : "interview";
+  history.push({ role: "coach", text: coachResult.message_ja, created_at: new Date().toISOString() });
+  await saveExtractedFacts(c.env.DB, user.id, coachResult);
+  await c.env.DB.prepare("UPDATE scripts SET status = ?, interview_json = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+    .bind(coachResult.draft ? "draft" : "interview", JSON.stringify(nextInterview), new Date().toISOString(), session.script_id, user.id).run();
+  await c.env.DB.prepare("UPDATE sessions SET state = ?, phase = ?, chat_history_json = ?, updated_at = ? WHERE id = ?")
+    .bind(phase, phase, JSON.stringify(history), new Date().toISOString(), session.id).run();
+  return { coach: coachResult, session: await buildSessionPayload(c.env.DB, user, await getSession(c.env.DB, session.id)) };
+}
 
 app.post("/api/tts", async (c) => {
   const body = await c.req.json<{ phrase: string; slow?: boolean }>();
@@ -131,16 +222,38 @@ async function getSession(db: D1Database, id: string): Promise<any> {
 
 async function buildSessionPayload(db: D1Database, user: { id: string; level: number }, row: any): Promise<SessionPayload> {
   const freshUser = await db.prepare("SELECT id, level FROM users WHERE id = ?").bind(user.id).first<{ id: string; level: number }>();
+  const script = row.script_id ? await getScriptPayload(db, row.script_id) : null;
+  const activePosition = Number(row.active_sentence_position ?? 1);
   return {
     user: freshUser ?? user,
     session: {
       id: row.id,
       state: row.state,
+      phase: row.phase ?? row.state,
       topic: row.topic,
+      script_id: row.script_id ?? null,
+      active_sentence_position: activePosition,
       current_phrase: parsePhrase(row.current_phrase_json),
+      script,
+      active_sentence: script?.sentences.find((sentence) => sentence.position === activePosition) ?? null,
       chat_history: parseHistory(row.chat_history_json)
     },
     progress: await progress(db, user.id)
+  };
+}
+
+async function getScriptPayload(db: D1Database, scriptId: string): Promise<ScriptPayload | null> {
+  const script = await db.prepare("SELECT * FROM scripts WHERE id = ?").bind(scriptId).first<any>();
+  if (!script) return null;
+  const rows = await db.prepare("SELECT * FROM script_sentences WHERE script_id = ? ORDER BY position ASC")
+    .bind(scriptId).all<any>();
+  return {
+    id: script.id,
+    topic: script.topic,
+    audience: script.audience ?? null,
+    status: script.status,
+    interview: parseInterview(script.interview_json),
+    sentences: rows.results.map(toScriptSentencePayload)
   };
 }
 
@@ -180,6 +293,36 @@ function parsePhrase(value: string | null): Phrase | null {
     return JSON.parse(value) as Phrase;
   } catch {
     return null;
+  }
+}
+
+function parseInterview(value: string | null): InterviewState | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as InterviewState;
+  } catch {
+    return null;
+  }
+}
+
+function toScriptSentencePayload(row: any): ScriptSentencePayload {
+  return {
+    id: Number(row.id),
+    position: Number(row.position),
+    ja_text: row.ja_text,
+    variants: parseVariants(row.en_variants_json),
+    en_selected: row.en_selected ?? null,
+    best_score: Number(row.best_score ?? 0),
+    practice_count: Number(row.practice_count ?? 0)
+  };
+}
+
+function parseVariants(value: string | null): EnglishVariant[] {
+  if (!value) return [];
+  try {
+    return JSON.parse(value) as EnglishVariant[];
+  } catch {
+    return [];
   }
 }
 
