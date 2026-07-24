@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BookOpen, Check, Flame, History, Keyboard, Loader2, Mic, Play, Plus, RefreshCw, Save, Send, Settings, Sparkles, Trash2, UserRound, Volume2, X } from "lucide-react";
+import { BookOpen, Check, Flame, History, Keyboard, Loader2, Mic, Play, Plus, Save, Send, Settings, Sparkles, Trash2, UserRound, Volume2, X } from "lucide-react";
 import type { AppState, AttemptEvaluation, NextStep, Phrase, ProgressPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UsageCostSummary, UserContextFact, VariantStyle, WordFeedback } from "../../shared/types";
 import { encodeAudioBufferToWav16kMono } from "./audio/wav";
 import "./styles.css";
@@ -33,6 +33,12 @@ function App() {
   const [usage, setUsage] = useState<UsageCostSummary | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordingTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    const timeoutId = recordingTimeoutRef.current;
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  }, []);
 
   useEffect(() => {
     async function loadInitialSession() {
@@ -279,34 +285,70 @@ function App() {
 
   async function toggleRecording() {
     if (recordingPhase === "recording") {
+      if (recordingTimeoutRef.current !== null) {
+        window.clearTimeout(recordingTimeoutRef.current);
+        recordingTimeoutRef.current = null;
+      }
       mediaRef.current?.stop();
       setRecordingPhase("submitting");
+      return;
+    }
+    if (!session?.current_phrase?.en || !session?.active_sentence?.id) {
+      setRecordingPhase("idle");
+      setError("練習する英文がまだありません。先に話題を選んでください。");
       return;
     }
     setError(null);
     setEvaluation(null);
     chunksRef.current = [];
+    if (recordingTimeoutRef.current !== null) {
+      window.clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+    let recordingTimeoutId: number | null = null;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 48000 } });
       const recorder = new MediaRecorder(stream);
+      let recorderFailed = false;
       mediaRef.current = recorder;
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
-      recorder.onstop = () => {
-        setRecordingPhase("submitting");
+      recorder.onerror = () => {
+        recorderFailed = true;
+        if (recordingTimeoutId !== null && recordingTimeoutRef.current === recordingTimeoutId) {
+          window.clearTimeout(recordingTimeoutRef.current);
+          recordingTimeoutRef.current = null;
+        }
         stream.getTracks().forEach((track) => track.stop());
+        setRecordingPhase("idle");
+        setError("録音中にエラーが発生しました。もう一度試してください。");
+      };
+      recorder.onstop = () => {
+        if (recordingTimeoutId !== null && recordingTimeoutRef.current === recordingTimeoutId) {
+          window.clearTimeout(recordingTimeoutRef.current);
+          recordingTimeoutRef.current = null;
+        }
+        stream.getTracks().forEach((track) => track.stop());
+        if (recorderFailed) return;
+        setRecordingPhase("submitting");
         void submitRecording(new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }));
       };
       recorder.start();
       setRecordingPhase("recording");
-      window.setTimeout(() => {
-        if (mediaRef.current?.state === "recording") {
-          mediaRef.current.stop();
+      recordingTimeoutId = window.setTimeout(() => {
+        if (recorder.state === "recording") {
+          recorder.stop();
           setRecordingPhase("submitting");
         }
       }, 30_000);
+      recordingTimeoutRef.current = recordingTimeoutId;
     } catch (err) {
+      if (recordingTimeoutId !== null && recordingTimeoutRef.current === recordingTimeoutId) {
+        window.clearTimeout(recordingTimeoutRef.current);
+        recordingTimeoutRef.current = null;
+      }
+      setRecordingPhase("idle");
       setError(`マイクを開始できませんでした: ${err instanceof Error ? err.message : "権限を確認してください。"}`);
     }
   }
@@ -315,6 +357,7 @@ function App() {
     const phrase = session?.current_phrase?.en;
     const sentenceId = session?.active_sentence?.id;
     if (!phrase || !sentenceId) {
+      setRecordingPhase("idle");
       setError("練習する英文がまだありません。先に話題を選んでください。");
       return;
     }
@@ -360,8 +403,22 @@ function App() {
         const body = await response.json().catch(() => ({ error: "TTSに失敗しました。" })) as { error?: string };
         throw new Error(body.error);
       }
-      const audio = new Audio(URL.createObjectURL(await response.blob()));
-      await audio.play();
+      const audioUrl = URL.createObjectURL(await response.blob());
+      let released = false;
+      const revokeAudioUrl = () => {
+        if (released) return;
+        released = true;
+        URL.revokeObjectURL(audioUrl);
+      };
+      const audio = new Audio(audioUrl);
+      audio.addEventListener("ended", revokeAudioUrl, { once: true });
+      audio.addEventListener("error", revokeAudioUrl, { once: true });
+      try {
+        await audio.play();
+      } catch (err) {
+        revokeAudioUrl();
+        throw err;
+      }
       await refreshUsage();
     } catch (err) {
       setError(`お手本音声を再生できませんでした: ${err instanceof Error ? err.message : "Gemini TTSの応答を確認してください。"}`);
@@ -791,7 +848,7 @@ function PracticeStage({
           <button
             className={`mic-button ${recordingActive ? "recording" : ""}`}
             onClick={() => void onToggleRecording()}
-            disabled={busy && recordingPhase !== "recording"}
+            disabled={!phrase || recordingPhase === "submitting" || (busy && recordingPhase !== "recording")}
             aria-label={recordingActive ? "録音を停止" : "録音を開始"}
           >
             {busy ? <Loader2 className="spin" /> : <Mic size={44} />}
@@ -833,9 +890,9 @@ function HeardWords({ phrase, evaluation, words }: { phrase: string; evaluation:
   const list = words.length ? words : fallback;
   return (
     <div className="heard-card">
-      <div className="transcript"><button className="round"><Play size={16} /></button><strong>{evaluation?.verbatim ?? "録音後に聞き取り結果を表示します"} {evaluation?.model && <ModelTag model={evaluation.model} label="評価" />}</strong><RefreshCw size={18} /></div>
+      <div className="transcript"><Mic size={18} aria-hidden="true" /><strong>{evaluation?.verbatim ?? "録音後に聞き取り結果を表示します"} {evaluation?.model && <ModelTag model={evaluation.model} label="評価" />}</strong></div>
       <div className="word-row">
-        {list.map((word, index) => <button className={`word ${word.verdict}`} key={`${word.target_word}-${index}`} title={word.advice_ja}>{word.target_word}<small>{word.heard_as || "未判定"}</small></button>)}
+        {list.map((word, index) => <span className={`word ${word.verdict}`} key={`${word.target_word}-${index}`} title={word.advice_ja}>{word.target_word}<small>{word.heard_as || "未判定"}</small></span>)}
       </div>
       <div className="legend"><span className="dot ok" />良い発音 <span className="dot unclear" />注意 <span className="dot wrong" />要練習</div>
     </div>

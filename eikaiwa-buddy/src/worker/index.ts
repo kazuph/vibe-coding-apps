@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
-import { cors } from "hono/cors";
 import { alignWords } from "../shared/alignment";
 import { average, decideNextStep, nextLevel } from "../shared/levels";
 import type { AttemptEvaluation, ChatMessage, EnglishVariant, InterviewCoachResponse, InterviewState, Phrase, ProgressPayload, ScriptPayload, ScriptSentencePayload, SessionPayload, SessionSummary, UsageCostSummary, UserContextFact, VariantStyle } from "../shared/types";
@@ -19,8 +18,7 @@ const MODEL_PRICES: Record<string, { input: number; output: number; audioInput: 
   "gemini-3.1-flash-lite": { input: 0.25, output: 1.50, audioInput: 0.50 },
   "gemini-3.1-flash-tts": { input: 1.00, output: 20.00, audioInput: 0 }
 };
-
-app.use("/api/*", cors({ origin: (origin) => origin || "", credentials: true }));
+const MAX_ATTEMPT_WAV_BYTES = 44 + 16_000 * 2 * 30;
 
 app.post("/api/session/start", async (c) => {
   const user = await ensureUser(c);
@@ -191,6 +189,7 @@ app.post("/api/attempt", async (c) => {
   const audio = form.get("audio");
   if (!sentenceId || !(audio instanceof File)) return c.json({ error: "WAV音声と練習文IDが必要です。" }, 400);
   if (audio.type !== "audio/wav" && audio.type !== "audio/x-wav") return c.json({ error: "録音は16kHz mono WAVに変換してから送信してください。" }, 400);
+  if (audio.size > MAX_ATTEMPT_WAV_BYTES) return c.json({ error: "録音は30秒以内の16kHz mono WAVにしてください。" }, 400);
   const sentence = await c.env.DB.prepare(
     "SELECT ss.* FROM script_sentences ss JOIN scripts s ON s.id = ss.script_id WHERE ss.id = ? AND ss.script_id = ? AND s.user_id = ?"
   ).bind(sentenceId, session.script_id, user.id).first<any>();
@@ -341,7 +340,7 @@ async function ensureUser(c: Context<{ Bindings: Bindings }>): Promise<{ id: str
   }
   const id = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO users (id, level) VALUES (?, ?)").bind(id, 1).run();
-  setCookie(c, "eb_uid", id, { httpOnly: true, sameSite: "Lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
+  setCookie(c, "eb_uid", id, { httpOnly: true, sameSite: "Lax", path: "/", maxAge: 60 * 60 * 24 * 365, secure: new URL(c.req.url).protocol === "https:" });
   return { id, level: 1 };
 }
 
