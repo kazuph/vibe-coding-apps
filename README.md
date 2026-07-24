@@ -33,6 +33,7 @@ vibe-coding-apps/
 | `fitness-bike-node-ble-tui/` | なし | Node.js TUI版（Bluetooth制御） |
 | `techbook-*-extension/` | なし | Chrome Extensions |
 | なし | `docs/kids-learning/` | 学習アプリ（スタンドアロン） |
+| なし | `docs/walkingpad/` | WalkPad Console（KS-HD-Z1DをWeb Bluetoothで制御・3Dランナー付き） |
 
 ## プロジェクト一覧
 

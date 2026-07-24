@@ -37,6 +37,7 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | `fitness-bike-node-ble-tui/` | None | Node.js TUI version (Bluetooth control) |
 | `techbook-*-extension/` | None | Chrome Extensions |
 | None | `docs/kids-learning/` | Standalone learning app |
+| None | `docs/walkingpad/` | WalkPad Console (KS-HD-Z1D treadmill via Web Bluetooth, 3D runner) |
 | None | `docs/figure-skating-report/` | Figure skating training guide (docs only) |
 | None | `docs/functional-programming-tutorial/` | FP tutorial (docs only) |
 
