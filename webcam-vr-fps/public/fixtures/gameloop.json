@@ -1,0 +1,5 @@
+{
+  "frames": [
+    { "at": 0, "state": { "tracking": { "leftHand": true, "rightHand": true }, "fire": false } }
+  ]
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+e2e/fixtures/human-hands.y4m
+coverage/
+test-results/
+.artifacts/
+*.tsbuildinfo
+*.log

@@ -1,0 +1,12 @@
+{
+  "frames": [
+    {
+      "at": 0,
+      "state": {
+        "tracking": { "leftHand": true, "rightHand": true },
+        "move": { "x": 1, "z": 0 },
+        "jet": { "active": true, "thrust": 1 }
+      }
+    }
+  ]
+}

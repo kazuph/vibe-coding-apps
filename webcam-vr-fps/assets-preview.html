@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AERO HAND - 3D Assets Preview</title>
+  <style>
+    :root {
+      --neon-cyan: #00f0ff;
+      --neon-magenta: #ff2d95;
+      --neon-amber: #ffaa00;
+      --bg-dark: #05060f;
+      --bg-panel: rgba(10, 14, 26, 0.85);
+      --border-color: #1f2842;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #e2e8f0;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* サイバーパンク調 UI パネル */
+    .hud-panel {
+      position: absolute;
+      z-index: 10;
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(0, 240, 255, 0.05);
+    }
+
+    /* 左側コントロール */
+    #control-panel {
+      top: 20px;
+      left: 20px;
+      width: 300px;
+      border-left: 4px solid var(--neon-cyan);
+    }
+
+    /* 右側ステータス/統計 */
+    #stats-panel {
+      top: 20px;
+      right: 20px;
+      width: 280px;
+      border-right: 4px solid var(--neon-magenta);
+    }
+
+    /* 中央下の説明 */
+    #info-banner {
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 25px;
+      border-bottom: 2px solid var(--neon-amber);
+      font-size: 14px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    h1, h2 {
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+
+    h1 {
+      color: var(--neon-cyan);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 8px;
+      font-size: 20px;
+    }
+
+    h2 {
+      color: var(--neon-magenta);
+      font-size: 14px;
+      margin-top: 10px;
+      border-bottom: 1px dashed var(--border-color);
+      padding-bottom: 4px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+
+    /* カスタムセレクトボックス */
+    select {
+      width: 100%;
+      background: #0d1326;
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    select:focus {
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+    }
+
+    /* ボタン */
+    .btn {
+      display: block;
+      width: 100%;
+      background: transparent;
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      padding: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 13px;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+      text-shadow: 0 0 5px rgba(0, 240, 255, 0.5);
+      box-shadow: 0 0 5px rgba(0, 240, 255, 0.1);
+    }
+
+    .btn:hover {
+      background: rgba(0, 240, 255, 0.1);
+      box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-magenta {
+      border-color: var(--neon-magenta);
+      color: var(--neon-magenta);
+      text-shadow: 0 0 5px rgba(255, 45, 149, 0.5);
+      box-shadow: 0 0 5px rgba(255, 45, 149, 0.1);
+    }
+
+    .btn-magenta:hover {
+      background: rgba(255, 45, 149, 0.1);
+      box-shadow: 0 0 12px rgba(255, 45, 149, 0.4);
+    }
+
+    .btn-disabled {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    /* ステータス表示 */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      margin-bottom: 8px;
+      font-family: monospace;
+    }
+
+    .stat-label {
+      color: #94a3b8;
+    }
+
+    .stat-val {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .stat-val.highlight {
+      color: var(--neon-cyan);
+    }
+
+    /* ヘルプガイド */
+    .help-text {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+      margin-top: 15px;
+    }
+
+    .flicker {
+      animation: text-flicker 3s linear infinite;
+    }
+
+    @keyframes text-flicker {
+      0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100% {
+        opacity: 0.99;
+      }
+      20%, 21.999%, 63%, 63.999%, 65%, 69.999% {
+        opacity: 0.4;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- コントロールパネル -->
+  <div id="control-panel" class="hud-panel">
+    <h1 class="flicker">Asset Viewer</h1>
+    
+    <div class="form-group">
+      <label for="asset-select">表示アセット</label>
+      <select id="asset-select">
+        <option value="all">すべて表示 (All)</option>
+        <option value="city">ネオ都市 (City)</option>
+        <option value="enemy">敵ドローン (Enemy)</option>
+        <option value="weapon">SF銃 (Weapon)</option>
+      </select>
+    </div>
+
+    <!-- 武器コントロール -->
+    <div id="weapon-controls" class="control-subgroup">
+      <h2>Weapon Actions</h2>
+      <button id="btn-fire" class="btn">FIRE (射撃)</button>
+    </div>
+
+    <!-- 敵コントロール -->
+    <div id="enemy-controls" class="control-subgroup">
+      <h2>Enemy Actions</h2>
+      <button id="btn-hit" class="btn btn-magenta">ON HIT (被弾)</button>
+      <button id="btn-destroy" class="btn btn-magenta">DESTROY (撃破)</button>
+      <button id="btn-reset" class="btn">RESET (リセット)</button>
+    </div>
+
+    <div class="help-text">
+      ドラッグ: 回転<br>
+      右ドラッグ: 平行移動<br>
+      ホイール: ズーム
+    </div>
+  </div>
+
+  <!-- ステータスパネル -->
+  <div id="stats-panel" class="hud-panel">
+    <h2>Performance Stats</h2>
+    <div class="stat-row">
+      <span class="stat-label">FPS:</span>
+      <span id="stat-fps" class="stat-val highlight">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Draw Calls:</span>
+      <span id="stat-drawcalls" class="stat-val">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Triangles:</span>
+      <span id="stat-triangles" class="stat-val">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Geometries:</span>
+      <span id="stat-geometries" class="stat-val">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Textures:</span>
+      <span id="stat-textures" class="stat-val">--</span>
+    </div>
+
+    <h2>Asset Status</h2>
+    <div class="stat-row">
+      <span class="stat-label">City Colliders:</span>
+      <span id="stat-colliders" class="stat-val">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Enemy State:</span>
+      <span id="stat-enemy-state" class="stat-val">READY</span>
+    </div>
+  </div>
+
+  <div id="info-banner" class="hud-panel">
+    Vibe Coding Webcam-VR-FPS 3D Assets Preview
+  </div>
+
+  <script type="module" src="./src/assets/preview.ts"></script>
+</body>
+</html>

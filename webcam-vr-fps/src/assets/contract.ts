@@ -12,6 +12,7 @@ export interface EnemyAsset {
   update(dt: number, elapsed: number): void  // ホバー・回転アニメ
   onHit(): void                              // 被弾フラッシュ
   onDestroy(): Promise<void>                 // 撃破演出（完了後 remove 可能）
+  reset(): void                              // プール再利用用に状態リセット
 }
 
 export interface WeaponViewModel {

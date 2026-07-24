@@ -1,0 +1,7 @@
+{
+  "frames": [
+    { "at": 0, "state": { "tracking": { "leftHand": true, "rightHand": true }, "aim": { "x": 0, "y": 0 }, "fire": false } },
+    { "at": 2000, "state": { "tracking": { "leftHand": true, "rightHand": true }, "aim": { "x": 0, "y": 0 }, "fire": true } },
+    { "at": 3000, "state": { "tracking": { "leftHand": true, "rightHand": true }, "aim": { "x": 0, "y": 0 }, "fire": false } }
+  ]
+}

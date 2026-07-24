@@ -1,0 +1,7 @@
+{
+  "frames": [
+    { "at": 0, "state": { "tracking": { "leftHand": true, "rightHand": true }, "jet": { "active": false, "thrust": 0 } } },
+    { "at": 400, "state": { "tracking": { "leftHand": true, "rightHand": true }, "jet": { "active": true, "thrust": 1 } } },
+    { "at": 2400, "state": { "tracking": { "leftHand": true, "rightHand": true }, "jet": { "active": false, "thrust": 0 } } }
+  ]
+}

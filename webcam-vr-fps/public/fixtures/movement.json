@@ -1,0 +1,6 @@
+{
+  "frames": [
+    { "at": 0, "state": { "tracking": { "leftHand": true, "rightHand": true }, "move": { "x": 0, "z": 0 } } },
+    { "at": 500, "state": { "tracking": { "leftHand": true, "rightHand": true }, "move": { "x": 0.6, "z": 1 } } }
+  ]
+}
