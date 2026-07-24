@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "eikaiwa-buddy",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-07-07",
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "eikaiwa_buddy",
+      "database_id": "local-eikaiwa-buddy"
+    }
+  ],
+  "vars": {
+    "GEMINI_COACH_MODEL": "gemini-3.5-flash",
+    "GEMINI_LITE_MODEL": "gemini-3.1-flash-lite",
+    "GEMINI_TTS_MODEL": "gemini-3.1-flash-tts"
+  }
+}
