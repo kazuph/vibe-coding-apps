@@ -1400,25 +1400,34 @@ function step() {
     running = false;
     return;
   }
+  // 先に両方のエラーを見てから動かす。片方だけ apply して抜けると、
+  // frame が進まないまま「開始」を押すたびにその戦車だけが動いてしまう
+  let failed = false;
   for (const side of ["blue", "red"]) {
     const o = out[side];
     if (!o) continue;
     logOutput(side, o.out);
-    if (o.err) {
-      const line = Number.isInteger(o.line) ? o.line : null;
-      if (side === "blue" && line) errorLine = line;
-      if (side === "blue") refreshEditor();
-      log(`${errorLabel(side, line)} ${errorBody(side, o.err)}`, "err");
-      if (side === "blue") {
-        log(line
-          ? `${line}行目でエラーです。直して「コードを反映して再戦」を押してください`
-          : "エラーで停止しました。直して「コードを反映して再戦」を押してください", "note");
-      }
-      running = false;
-      $("btnRun").textContent = "開始";
-      return;
+    if (!o.err) continue;
+    failed = true;
+    const line = Number.isInteger(o.line) ? o.line : null;
+    if (side === "blue") {
+      if (line) errorLine = line;
+      refreshEditor();
     }
-    apply(tanks[side], o.cmds);
+    log(`${errorLabel(side, line)} ${errorBody(side, o.err)}`, "err");
+    if (side === "blue") {
+      log(line
+        ? `${line}行目でエラーです。直して「コードを反映して再戦」を押してください`
+        : "エラーで停止しました。直して「コードを反映して再戦」を押してください", "note");
+    }
+  }
+  if (failed) {
+    running = false;
+    $("btnRun").textContent = "開始";
+    return;
+  }
+  for (const side of ["blue", "red"]) {
+    if (out[side]) apply(tanks[side], out[side].cmds);
   }
   physics();
   frame++;
@@ -1616,7 +1625,13 @@ function loadMusic() {
   globalThis.__src = code.music;
   const r = JSON.parse(vm.eval("Engine.music(JS.global[:__src].to_s)").toString());
   logOutput("music", r.out);
-  if (r.err) { log(`bgm.rb ${r.err}`, "err"); return false; }
+  if (r.err) {
+    // 読み込めなかった曲を鳴らし続けない。ログはエラーなのに音は前のまま、が起きる
+    stopMusic();
+    musicLoops = [];
+    log(`bgm.rb ${r.err}`, "err");
+    return false;
+  }
   musicLoops = r.loops.filter((l) => l.len > 0.01);
   const total = musicLoops.reduce((n, l) => n + l.events.length, 0);
   log(`bgm.rb ${musicLoops.length}ループ / ${total}音 を読み込みました`, "ok");
