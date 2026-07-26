@@ -38,6 +38,7 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | `techbook-*-extension/` | None | Chrome Extensions |
 | None | `docs/kids-learning/` | Standalone learning app |
 | None | `docs/walkingpad/` | WalkPad Console (KS-HD-Z1D treadmill via Web Bluetooth, 3D runner) |
+| None | `docs/ruby-tanks/` | Ruby Tanks (tank-AI programming battle on ruby.wasm / CRuby 3.4, BGM via Ruby DSL) |
 | None | `docs/figure-skating-report/` | Figure skating training guide (docs only) |
 | None | `docs/functional-programming-tutorial/` | FP tutorial (docs only) |
 
