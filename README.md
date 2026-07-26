@@ -34,6 +34,7 @@ vibe-coding-apps/
 | `techbook-*-extension/` | なし | Chrome Extensions |
 | なし | `docs/kids-learning/` | 学習アプリ（スタンドアロン） |
 | なし | `docs/walkingpad/` | WalkPad Console（KS-HD-Z1DをWeb Bluetoothで制御・3Dランナー付き） |
+| なし | `docs/ruby-tanks/` | Ruby Tanks（ruby.wasm でCRubyを動かす戦車AIプログラミング対戦・BGMもRuby DSL） |
 
 ## プロジェクト一覧
 
