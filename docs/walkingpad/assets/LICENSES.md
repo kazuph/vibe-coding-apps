@@ -1,5 +1,12 @@
 # RUN モード使用アセット
 
+## Twemoji の走る人アイコン
+
+- 出典: https://github.com/twitter/twemoji/blob/v14.0.2/assets/72x72/1f3c3.png
+- 作者: Twitter, Inc and other contributors
+- ライセンス: CC BY 4.0
+- ローカル配置: `../favicon.png`
+
 ## Soldier.glb
 
 - 出典: https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb
