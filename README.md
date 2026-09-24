@@ -34,6 +34,7 @@ vibe-coding-apps/
 | `techbook-*-extension/` | なし | Chrome Extensions |
 | なし | `docs/kids-learning/` | 学習アプリ（スタンドアロン） |
 | なし | `docs/walkingpad/` | WalkPad Console（KS-HD-Z1DをWeb Bluetoothで制御・3Dランナー付き） |
+| なし | `docs/niigata-3d/` | 新潟駅 3Dマップ（改修完成予想の万代広場＋朱鷺メッセ・りゅーとぴあ周辺。PLATEAU/OSM/新潟市資料） |
 | なし | `docs/ruby-tanks/` | Ruby Tanks（ruby.wasm でCRubyを動かす戦車AIプログラミング対戦・BGMもRuby DSL） |
 
 ## プロジェクト一覧
