@@ -74,7 +74,7 @@ export const INFO = {
     <p style="font-size:12.5px">${E} 棟の配置は公表されていないため、建物は置かず、敷地（旧在来線仮設ホーム跡地と推定）の輪郭だけを表示しています。</p>
     ${src([['Impress Watch（2026年）', 'https://www.watch.impress.co.jp/docs/news/2109874.html']])}` },
   iconic: { html: `<h2>アイコニックタワー新潟ステーション</h2><div class="meta">${O} 高さ 103.85m ・ 30階 ・ 2025年6月竣工</div>
-    <p>PLATEAU 2023年度データの後に竣工したため、OpenStreetMap の外形に公表されている高さを当てはめて補っています。併設のオフィス棟（10階・42.70m）と駐車場棟（8階・29.99m）は外形データがないため省略しています。</p>
+    <p>PLATEAU 2023年度データの後に竣工したため、OpenStreetMap の外形に公表されている高さを当てはめて補っています。併設のオフィス棟（10階・42.70m）と駐車場棟（8階・29.99m）は外形データがないため省略しています。「完成予想 2027」をオフにした 2023年計測時の表示では隠れます。</p>
     ${src([['超高層ビル・都市データ skyskysky', 'https://skyskysky.net/construction/202573.html']])}` },
 
   bandaibashi: { html: `<h2>萬代橋</h2><div class="meta">${O} 国の重要文化財（2004年指定）・ 1929年竣工（3代目）</div>

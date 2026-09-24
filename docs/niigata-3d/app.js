@@ -126,8 +126,7 @@ function buildOSM(d) {
 }
 
 // ---- PLATEAU 建物
-const buildingIndex = []; // [triStart, id, h, lod]
-let buildingMesh;
+let buildingMesh, beforeMesh; // 各メッシュの userData.index = [[triStart, id, h, lod], ...]
 function buildCity(buf, hidden, invert = false) {
   const dv = new DataView(buf); let o = 12;
   const n1 = dv.getUint32(4, true), n2 = dv.getUint32(8, true);
@@ -141,12 +140,13 @@ function buildCity(buf, hidden, invert = false) {
   // 地面近くを少し暗くして、簡易的な環境遮蔽（AO）の効果を出す
   const push = (c, ...xyz) => { for (let i = 0; i < xyz.length; i += 3) { const y = xyz[i + 1], k = y < 0.5 ? 0.72 : y < 8 ? 0.72 + y * 0.035 : 1; pos.push(xyz[i], y, xyz[i + 2]); col.push(c.r * k, c.g * k, c.b * k); } };
   let hiddenCount = 0;
+  const index = [];
   for (let b = 0; b < n1; b++) {
     const id = dv.getUint32(o, true), n = dv.getUint16(o + 4, true), h = dv.getUint16(o + 6, true) / 10; o += 8;
     const ring = [];
     for (let i = 0; i < n; i++) { ring.push([dv.getInt16(o, true) / 4, dv.getInt16(o + 2, true) / 4]); o += 4; }
     if (hidden(id, ring, h) !== invert) { hiddenCount++; continue; }
-    if (!invert) buildingIndex.push([pos.length / 9, id, h, 1]);
+    index.push([pos.length / 9, id, h, 1]);
     shade(h, id);
     const H = Math.max(h, 2.5);
     for (let i = 0; i < n; i++) {
@@ -166,7 +166,7 @@ function buildCity(buf, hidden, invert = false) {
     for (let i = 0; i < nv; i++) { minx = Math.min(minx, vx[i * 3]); maxx = Math.max(maxx, vx[i * 3]); minz = Math.min(minz, vx[i * 3 + 2]); maxz = Math.max(maxz, vx[i * 3 + 2]); maxy = Math.max(maxy, vx[i * 3 + 1]); }
     const ring = [[minx, minz], [maxx, minz], [maxx, maxz], [minx, maxz]];
     if (hidden(id, ring, maxy) !== invert) { hiddenCount++; continue; }
-    if (!invert) buildingIndex.push([pos.length / 9, id, maxy, 2]);
+    index.push([pos.length / 9, id, maxy, 2]);
     shade(maxy, id);
     for (let i = 0; i < ni; i += 3) {
       const a = idx[i], bb = idx[i + 1], c = idx[i + 2];
@@ -180,15 +180,17 @@ function buildCity(buf, hidden, invert = false) {
   g.computeVertexNormals();
   const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   mesh.castShadow = mesh.receiveShadow = true;
-  if (invert) { mkGroup('before').add(mesh); return; }
+  mesh.userData.index = index;
+  if (invert) { beforeMesh = mesh; mkGroup('before').add(mesh); return; }
   buildingMesh = mesh;
   mkGroup('buildings').add(buildingMesh);
-  console.log('buildings', buildingIndex.length, 'hidden', hiddenCount, 'tris', pos.length / 9);
+  console.log('buildings', index.length, 'hidden', hiddenCount, 'tris', pos.length / 9);
 }
-function buildingAt(tri) {
-  let lo = 0, hi = buildingIndex.length - 1;
-  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (buildingIndex[mid][0] <= tri) lo = mid; else hi = mid - 1; }
-  return buildingIndex[lo];
+function buildingAt(mesh, tri) {
+  const index = mesh.userData.index;
+  let lo = 0, hi = index.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (index[mid][0] <= tri) lo = mid; else hi = mid - 1; }
+  return index[lo];
 }
 
 // ---- ラベル
@@ -196,6 +198,8 @@ const labelEls = [];
 function addLabel(l) {
   const el = document.createElement('div');
   el.className = 'lbl' + (l.plan ? ' plan' : '');
+  // plan: 完成予想の計画要素 / modern: PLATEAU 2023年度より後に竣工したもの。どちらも「2023年計測時」表示では隠す
+  if (l.plan || l.modern) el.dataset.afterSurvey = '1';
   el.textContent = l.name;
   el.onclick = (e) => { e.stopPropagation(); if (l.key) showInfo(l.key); };
   document.getElementById('labels').appendChild(el);
@@ -263,11 +267,11 @@ function buildUI() {
 function applyToggles() {
   if (layers.plan) layers.plan.visible = toggles.plan;
   if (layers.before) layers.before.visible = !toggles.plan;
-  if (layers.landmarks) layers.landmarks.traverse(o => { if (o.userData.planOnly) o.visible = toggles.plan; });
+  if (layers.landmarks) layers.landmarks.traverse(o => { if (o.userData.planOnly || o.userData.modern) o.visible = toggles.plan; });
   if (layers.rail) layers.rail.visible = toggles.rail;
   renderer.shadowMap.enabled = toggles.shadows; sun.castShadow = toggles.shadows;
   scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
-  for (const L of labelEls) if (L.el.classList.contains('plan')) L.el.dataset.hide = toggles.plan ? '' : '1';
+  for (const L of labelEls) if (L.el.dataset.afterSurvey) L.el.dataset.hide = toggles.plan ? '' : '1';
 }
 
 // ---- クリック（建物の実測高さ表示）
@@ -278,14 +282,17 @@ canvas.addEventListener('pointerup', e => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
   mouse.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1);
   ray.setFromCamera(mouse, camera);
-  const objs = [buildingMesh, ...(layers.landmarks ? [layers.landmarks] : []), ...(toggles.plan && layers.plan ? [layers.plan] : [])];
-  const hit = ray.intersectObjects(objs, true)[0];
+  const objs = [buildingMesh, ...(layers.landmarks ? [layers.landmarks] : []), ...(toggles.plan && layers.plan ? [layers.plan] : []), ...(!toggles.plan && beforeMesh ? [beforeMesh] : [])];
+  // Raycaster は visible を見ないので、非表示の祖先を持つものは除く
+  const shown = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+  const hit = ray.intersectObjects(objs, true).find(h => shown(h.object));
   if (!hit) return;
   let o = hit.object; while (o && !o.userData.info && o.parent) o = o.parent;
   if (o && o.userData.info) { showInfo(o.userData.info); return; }
-  if (hit.object === buildingMesh) {
-    const b = buildingAt(hit.faceIndex);
-    sideBody.innerHTML = `<h2>既存建物</h2><div class="meta"><span class="badge b-m">実測</span>PLATEAU 新潟市 2023年度</div>
+  if (hit.object === buildingMesh || hit.object === beforeMesh) {
+    const before = hit.object === beforeMesh;
+    const b = buildingAt(hit.object, hit.faceIndex);
+    sideBody.innerHTML = `<h2>${before ? '2023年度計測時の建物（万代広場の整備で撤去）' : '既存建物'}</h2><div class="meta"><span class="badge b-m">実測</span>PLATEAU 新潟市 2023年度</div>
       <p>計測高さ: <b>${b[2].toFixed(1)} m</b>（LOD${b[3]}${b[3] === 2 ? '・屋根形状あり' : '・箱型'}）</p>
       <p style="color:var(--sub);font-size:12px">高さは航空測量による実測値。建物名は PLATEAU に含まれないため表示していません。</p>`;
     side.style.display = '';

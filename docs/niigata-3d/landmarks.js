@@ -98,6 +98,7 @@ export function buildLandmarkModels({ ll, osm }) {
   for (const e of osm.extra) {
     const m = extrude(e.p, 103.85, 0xd6dde2);
     m.userData.info = 'iconic';
+    m.userData.modern = true; // 「2023年計測時」表示では隠す
     group.add(m);
   }
 
@@ -121,7 +122,7 @@ export function buildLandmarkModels({ ll, osm }) {
   L('新潟市陸上競技場', 37.9130639, 139.0369472, 18, 'rikujo', 2200);
   L('白山公園', 37.91440, 139.03935, 8, 'hakusanpark', 2000);
   L('昭和大橋', 37.9117, 139.0438, 10, 'showa', 2500);
-  L('アイコニックタワー 103.85m', 37.91063, 139.05926, 110, 'iconic', 4000);
+  { const [x, z] = ll(37.91063, 139.05926); labels.push({ name: 'アイコニックタワー 103.85m', pos: [x, 110, z], key: 'iconic', far: 4000, modern: true }); }
   labels.push({ name: '南口広場', pos: [30, 12, 170], key: 'south', far: 1500 });
   labels.push({ name: '駅直下バスターミナル（高架下）', pos: [64, 8, 35], key: 'busterminal', far: 900 });
   const [sx, sz] = [135, -52];
