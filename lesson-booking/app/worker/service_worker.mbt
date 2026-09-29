@@ -28,8 +28,12 @@ extern "js" fn caches_delete(name : String) -> @js.Any =
   #| (name) => caches.delete(name)
 
 ///| Add all URLs to cache
-extern "js" fn cache_add_all(cache : @js.Any, urls : Array[String]) -> @js.Any =
+extern "js" fn cache_add_all_ffi(cache : @js.Any, urls : FixedArray[String]) -> @js.Any =
   #| (cache, urls) => cache.addAll(urls)
+
+fn cache_add_all(cache : @js.Any, urls : Array[String]) -> @js.Any {
+  cache_add_all_ffi(cache, FixedArray::from_array(urls))
+}
 
 ///| Match request in cache
 extern "js" fn cache_match(request : @js.Any) -> @js.Any =
