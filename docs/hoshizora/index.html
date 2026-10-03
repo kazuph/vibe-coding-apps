@@ -123,6 +123,7 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   <small>スマホを空にかざすと、その方角の本物の星が映ります。<br>位置情報と動きのセンサー（コンパス）を使います。</small>
 </div>
 
+<script src="./vendor/compass.js"></script>
 <script src="./astro.js"></script>
 <script>
 const {D2R,R2D,sind,cosd,rev}=Astro;
@@ -181,7 +182,7 @@ let W=0,H=0,fov=62,F=1;
 let lat=37.916,lon=139.036,placeLabel='新潟（おおよその位置）';
 let timeMode='now';
 let useSensor=true,showLines=true,sensorAlive=0,sensorState='idle'; // idle|asking|ok|denied|none
-let headingOff=null,headingFixed=false;
+let headingOff=null,compassDeclination=null,compassKey='';
 let yaw=180*D2R,pitch=30*D2R;
 let view={r:[1,0,0],u:[0,0,1],f:[0,1,0]},target=null;
 let sky={stars:[],mw:[],bodies:[],sunAlt:-30,lastT:-1e9};
@@ -221,8 +222,19 @@ const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]
 function nowDate(){if(timeMode==='tonight'){const d=new Date();d.setHours(21,0,0,0);return d;}return new Date();}
 function recompute(){
   const date=nowDate(),s=Astro.skyAt(date,lat,lon);
+  // センサーの磁場はプレビュー日時ではなく実際の現在日時で補正する。
+  const current=new Date(),key=`${current.toISOString().slice(0,10)}/${lat}/${lon}`;
+  if(key!==compassKey){
+    const next=Compass.declination(current,lat,lon);
+    if(headingOff!=null){
+      if(next!=null&&compassDeclination!=null)headingOff=rev(headingOff+compassDeclination-next);
+      else headingOff=null;
+    }
+    compassDeclination=next;compassKey=key;
+  }
   sky.date=date;sky.stars=s.stars;sky.bodies=s.bodies;
-  sky.mw=MW.map(m=>({m,v:Astro.enu(m.ra,m.dec,s.lst,lat)}));
+  sky.mw=MW.map(m=>{const[ra,dec]=Astro.precess(m.ra,m.dec,(s.J-2451545)/365.25);
+    return{m,v:Astro.refract(Astro.enu(ra,dec,s.lst,lat))};});
   sky.sun=sky.bodies.find(b=>b.key==='sun');sky.sunAlt=Math.asin(sky.sun.v[2])*R2D;
   sky.moon=sky.bodies.find(b=>b.key==='moon');sky.moon.k=(1-dot3(sky.moon.v,sky.sun.v))/2;
   sky.byId={};sky.stars.forEach(x=>sky.byId[x.s.id]=x);
@@ -235,18 +247,21 @@ function recompute(){
 function screenAngle(){return(screen.orientation&&typeof screen.orientation.angle==='number')?screen.orientation.angle:(window.orientation||0)}
 let absSeen=false;
 function onOri(e,isAbs){
-  if(e.alpha==null||e.beta==null)return;
-  if(isAbs)absSeen=true;else if(absSeen)return;
+  if(![e.alpha,e.beta,e.gamma].every(Number.isFinite))return;
+  if(!isAbs&&absSeen)return;
   let a=e.alpha;const b=e.beta,g=e.gamma;
-  if(typeof e.webkitCompassHeading==='number'&&!isNaN(e.webkitCompassHeading)){
-    // iOS: alpha は北基準でないので、コンパスが信用できる姿勢の時だけ補正量を更新
-    const off=(e.webkitCompassAccuracy>=0)?Astro.iosAlphaOffset(a,b,g,e.webkitCompassHeading):null;
+  if(isAbs){absSeen=true;}
+  else if(Number.isFinite(e.webkitCompassHeading)&&Number.isFinite(e.webkitCompassAccuracy)&&e.webkitCompassAccuracy>=0){
+    if(compassDeclination==null){sensorState='compass';return;}
+    const trueHeading=rev(e.webkitCompassHeading+compassDeclination);
+    const off=Astro.iosAlphaOffset(a,b,g,trueHeading);
     if(off!=null){
-      if(headingOff==null||!headingFixed){headingOff=off;headingFixed=true;}
+      if(headingOff==null){headingOff=off;}
       else{const d=((off-headingOff+540)%360)-180;headingOff=rev(headingOff+d*0.05);}
-    }else if(headingOff==null){headingOff=rev(360-e.webkitCompassHeading-a);} // 仮の値（次に信用できる姿勢で置き換え）
+    }
+    if(headingOff==null){sensorState='calibrating';return;}
     a+=headingOff;
-  }
+  }else{sensorState='compass';return;}
   target=Astro.deviceView(a,b,g,screenAngle());
   sensorAlive=performance.now();sensorState='ok';
 }
@@ -264,7 +279,7 @@ async function askSensors(){
         DeviceMotionEvent.requestPermission().catch(()=>{});
     }
   }catch(e){sensorState='denied';return;}
-  setTimeout(()=>{if(sensorState!=='ok')sensorState='none';},2500);
+  setTimeout(()=>{if(sensorState==='asking')sensorState='none';},2500);
 }
 
 function manualView(){const f=[Math.cos(pitch)*Math.sin(yaw),Math.cos(pitch)*Math.cos(yaw),Math.sin(pitch)];
@@ -395,7 +410,9 @@ function draw(t){
 }
 function hintText(on){
   if(!useSensor)return'指でなぞって空を動かせます（2本指で拡大）';
-  if(on)return headingOff!=null&&!headingFixed?'スマホを一度まっすぐ立てると、方角がぴたりと合います':'スマホを空にかざして、ゆっくり動かしてみて';
+  if(on)return'スマホを空にかざして、ゆっくり動かしてみて（方位はセンサー精度に依存します）';
+  if(sensorState==='calibrating')return'まず画面を上にしてスマホを平らに持ち、方位が合ったら空へかざしてね';
+  if(sensorState==='compass')return'北の方角を確認できません。磁石から離すか、指でなぞって空を動かしてね';
   if(sensorState==='denied')return'動きのセンサーが許可されませんでした。設定で許可するか、指でなぞって空を動かしてね';
   if(sensorState==='none')return'この端末ではセンサーが届かないので、指でなぞって空を動かせます';
   return'センサーを準備しています…';
@@ -469,8 +486,9 @@ $('toNight').onclick=()=>setTime('tonight');
 bL.onclick=()=>{showLines=!showLines;bL.classList.toggle('on',showLines);};
 
 function updateHud(){const d=sky.date;
-  $('when').textContent=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}${timeMode==='tonight'?'（今夜）':''}`;
-  $('where').textContent=`📍 ${placeLabel}　北緯${lat.toFixed(1)}° 東経${lon.toFixed(1)}°`;}
+  const zone=new Intl.DateTimeFormat('ja-JP',{timeZoneName:'short'}).formatToParts(d).find(p=>p.type==='timeZoneName').value;
+  $('when').textContent=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} ${zone}${timeMode==='tonight'?'（今夜・端末の時刻）':''}`;
+  $('where').textContent=`📍 ${placeLabel}　${lat<0?'南緯':'北緯'}${Math.abs(lat).toFixed(1)}° ${lon<0?'西経':'東経'}${Math.abs(lon).toFixed(1)}°`;}
 
 /* ===== はじまり ===== */
 recompute();

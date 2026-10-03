@@ -162,12 +162,16 @@ const stars = RAW.trim().split('\n').map(l => {
 const jd = d => d.getTime() / 86400000 + 2440587.5;
 // 地方恒星時（度）
 const lstDeg = (J, lon) => rev(280.46061837 + 360.98564736629 * (J - 2451545) + lon);
-// J2000 → 観測日の歳差（年差の一次近似。数百年の範囲で角度の分レベル）
+// J2000 → 観測日の平均赤道座標。IAU 1976 の回転（極付近でも tan(dec) を使わない）。
 function precess(ra, dec, T) { // T: J2000 からの年数
-  const a = ra * D2R, d = dec * D2R;
-  const dRA = (3.075 + 1.336 * Math.sin(a) * Math.tan(d)) * T * 15 / 3600;
-  const dDec = 20.04 * Math.cos(a) * T / 3600;
-  return [ra + dRA, dec + dDec];
+  const t = T / 100;
+  const zeta = (2306.2181*t + 0.30188*t*t + 0.017998*t*t*t) / 3600;
+  const z = (2306.2181*t + 1.09468*t*t + 0.018203*t*t*t) / 3600;
+  const theta = (2004.3109*t - 0.42665*t*t - 0.041833*t*t*t) / 3600;
+  const A = cosd(dec) * sind(ra + zeta);
+  const B = cosd(theta) * cosd(dec) * cosd(ra + zeta) - sind(theta) * sind(dec);
+  const C = sind(theta) * cosd(dec) * cosd(ra + zeta) + cosd(theta) * sind(dec);
+  return [rev(Math.atan2(A, B) * R2D + z), Math.atan2(C, Math.hypot(A, B)) * R2D];
 }
 // 赤道座標 → 東・北・天頂の単位ベクトル
 function enu(ra, dec, lst, lat) {
@@ -235,20 +239,30 @@ function bodies(J) {
   return out;
 }
 // ある時刻・場所の空（すべて東北天頂ベクトル）。月は地心→観測地点（地表）からの見え方に補正
-function skyAt(date, lat, lon) {
+function skyAt(date, lat, lon, refracted = true) {
   const J = jd(date), T = (J - 2451545) / 365.25, lst = lstDeg(J, lon);
-  const st = stars.map(s => { const [ra, dec] = precess(s.ra, s.dec, T); return { s, v: enu(ra, dec, lst, lat) }; });
+  const observed = v => refracted ? refract(v) : v;
+  const st = stars.map(s => { const [ra, dec] = precess(s.ra, s.dec, T); return { s, v: observed(enu(ra, dec, lst, lat)) }; });
   const bs = bodies(J).map(b => {
     let v = enu(b.ra, b.dec, lst, lat);
     if (b.key === 'moon') { // 月の視差（最大約1°）: 地球中心でなく地表から見る
       const k = b.distKm / 6378.14; v = [v[0] * k, v[1] * k, v[2] * k - 1];
       const n = Math.hypot(...v); v = [v[0] / n, v[1] / n, v[2] / n];
     }
-    return { ...b, v };
+    return { ...b, v: observed(v) };
   });
   return { J, lst, stars: st, bodies: bs };
 }
-const altAz = v => ({ alt: Math.asin(v[2]) * R2D, az: rev(Math.atan2(v[0], v[1]) * R2D) });
+const altAz = v => ({ alt: Math.atan2(v[2], Math.hypot(v[0], v[1])) * R2D, az: rev(Math.atan2(v[0], v[1]) * R2D) });
+// Sæmundsson: 幾何高度→見かけ高度。標準大気 10°C / 1010hPa。
+// 地平線より下の淡い表示は -1° の補正を天底まで連続的に減らす（観測精度は保証しない）。
+function refract(v) {
+  const {alt, az} = altAz(v), h = Math.max(-1, alt);
+  let correction = Math.max(0, 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * D2R) / 60);
+  if (alt < -1) correction *= (alt + 90) / 89;
+  const a = Math.min(90, alt + correction);
+  return [cosd(a) * sind(az), cosd(a) * cosd(az), sind(a)];
+}
 
 /* ===== センサー姿勢 → 視線 =====
    DeviceOrientation の alpha/beta/gamma（Z-X'-Y'' 回転）を東北天頂の世界座標へ。
@@ -262,7 +276,7 @@ function deviceBasis(a, b, g) {
 }
 function deviceView(a, b, g, screenAngle) {
   let { r, u, z } = deviceBasis(a, b, g);
-  const th = (screenAngle || 0) * D2R;
+  const th = -(screenAngle || 0) * D2R;
   if (th) {
     const c = Math.cos(th), s = Math.sin(th);
     const r2 = [r[0] * c + u[0] * s, r[1] * c + u[1] * s, r[2] * c + u[2] * s];
@@ -270,19 +284,15 @@ function deviceView(a, b, g, screenAngle) {
   }
   return { r, u, f: [-z[0], -z[1], -z[2]] };
 }
-/* iOS の alpha は北基準ではない。webkitCompassHeading（時計回り）は
-   画面が上向きの時は「端末の上端」、立てた時は「背面カメラ」の方位を返し、
-   空へ大きく反らすと信用できない。信用できる姿勢の時だけ alpha の補正量を返す。 */
+/* iOS の alpha は北基準ではない。heading は磁気偏角を補正した真方位。
+   CoreLocation の基準は縦持ちの上端。平らな姿勢でのみ校正し、傾けたら保持する。
+   直立時に「背面カメラの方位」とみなす推測はしない。 */
 function iosAlphaOffset(a, b, g, heading) {
-  const { u, z } = deviceBasis(a, b, g);
-  let vec;
-  if (b > -15 && b < 50 && Math.abs(g) < 40) vec = u;                       // ほぼ水平: 上端の方位
-  else if (b >= 50 && b <= 105 && Math.abs(g) < 40) vec = [-z[0], -z[1], -z[2]]; // 立てる〜少し見上げ: 背面カメラ
-  else return null;
-  if (Math.hypot(vec[0], vec[1]) < 0.35) return null;
+  if (![a, b, g, heading].every(Number.isFinite) || Math.abs(b) >= 15 || Math.abs(g) >= 15) return null;
+  const vec = deviceBasis(a, b, g).u;
   const azRaw = rev(Math.atan2(vec[0], vec[1]) * R2D);
   return rev(azRaw - heading); // alpha に足すと方位が heading に一致する量
 }
 
-root.Astro = { D2R, R2D, sind, cosd, rev, stars, jd, lstDeg, precess, enu, bodies, skyAt, altAz, deviceBasis, deviceView, iosAlphaOffset };
+root.Astro = { D2R, R2D, sind, cosd, rev, stars, jd, lstDeg, precess, enu, bodies, skyAt, altAz, refract, deviceBasis, deviceView, iosAlphaOffset };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
