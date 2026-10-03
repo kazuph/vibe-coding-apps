@@ -1,0 +1,15 @@
+{
+  "name": "hoshizora-verification",
+  "private": true,
+  "scripts": {
+    "build": "node build-compass.cjs",
+    "check": "node check.cjs",
+    "test": "node --test accuracy.test.cjs",
+    "test:e2e": "playwright test --config ../../e2e/features/hoshizora/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "esbuild": "0.28.2",
+    "geomagnetism": "0.2.0"
+  }
+}
