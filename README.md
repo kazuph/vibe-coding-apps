@@ -36,6 +36,7 @@ vibe-coding-apps/
 | なし | `docs/walkingpad/` | WalkPad Console（KS-HD-Z1DをWeb Bluetoothで制御・3Dランナー付き） |
 | なし | `docs/niigata-3d/` | 新潟駅 3Dマップ（改修完成予想の万代広場＋朱鷺メッセ・りゅーとぴあ周辺。PLATEAU/OSM/新潟市資料） |
 | なし | `docs/ruby-tanks/` | Ruby Tanks（ruby.wasm でCRubyを動かす戦車AIプログラミング対戦・BGMもRuby DSL） |
+| なし | `docs/hoshizora/` | 今夜の空（スマホを夜空にかざすと加速度・コンパスでその方角の本物の星・月・惑星を表示） |
 
 ## プロジェクト一覧
 
