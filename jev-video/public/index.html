@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jev 動画図解</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><h1>Jev 動画図解</h1><div class="header-actions"><span id="connection">接続中</span><button id="show-video" aria-expanded="false" aria-controls="video-panel">動画・字幕を開く</button></div></header>
+<main>
+<section id="video-panel" class="watch" aria-label="動画と字幕" hidden>
+<h2 id="title">動画を読み込み中</h2>
+<div class="player"><div id="player"></div></div>
+<p class="note">英語字幕 → Chromeで日本語訳 → Jevで話の関係を判定。最初は消音です。音声は動画の操作から有効にできます。</p>
+<details><summary>日本語字幕と原文</summary>
+<ol id="transcript" aria-label="時刻付き字幕"></ol></details>
+</section>
+<section class="diagram" aria-label="日本語の関係図">
+<div class="diagram-toolbar"><h2>概念のつながり</h2><span id="count">0 概念 · 0 関係</span><select id="focus-category" aria-label="カテゴリへ移動"><option value="">カテゴリへ移動</option></select><select id="focus-concept" aria-label="概念へ移動"><option value="">概念へ移動</option></select><button id="readable">読める大きさ</button><button id="fit">全体を表示</button><label><input id="follow" type="checkbox">画面に収める</label></div>
+<div id="graph" role="img" aria-label="再生位置までの文章と関係の図"></div>
+<div id="empty">全編の解析完了後、保存結果を再生位置に合わせて表示します。閲覧中にJevは実行しません。</div>
+<aside id="detail-panel" hidden><button id="close-detail" aria-label="根拠を閉じる">閉じる</button><article id="detail"><h3>概念をクリックすると、根拠となる発言を確認できます。</h3><p>ドラッグで移動、ホイールで拡大縮小。配置は保存され、再生で勝手に並べ替わりません。巻き戻すと、その時点までの図に戻ります。</p></article></aside>
+<ul id="relations" aria-label="表示中の関係" class="sr-only"></ul>
+</section>
+</main>
+<footer class="playback"><div class="controls"><button id="start" disabled>全編を一度だけ解析</button><button id="toggle" disabled>再生</button><label>速度 <select id="speed"><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="1.5">1.5倍</option><option value="2">2倍</option></select></label></div>
+<label class="seek-label" for="seek">再生位置 <output id="time">0:00</output></label>
+<input id="seek" type="range" min="0" value="0" step="1" aria-label="再生位置">
+<p id="status" role="status">字幕を読み込んでいます。</p>
+<p id="error" role="alert" hidden></p>
+<span id="progress"></span></footer>
+<script src="/cytoscape.js"></script><script src="/layout-base.js"></script><script src="/cose-base.js"></script><script src="/fcose.js"></script><script type="module" src="/app.js"></script>
+</body></html>
