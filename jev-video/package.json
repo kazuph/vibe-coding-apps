@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js && node --test tests/contracts.test.mjs",
+    "check": "node --check server.mjs && node --check public/app.js && node --test tests/contracts.test.mjs && node --check public/story.js && node --test tests/story.test.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

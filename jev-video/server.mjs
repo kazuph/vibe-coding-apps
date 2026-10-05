@@ -32,6 +32,7 @@ async function diagram(id, japanese) {
   return record;
 }
 const assets = new Map([
+  ['/story', ['public/story.html', 'text/html']], ['/story.js', ['public/story.js', 'text/javascript']], ['/story.css', ['public/story.css', 'text/css']], ['/story-model.js', ['public/story-model.js', 'text/javascript']],
   ['/', ['public/index.html', 'text/html']], ['/app.js', ['public/app.js', 'text/javascript']],
   ['/model.js', ['public/model.js', 'text/javascript']], ['/style.css', ['public/style.css', 'text/css']], ['/timeline.js', ['public/timeline.js', 'text/javascript']],
   ['/layout-base.js', ['node_modules/layout-base/layout-base.js', 'text/javascript']],
@@ -46,6 +47,12 @@ const server = http.createServer(async (req, res) => {
     const origin = `http://${host}`;
     if (!/^(localhost|127\.0\.0\.1):\d+$/.test(host ?? '')) return send(403, { error: 'ローカル接続のみ受け付けます。' });
     if (req.headers.origin && req.headers.origin !== origin) return send(403, { error: '別のサイトからの操作は受け付けません。' });
+    if (req.method === 'GET' && req.url === '/api/story') {
+      const story=JSON.parse(await readFile(`${root}public/story.json`,'utf8'));
+      if(story.sourceFingerprint!==fingerprint(transcript))return send(409,{error:'図解と字幕の版が一致しません。'});
+      const ids=new Set(story.events.flatMap(e=>e.refs));
+      return send(200,{...story,sources:Object.fromEntries(cues.filter(c=>ids.has(c.id)).map(c=>[c.id,c]))});
+    }
     if (req.method === 'GET' && req.url === '/api/video') return send(200, {
       videoId: VIDEO_ID, title: VIDEO_TITLE, duration: VIDEO_DURATION, revision, cues,
       records: [...records.values()], translations, configured: Boolean(process.env.JEV_API_KEY),
@@ -65,8 +72,9 @@ const server = http.createServer(async (req, res) => {
       }
       return send(200, await inflight.get(id));
     }
-    if (req.method === 'GET' && assets.has(req.url)) {
-      const [path, type] = assets.get(req.url);
+    const assetPath=new URL(req.url,'http://localhost').pathname;
+    if (req.method === 'GET' && assets.has(assetPath)) {
+      const [path, type] = assets.get(assetPath);
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Referrer-Policy': 'strict-origin-when-cross-origin' });
       return res.end(await readFile(root + path));
     }

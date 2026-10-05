@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>任せられる開発の条件 — 動画と育つ図解</title><link rel="stylesheet" href="/story.css"></head>
+<body>
+<header><div><span class="eyebrow">POTETO × MATT POCOCK</span><h1>任せられる開発の条件</h1></div><div class="header-tools"><span>日本語・事前編集済み</span><button id="video-toggle" aria-expanded="false">動画を表示</button><a href="/" target="_blank">Jev版</a></div></header>
+<div class="workspace"><nav id="topics" aria-label="話の構造"></nav><main>
+<div class="heading"><div><p id="topic-number" class="eyebrow"></p><h2 id="topic-title"></h2><p id="question"></p></div><div class="canvas-tools"><button id="overview">全体を見る</button><button id="readable">読める大きさ</button></div><label><input id="follow-story" type="checkbox" checked>説明を再生位置に合わせる</label></div>
+<section class="diagram-stage" aria-label="再生位置までの図解"><div id="story-graph" role="img"></div><p id="waiting">動画の導入です。最初の説明から図が現れます。</p></section>
+<section class="explanation" aria-label="この時点の説明"><span id="change-kind" class="eyebrow"></span><p id="summary"></p><p id="note"></p><button id="evidence-toggle" aria-expanded="false">根拠の発言を見る</button></section>
+<aside id="source-panel" hidden><button id="source-close">閉じる</button><h3>根拠の発言</h3><div id="source-content"></div></aside>
+<aside id="video-panel" hidden><div class="player"><div id="player"></div></div><p>最初は消音です。動画の操作で音声を有効にできます。</p></aside>
+</main></div>
+<footer><div class="transport"><button id="previous" aria-label="前の図解へ">前の説明</button><button id="play" disabled>再生</button><button id="next" aria-label="次の図解へ">次の説明</button><label>速度 <select id="speed"><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="1.5">1.5倍</option><option value="2">2倍</option></select></label><output id="clock"></output></div><input id="position" type="range" min="0" step="1" value="0" aria-label="再生位置"><div class="footer-note"><span>作成済みの図解を再生・閲覧します。AIへの送信はありません。</span><span id="milestone-count"></span></div><p id="error" role="alert" hidden></p></footer>
+<script src="/cytoscape.js"></script><script type="module" src="/story.js"></script>
+</body></html>
