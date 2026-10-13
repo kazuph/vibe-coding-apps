@@ -137,11 +137,12 @@
     <div class="wx" id="wxList"></div>
     <div class="opt">
       <label><input type="checkbox" id="optInvert"> 上下を反転</label>
+      <label><input type="checkbox" id="optInvertX"> 左右を反転</label>
       <label><input type="checkbox" id="optSound" checked> 効果音</label>
     </div>
     <ul class="how">
       <li>画面下のジョイスティック（PC は矢印キー / WASD）で操作。速さはいつも一定です。</li>
-      <li>ジョイスティックは下に引くと上昇、上に倒すと下降。下に引き続けると宙返り。<span style="color:var(--pink)">ピンクのリング</span>は宙返りコース。</li>
+      <li><span id="howY"></span><span style="color:var(--pink)">ピンクのリング</span>は宙返りコース。</li>
       <li><span style="color:var(--cyan)">水色のリング</span>をくぐると一瞬だけ加速。<span style="color:var(--gold)">金のリング</span>は名所のポイント。</li>
       <li>記録はこのブラウザの中に保存されます。</li>
     </ul>

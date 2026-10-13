@@ -13,7 +13,7 @@ export const PITCH = 1.0;   // rad/s。宙返りの半径は SPEED / PITCH ≒ 4
 
 // ---------- 記録（ブラウザに保存）
 const KEY = 'niigata-broom:v1';
-const fresh = () => ({ done: {}, points: 0, dist: 0, time: 0, flights: 0, first: Date.now(), completedAt: null, opt: { invert: false, sound: true, weather: 'clear', cam: 0 } });
+const fresh = () => ({ done: {}, points: 0, dist: 0, time: 0, flights: 0, first: Date.now(), completedAt: null, opt: { invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
 let save;
 try { save = { ...fresh(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; save.opt = { ...fresh().opt, ...(save.opt || {}) }; } catch { save = fresh(); }
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* 保存できない環境（プライベート等）では保持しない */ } };
@@ -135,7 +135,16 @@ $('bRec').onclick = showRecords; $('openRec').onclick = showRecords;
 $('bWx').onclick = cycleWeather; $('bCam').onclick = cycleCam;
 $('bPause').onclick = () => { st.flying = false; $('hud').hidden = true; $('start').hidden = false; refreshScore(); persist(); };
 $('go').onclick = () => { audio.unlock(); save.flights++; persist(); st.flying = true; $('start').hidden = true; $('hud').hidden = false; $('go').textContent = '🧹 つづきを飛ぶ'; };
-$('optInvert').checked = save.opt.invert; $('optInvert').onchange = (e) => { save.opt.invert = e.target.checked; persist(); };
+// 操作の向き（設定画面で上下・左右をそれぞれ反転できる）
+function stickLabel() {
+  const y = save.opt.invert ? ['↑上昇', '↓下降', '上に倒し'] : ['↑下降', '↓上昇', '下に引き'];
+  const x = save.opt.invertX ? '←右旋回 →左旋回' : '←左旋回 →右旋回';
+  $('stickLbl').textContent = `${y[0]} ${y[1]} ${x}（${y[2]}続けると宙返り）`;
+  $('howY').textContent = save.opt.invert ? 'ジョイスティックは上に倒すと上昇、下に引くと下降。上に倒し続けると宙返り。' : 'ジョイスティックは下に引くと上昇、上に倒すと下降。下に引き続けると宙返り。';
+}
+$('optInvert').checked = save.opt.invert; $('optInvert').onchange = (e) => { save.opt.invert = e.target.checked; persist(); stickLabel(); };
+$('optInvertX').checked = save.opt.invertX; $('optInvertX').onchange = (e) => { save.opt.invertX = e.target.checked; persist(); stickLabel(); };
+stickLabel();
 $('optSound').checked = save.opt.sound; $('optSound').onchange = (e) => { save.opt.sound = e.target.checked; persist(); };
 
 // ---------- ミニマップ
@@ -169,8 +178,8 @@ function drawMap() {
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const tmpQ = new THREE.Quaternion();
 function fly(dt) {
-  const inv = save.opt.invert ? -1 : 1;
-  const sx = THREE.MathUtils.clamp(input.x + input.kx, -1, 1), sy = THREE.MathUtils.clamp((input.y + input.ky) * inv, -1, 1);
+  const inv = save.opt.invert ? -1 : 1, invX = save.opt.invertX ? -1 : 1;
+  const sx = THREE.MathUtils.clamp((input.x + input.kx) * invX, -1, 1), sy = THREE.MathUtils.clamp((input.y + input.ky) * inv, -1, 1);
   // ピッチ（ほうきの横軸まわり）→ 引き続けると宙返り
   st.q.multiply(tmpQ.setFromAxisAngle(V(1, 0, 0), sy * PITCH * dt));
   // 旋回（鉛直軸まわり）
