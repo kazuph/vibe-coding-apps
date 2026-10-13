@@ -67,6 +67,25 @@
   #rudL { left: calc(50% - 75px - 58px); } #rudR { left: calc(50% + 75px + 12px); }
   .rud.on { background: rgba(255, 210, 63, .45); }
   .ctl { display: flex; gap: 8px; align-items: center; flex-basis: 100%; justify-content: center; }
+  /* PC: 左下に WASD、右下に矢印キーと説明 */
+  .pc { display: none; }
+  .keys { position: absolute; bottom: max(14px, env(safe-area-inset-bottom)); padding: 8px; text-align: center; }
+  #keysL { left: max(10px, env(safe-area-inset-left)); } #keysR { right: max(10px, env(safe-area-inset-right)); }
+  .krow { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; }
+  .key { width: 62px; height: 52px; border-radius: 8px; background: rgba(255,255,255,.1); border: 2px solid #fff4; box-shadow: 0 3px 0 rgba(0,0,0,.35); display: flex; flex-direction: column; align-items: center; justify-content: center; transition: transform .05s; }
+  .key b { font-size: 18px; font-weight: normal; line-height: 1; } .key i { font-style: normal; font-size: 10px; opacity: .85; margin-top: 3px; white-space: nowrap; }
+  .key.on { background: rgba(255, 210, 63, .45); transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+  .key.off { opacity: .35; }
+  .knote { font-size: 10px; opacity: .8; }
+  @media (hover: hover) and (pointer: fine) {
+    .pc { display: block; }
+    #thr { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 150px); }
+    #meter { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 150px); }
+  }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 30; }
+  #flash.on { animation: flash .45s ease-out; }
+  @keyframes flash { 0% { opacity: .9; } 100% { opacity: 0; } }
+  #photoImg { display: block; width: 100%; max-height: 62vh; object-fit: contain; border-radius: 8px; background: #000; }
   #meter { position: absolute; left: calc(max(10px, env(safe-area-inset-left)) + 62px); bottom: max(14px, env(safe-area-inset-bottom)); padding: 6px 8px; font-size: 12px; line-height: 1.45; display: flex; gap: 8px; align-items: center; }
   #att { width: 60px; height: 60px; }
   #thr { position: absolute; left: max(10px, env(safe-area-inset-left)); bottom: max(14px, env(safe-area-inset-bottom)); width: 52px; padding: 4px 0; text-align: center; touch-action: none; }
@@ -165,7 +184,8 @@
   </div>
   <div id="btns">
     <button class="ib panel" id="bWx" title="天気">☀️</button>
-    <button class="ib panel" id="bCam" title="カメラ">🎥</button>
+    <button class="ib panel" id="bCam" title="視点を切り替え（C）">🎥</button>
+    <button class="ib panel" id="bPhoto" title="写真を撮る（F）">📷</button>
     <button class="ib panel" id="bRec" title="記録">📖</button>
     <button class="ib panel" id="bPause" title="メニュー">⏸</button>
   </div>
@@ -176,6 +196,16 @@
   <div id="thr" class="panel"><div class="lbl">加速</div><div id="thrTrack"><div id="thrFill"></div><div id="thrCruise"></div><div id="thrKnob"></div></div><div class="lbl">減速</div></div>
   <div id="stickLbl">↑下降 ↓上昇 ←→旋回（下に引き続けると宙返り）</div>
   <div id="stick"><div id="knob"></div></div>
+  <div id="keysL" class="keys panel pc">
+    <div class="krow"><span class="key" data-k="KeyQ"><b>Q</b><i></i></span><span class="key" data-k="KeyW"><b>W</b><i></i></span><span class="key" data-k="KeyE"><b>E</b><i></i></span></div>
+    <div class="krow"><span class="key" data-k="KeyA"><b>A</b><i></i></span><span class="key" data-k="KeyS"><b>S</b><i></i></span><span class="key" data-k="KeyD"><b>D</b><i></i></span></div>
+    <div class="knote" id="keysNote"></div>
+  </div>
+  <div id="keysR" class="keys panel pc">
+    <div class="krow"><span class="key" data-k="ArrowUp"><b>↑</b><i></i></span></div>
+    <div class="krow"><span class="key" data-k="ArrowLeft"><b>←</b><i></i></span><span class="key" data-k="ArrowDown"><b>↓</b><i></i></span><span class="key" data-k="ArrowRight"><b>→</b><i></i></span></div>
+    <div class="knote">C 視点 ・ F 写真 ・ Esc 一時停止</div>
+  </div>
   <button id="rudL" class="rud panel" hidden>◀</button><button id="rudR" class="rud panel" hidden>▶</button>
 </div>
 
@@ -211,6 +241,15 @@
       <li>記録はこのブラウザの中に保存されます。</li>
     </ul>
     <div class="credit">地形: 国土地理院 標高タイル ／ 建物: 国土交通省 Project PLATEAU（新潟市 2023年度）／ 地図: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors ／ 天気: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ／ 自動生成の地図: <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>・OpenMapTiles・AWS Terrain Tiles ／ 日本地図: 国土数値情報（行政区域）</div>
+  </div>
+</div>
+
+<div id="flash"></div>
+<div id="photo" class="screen" hidden>
+  <div class="card panel" style="width:min(900px,100%)">
+    <img id="photoImg" alt="撮った写真">
+    <div class="row" style="margin-top:10px"><button class="btn" id="photoSave">💾 保存する</button><button class="btn sec" id="photoClose">閉じる（つづきを飛ぶ）</button></div>
+    <div style="font-size:11px;opacity:.7;margin-top:6px">画面の表示（マップ・得点・ボタン）を消して撮っています。スマホでは共有メニューから「画像を保存」できます。</div>
   </div>
 </div>
 
