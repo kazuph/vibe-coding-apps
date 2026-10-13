@@ -1,0 +1,18 @@
+[out:json][timeout:180];
+(
+ way["natural"="water"](37.84,138.97,37.98,139.14);
+ relation["natural"="water"](37.84,138.97,37.98,139.14);
+ way["waterway"="riverbank"](37.84,138.97,37.98,139.14);
+ way["landuse"~"forest|grass|meadow|farmland|cemetery|recreation_ground|village_green|industrial|harbour|railway|port"](37.84,138.97,37.98,139.14);
+ relation["landuse"~"forest|farmland|industrial|harbour"](37.84,138.97,37.98,139.14);
+ way["leisure"~"park|garden|pitch|golf_course|stadium|sports_centre"](37.84,138.97,37.98,139.14);
+ relation["leisure"~"park|golf_course|stadium"](37.84,138.97,37.98,139.14);
+ way["natural"~"wood|scrub|beach|sand|grassland"](37.84,138.97,37.98,139.14);
+ relation["natural"~"wood|beach"](37.84,138.97,37.98,139.14);
+ way["highway"~"motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|residential|unclassified"](37.84,138.97,37.98,139.14);
+ way["railway"="rail"](37.84,138.97,37.98,139.14);
+ way["man_made"~"pier|breakwater|groyne"](37.84,138.97,37.98,139.14);
+ way["bridge"="yes"]["highway"](37.84,138.97,37.98,139.14);
+ relation["boundary"="administrative"]["name"="中央区"](37.84,138.97,37.98,139.14);
+);
+out geom;

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2f6fd6">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🧹%3C/text%3E%3C/svg%3E">
+<title>ほうきで新潟 — 新潟市中央区フライト</title>
+<meta name="description" content="マイクラ風に再現した新潟市中央区の上空を、魔法のほうきで飛んでリングを集めるフライトシミュレーター。PLATEAU・国土地理院・OpenStreetMap のオープンデータを使用。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  :root { --ui: rgba(18, 22, 40, .62); --line: rgba(255,255,255,.18); --gold: #ffd23f; --cyan: #3ff0ff; --pink: #ff5fd2; --pad: max(10px, env(safe-area-inset-top)); }
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c1020; color: #fff; font-family: "DotGothic16", system-ui, -apple-system, "Hiragino Sans", sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
+  canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel { background: var(--ui); border: 2px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 4px 0 rgba(0,0,0,.25); }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  #mapBox { position: absolute; left: max(10px, env(safe-area-inset-left)); top: var(--pad); padding: 4px; }
+  #map { display: block; width: 148px; height: 148px; border-radius: 6px; image-rendering: pixelated; }
+  #mapHint { font-size: 10px; opacity: .75; text-align: center; margin-top: 2px; }
+  #score { position: absolute; right: max(10px, env(safe-area-inset-right)); top: var(--pad); padding: 8px 12px; min-width: 150px; text-align: right; }
+  #pts { font-size: 22px; color: var(--gold); text-shadow: 0 2px 0 #7a5a00; }
+  #pts small { font-size: 12px; color: #fff; }
+  #comp { font-size: 13px; margin-top: 2px; }
+  #bar { height: 8px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 5px; overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), var(--pink)); transition: width .5s; }
+  #legend { font-size: 10px; margin-top: 5px; opacity: .85; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  #legend b { display: inline-block; width: 8px; height: 8px; margin-right: 3px; vertical-align: 0; }
+  #btns { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(var(--pad) + 118px); display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  button { font-family: inherit; color: #fff; cursor: pointer; }
+  .ib { width: 44px; height: 44px; font-size: 20px; padding: 0; display: grid; place-items: center; }
+  #wxLabel { position: absolute; right: calc(max(10px, env(safe-area-inset-right)) + 52px); top: calc(var(--pad) + 124px); font-size: 11px; padding: 4px 8px; white-space: nowrap; }
+  #nav { position: absolute; left: 50%; top: var(--pad); transform: translateX(-50%); padding: 5px 12px; font-size: 12px; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 360px); white-space: nowrap; }
+  #nav .arrow { display: inline-block; width: 22px; height: 22px; font-size: 18px; line-height: 22px; text-align: center; color: var(--gold); }
+  #nav .nm { overflow: hidden; text-overflow: ellipsis; }
+  #toast { position: absolute; left: 50%; top: 28%; transform: translateX(-50%); text-align: center; pointer-events: none; }
+  .t { font-size: 22px; padding: 6px 16px; margin: 4px auto; width: max-content; max-width: 90vw; color: #fff; animation: pop 2.2s ease-out forwards; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+  .t.p { color: var(--gold); } .t.b { color: var(--cyan); } .t.l { color: var(--pink); } .t.big { font-size: 28px; }
+  @keyframes pop { 0% { opacity: 0; transform: translateY(16px) scale(.8); } 10% { opacity: 1; transform: translateY(0) scale(1.08); } 20% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-20px); } }
+  #stick { position: absolute; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.14), rgba(255,255,255,.05) 65%); border: 2px solid var(--line); touch-action: none; }
+  #stick::before, #stick::after { content: ""; position: absolute; background: rgba(255,255,255,.18); left: 50%; top: 12px; bottom: 12px; width: 2px; transform: translateX(-50%); }
+  #stick::after { top: 50%; left: 12px; right: 12px; bottom: auto; width: auto; height: 2px; transform: translateY(-50%); }
+  #knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff8, #b8a6ff 40%, #5b3c9e); border: 2px solid #fff6; box-shadow: 0 4px 12px rgba(0,0,0,.35); pointer-events: none; }
+  #stickLbl { position: absolute; left: 50%; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 156px); transform: translateX(-50%); font-size: 10px; opacity: .7; white-space: nowrap; pointer-events: none; }
+  #meter { position: absolute; left: max(10px, env(safe-area-inset-left)); bottom: max(14px, env(safe-area-inset-bottom)); padding: 6px 10px; font-size: 12px; line-height: 1.5; }
+  #meter b { color: var(--cyan); font-weight: normal; }
+  #boostFx { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(ellipse at center, transparent 55%, rgba(63, 240, 255, .25) 100%); }
+  /* 画面 */
+  .screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: radial-gradient(ellipse at 50% 30%, rgba(30, 40, 90, .55), rgba(5, 8, 20, .82)); z-index: 10; overflow-y: auto; touch-action: pan-y; }
+  .card { width: min(520px, 100%); padding: 20px 20px 16px; text-align: center; }
+  h1 { margin: 0; font-size: clamp(30px, 8vw, 44px); letter-spacing: .04em; color: #fff; text-shadow: 0 4px 0 #5b3c9e, 0 8px 0 rgba(0,0,0,.3); }
+  .sub { font-size: 13px; opacity: .85; margin: 8px 0 14px; line-height: 1.6; }
+  .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .btn { padding: 12px 22px; font-size: 18px; border-radius: 10px; border: 2px solid #fff4; background: linear-gradient(#7b5cd6, #4a2f86); box-shadow: 0 4px 0 #2a1a55; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #2a1a55; }
+  .btn.sec { background: linear-gradient(#3a4260, #232a42); box-shadow: 0 4px 0 #11152a; font-size: 15px; padding: 10px 16px; }
+  .wx { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin: 12px 0; }
+  .wx button { padding: 8px 4px; font-size: 13px; border-radius: 8px; border: 2px solid #fff3; background: rgba(255,255,255,.08); }
+  .wx button.on { border-color: var(--gold); background: rgba(255, 210, 63, .2); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 14px; }
+  .stats div { background: rgba(255,255,255,.07); border-radius: 8px; padding: 8px 4px; font-size: 11px; }
+  .stats b { display: block; font-size: 18px; color: var(--gold); font-weight: normal; }
+  .how { text-align: left; font-size: 12px; line-height: 1.7; opacity: .9; margin: 10px 0 0; padding-left: 18px; }
+  .opt { font-size: 12px; margin-top: 10px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .opt label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .credit { font-size: 10px; opacity: .6; margin-top: 12px; line-height: 1.5; }
+  .credit a { color: #bcd; }
+  #rec .list { text-align: left; max-height: 52vh; overflow-y: auto; margin: 10px 0; padding-right: 4px; touch-action: pan-y; }
+  #rec h3 { font-size: 14px; margin: 10px 0 4px; font-weight: normal; }
+  #rec .it { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 4px 6px; border-bottom: 1px dashed #fff2; }
+  #rec .it.done { color: #fff; } #rec .it:not(.done) { opacity: .55; }
+  #rec .it span:last-child { white-space: nowrap; opacity: .8; }
+  #confirm { margin-top: 8px; font-size: 12px; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0c1020; z-index: 20; }
+  #loading .bar { width: 240px; height: 14px; border: 2px solid #fff6; border-radius: 4px; margin-top: 10px; overflow: hidden; }
+  #loading .bar i { display: block; height: 100%; width: 0; background: repeating-linear-gradient(90deg, #7b5cd6 0 12px, #a58cff 12px 24px); }
+  @media (max-width: 560px) {
+    #map { width: 112px; height: 112px; }
+    #score { min-width: 124px; padding: 6px 9px; }
+    #pts { font-size: 18px; }
+    #btns { top: calc(var(--pad) + 104px); }
+    #wxLabel { top: calc(var(--pad) + 110px); }
+    #nav { top: calc(var(--pad) + 150px); max-width: 80vw; }
+    #stick { width: 136px; height: 136px; }
+    #stickLbl { bottom: calc(max(18px, env(safe-area-inset-bottom)) + 140px); }
+    #meter { font-size: 11px; }
+  }
+  @media (max-height: 500px) {
+    #map { width: 100px; height: 100px; }
+    #btns { flex-direction: row; top: calc(var(--pad) + 96px); }
+    #wxLabel { display: none; }
+    #stick { width: 124px; height: 124px; }
+    #stickLbl { display: none; }
+    .screen { place-items: start center; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="boostFx"></div>
+<div id="hud" hidden>
+  <div id="mapBox" class="panel"><canvas id="map" width="296" height="296"></canvas><div id="mapHint">タップで全体図</div></div>
+  <div id="score" class="panel">
+    <div id="pts">0 <small>pt</small></div>
+    <div id="comp">コンプリート 0%</div>
+    <div id="bar"><i></i></div>
+    <div id="legend"><span><b style="background:var(--gold)"></b>ポイント</span><span><b style="background:var(--cyan)"></b>加速</span><span><b style="background:var(--pink)"></b>宙返り</span></div>
+  </div>
+  <div id="btns">
+    <button class="ib panel" id="bWx" title="天気">☀️</button>
+    <button class="ib panel" id="bCam" title="カメラ">🎥</button>
+    <button class="ib panel" id="bRec" title="記録">📖</button>
+    <button class="ib panel" id="bPause" title="メニュー">⏸</button>
+  </div>
+  <div id="wxLabel" class="panel" hidden></div>
+  <div id="nav" class="panel" hidden><span class="arrow">▲</span><span class="nm"></span><span class="ds"></span></div>
+  <div id="toast"></div>
+  <div id="meter" class="panel">高度 <b id="alt">0</b>m<br>速度 <b id="spd">0</b>km/h</div>
+  <div id="stickLbl">↑上昇 ↓下降 ←→旋回（引き続けると宙返り）</div>
+  <div id="stick"><div id="knob"></div></div>
+</div>
+
+<div id="start" class="screen" hidden>
+  <div class="card panel">
+    <h1>ほうきで新潟</h1>
+    <div class="sub">マイクラ風に再現した新潟市中央区の空を、魔法のほうきで飛びまわろう。<br>街じゅうのリングをくぐって、コンプリート率 100% をめざそう！</div>
+    <div class="stats">
+      <div><b id="sComp">0%</b>コンプリート</div>
+      <div><b id="sPts">0</b>ポイント</div>
+      <div><b id="sDist">0km</b>飛んだ距離</div>
+    </div>
+    <div class="row"><button class="btn" id="go">🧹 飛ぶ！</button><button class="btn sec" id="openRec">📖 記録</button></div>
+    <div style="font-size:12px;margin-top:14px;opacity:.85">天気</div>
+    <div class="wx" id="wxList"></div>
+    <div class="opt">
+      <label><input type="checkbox" id="optInvert"> 上下を反転（飛行機式）</label>
+      <label><input type="checkbox" id="optSound" checked> 効果音</label>
+    </div>
+    <ul class="how">
+      <li>画面下のジョイスティック（PC は矢印キー / WASD）で操作。速さはいつも一定です。</li>
+      <li>上に倒し続けると宙返り。<span style="color:var(--pink)">ピンクのリング</span>は宙返りコース。</li>
+      <li><span style="color:var(--cyan)">水色のリング</span>をくぐると一瞬だけ加速。<span style="color:var(--gold)">金のリング</span>は名所のポイント。</li>
+      <li>記録はこのブラウザの中に保存されます。</li>
+    </ul>
+    <div class="credit">地形: 国土地理院 標高タイル ／ 建物: 国土交通省 Project PLATEAU（新潟市 2023年度）／ 地図: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors ／ 天気: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></div>
+  </div>
+</div>
+
+<div id="rec" class="screen" hidden>
+  <div class="card panel">
+    <h1 style="font-size:28px">📖 フライト記録</h1>
+    <div class="stats" id="recStats"></div>
+    <div class="list" id="recList"></div>
+    <div class="row"><button class="btn sec" id="recClose">閉じる</button><button class="btn sec" id="recReset">記録を消す</button></div>
+    <div id="confirm" hidden>本当に記録をすべて消しますか？ <button class="btn sec" id="resetYes" style="padding:6px 12px;font-size:13px">消す</button> <button class="btn sec" id="resetNo" style="padding:6px 12px;font-size:13px">やめる</button></div>
+  </div>
+</div>
+
+<div id="loading"><div style="text-align:center"><div style="font-size:22px">🧹 新潟の街を組み立て中…</div><div class="bar"><i id="loadBar"></i></div><div id="loadMsg" style="font-size:11px;opacity:.7;margin-top:8px">データを読み込んでいます</div></div></div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
