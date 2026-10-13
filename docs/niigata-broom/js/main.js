@@ -8,16 +8,17 @@ import { makeRider, animateRider, Sparkles } from './broom.js';
 
 THREE.ColorManagement.enabled = false;
 const $ = (id) => document.getElementById(id);
-const SPEED = 42;           // m/s（一定）
+const SPEED_MIN = 14, SPEED_MAX = 95; // m/s。スロットル 0〜100% に対応
+const CRUISE = 0.35;        // 巡航のスロットル（約 150km/h）
 const BOOST = 2.3;          // 加速リングの倍率
 const BOOST_T = 2.6;        // 秒
-export const PITCH = 1.0;   // rad/s。宙返りの半径は SPEED / PITCH ≒ 42m
+export const PITCH = 1.0;   // rad/s。巡航（約 42m/s）で宙返りの半径は約 42m
 
 // ---------- 記録（ブラウザに保存）
 const KEY = 'niigata-broom:v1';
 // 新潟市中央区（PLATEAU から作った作り置きの地域）
 const BUILTIN = { id: 'niigata-chuo', name: '新潟市中央区', muni: '15103', pref: '新潟県', lat: 37.9125, lon: 139.0615, builtin: true };
-const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'expert', invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
+const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'expert', keys: 'ace', thr: 'spring', sens: 1, invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
 const newRegion = (r) => ({ done: {}, points: 0, completedAt: null, total: 0, totalPts: 0, created: Date.now(), ...r });
 let save;
 try {
@@ -39,7 +40,7 @@ const mobile = matchMedia('(pointer: coarse)').matches;
 renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.5 : 2));
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(70, 1, 1.5, 160000);
+const camera = new THREE.PerspectiveCamera(70, 1, 3, 160000);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x666655, 1.2); scene.add(hemi);
 const sunL = new THREE.DirectionalLight(0xffffff, 1.6); scene.add(sunL);
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
@@ -51,7 +52,7 @@ let rings, sparkles;
 const rider = makeRider(); scene.add(rider);
 
 // ---------- 飛行状態
-const st = { pos: new THREE.Vector3(0, 110, 0), q: new THREE.Quaternion(), boost: 0, bank: 0, flying: false, warn: 0 };
+const st = { pos: new THREE.Vector3(0, 110, 0), q: new THREE.Quaternion(), thr: CRUISE, boost: 0, bank: 0, flying: false, warn: 0 };
 function placeStart() { // 新潟は萬代橋の上流から、それ以外は地図の南側から北へ
   if (reg().builtin) { const [x, z] = ll(37.9085, 139.0395); st.pos.set(x, 110, z); st.q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -50 * Math.PI / 180); }
   else { let g = 0; for (let k = -6; k <= 6; k++) g = Math.max(g, world.heightAt(k * 40, 900), world.heightAt(k * 40, 700)); st.pos.set(0, g + 70, 900); st.q.identity(); }
@@ -60,7 +61,7 @@ function placeStart() { // 新潟は萬代橋の上流から、それ以外は�
 const camPos = new THREE.Vector3(), camUp = new THREE.Vector3(0, 1, 0);
 
 // ---------- 入力（ジョイスティック + キーボード）
-const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0 };
+const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0, kthr: 0, touchThr: null };
 {
   const stick = $('stick'), knob = $('knob'); let id = null;
   const set = (e) => {
@@ -73,9 +74,28 @@ const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0 };
   stick.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
   const end = (e) => { if (e.pointerId !== id) return; id = null; input.x = input.y = 0; knob.style.transform = ''; };
   stick.addEventListener('pointerup', end); stick.addEventListener('pointercancel', end);
-  const keys = new Set();
-  const upd = () => { input.kx = (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? 1 : 0); input.ky = (keys.has('ArrowUp') || keys.has('KeyW') ? 1 : 0) - (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0); input.krud = (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0); };
-  addEventListener('keydown', (e) => { if (e.code.startsWith('Arrow')) e.preventDefault(); keys.add(e.code); upd(); audio.unlock(); if (e.code === 'KeyC') cycleCam(); if (e.code === 'KeyT') cycleWeather(); });
+  // キーボード: 2 つの配置から選ぶ（どちらも ↑ で機首下げ・↓ で機首上げ = 操縦桿と同じ向き）
+  //  エースコンバット風: W/S = 加速/減速、↑↓ = 上下、A/D・←→ = 左右、Q/E = ラダー
+  //  フライトシム風   : W/S・↑↓ = 上下、A/D・←→ = 左右、Q/E = ラダー、Shift/Ctrl = 加速/減速
+  //  共通: PageUp/PageDown・+/- = 加速/減速、1〜9・0 = スロットル 10〜100%（位置を保つ設定の時）
+  const keys = new Set(), has = (...c) => c.some(k => keys.has(k));
+  const upd = () => {
+    const ace = save.opt.keys === 'ace';
+    input.kx = (has('ArrowRight', 'KeyD') ? 1 : 0) - (has('ArrowLeft', 'KeyA') ? 1 : 0);
+    input.ky = (has('ArrowDown', ...(ace ? [] : ['KeyS'])) ? 1 : 0) - (has('ArrowUp', ...(ace ? [] : ['KeyW'])) ? 1 : 0);
+    input.krud = (has('KeyE') ? 1 : 0) - (has('KeyQ') ? 1 : 0);
+    input.kthr = (has('PageUp', 'Equal', 'NumpadAdd', 'ShiftLeft', 'ShiftRight', ...(ace ? ['KeyW'] : [])) ? 1 : 0) - (has('PageDown', 'Minus', 'NumpadSubtract', 'ControlLeft', 'ControlRight', ...(ace ? ['KeyS'] : [])) ? 1 : 0);
+  };
+  addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return; // 検索欄に文字を打っている時は操作しない
+    if (e.code.startsWith('Arrow') || e.code === 'PageUp' || e.code === 'PageDown' || e.code === 'Space') e.preventDefault();
+    keys.add(e.code); upd(); audio.unlock();
+    if (e.repeat) return;
+    if (e.code === 'KeyC') cycleCam(); if (e.code === 'KeyT') cycleWeather(); if (e.code === 'KeyM') $('map').click();
+    if ((e.code === 'Escape' || e.code === 'KeyP') && st.flying) $('bPause').click();
+    else if (e.code === 'Enter' && !$('start').hidden && $('japan').hidden && $('rec').hidden) startFlying();
+    const d = /^Digit(\d)$/.exec(e.code); if (d && st.flying && save.opt.thr === 'hold') st.thr = d[1] === '0' ? 1 : +d[1] / 10;
+  });
   addEventListener('keyup', (e) => { keys.delete(e.code); upd(); });
   addEventListener('blur', () => { keys.clear(); upd(); });
 }
@@ -211,6 +231,41 @@ for (const [id, v] of [['rudL', -1], ['rudR', 1]]) {
 stickLabel();
 $('optSound').checked = save.opt.sound; $('optSound').onchange = (e) => { save.opt.sound = e.target.checked; persist(); };
 
+// ---------- スロットルのレバー（画面左下。上で加速・下で減速）
+function setThrUI(v) { $('thrFill').style.height = v * 100 + '%'; $('thrKnob').style.bottom = `calc(${v * 100}% - 11px)`; $('thrCruise').style.bottom = CRUISE * 100 + '%'; }
+{
+  const tr = $('thrTrack'); let id = null;
+  const set = (e) => { const r = tr.getBoundingClientRect(); const v = THREE.MathUtils.clamp((r.bottom - e.clientY) / r.height, 0, 1); input.touchThr = v; setThrUI(v); };
+  tr.addEventListener('pointerdown', (e) => { id = e.pointerId; tr.setPointerCapture(id); set(e); });
+  tr.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
+  const end = (e) => { if (e.pointerId !== id) return; id = null; input.touchThr = null; };
+  tr.addEventListener('pointerup', end); tr.addEventListener('pointercancel', end);
+}
+// 姿勢計（機体の傾きと機首の上下）
+function drawAttitude() {
+  const c = $('att'), g = c.getContext('2d'), S = c.width, R = S / 2;
+  const f = new THREE.Vector3(0, 0, -1).applyQuaternion(st.q), r = new THREE.Vector3(1, 0, 0).applyQuaternion(st.q), u = new THREE.Vector3(0, 1, 0).applyQuaternion(st.q);
+  const pitch = Math.asin(THREE.MathUtils.clamp(f.y, -1, 1)), roll = Math.atan2(-r.y, u.y);
+  g.save(); g.clearRect(0, 0, S, S); g.beginPath(); g.arc(R, R, R - 2, 0, Math.PI * 2); g.clip();
+  g.translate(R, R); g.rotate(-roll); const off = pitch / (Math.PI / 2) * R * 1.4;
+  g.fillStyle = '#4a9ad8'; g.fillRect(-S, -S * 2 + off, S * 2, S * 2); g.fillStyle = '#8a6a45'; g.fillRect(-S, off, S * 2, S * 2);
+  g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(-S, off); g.lineTo(S, off); g.stroke();
+  g.restore(); g.strokeStyle = '#ffd23f'; g.lineWidth = 3; g.beginPath(); g.moveTo(R - 18, R); g.lineTo(R - 6, R); g.moveTo(R + 6, R); g.lineTo(R + 18, R); g.stroke(); g.fillStyle = '#ffd23f'; g.fillRect(R - 2, R - 2, 4, 4);
+  g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 2; g.beginPath(); g.arc(R, R, R - 2, 0, Math.PI * 2); g.stroke();
+}
+function keyHelp() {
+  const ace = save.opt.keys === 'ace';
+  const rows = [['機首の上げ / 下げ', ace ? '↓ / ↑' : 'S・↓ / W・↑'], ['左右（回転・旋回）', 'A・← / D・→'], ['ラダー（機首を左右に振る）', 'Q / E'],
+    ['加速 / 減速', (ace ? 'W / S、' : '') + 'Shift / Ctrl、PageUp / PageDown、+ / -'], ['スロットルを 10〜100% に', '1〜9・0（「位置を保つ」の時）'],
+    ['カメラ / 天気 / マップ', 'C / T / M'], ['一時停止 / 再開', 'Esc・P / Enter']];
+  $('keyHelp').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td><kbd>${b}</kbd></td></tr>`).join('');
+}
+$('optKeys').value = save.opt.keys; $('optKeys').onchange = (e) => { save.opt.keys = e.target.value; persist(); keyHelp(); };
+document.querySelectorAll('input[name=thr]').forEach(r => { r.checked = r.value === save.opt.thr; r.onchange = () => { save.opt.thr = r.value; persist(); }; });
+$('optSens').value = save.opt.sens; $('sensVal').textContent = `×${(+save.opt.sens).toFixed(1)}`;
+$('optSens').oninput = (e) => { save.opt.sens = +e.target.value; $('sensVal').textContent = `×${save.opt.sens.toFixed(1)}`; persist(); };
+keyHelp(); setThrUI(CRUISE);
+
 // ---------- ミニマップ
 let mapImg, wardRing = [], mapWhole = false;
 $('map').onclick = () => { mapWhole = !mapWhole; $('mapHint').textContent = mapWhole ? 'タップで拡大' : 'タップで全体図'; };
@@ -243,14 +298,19 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const tmpQ = new THREE.Quaternion();
 function fly(dt) {
   const inv = save.opt.invert ? -1 : 1, invX = save.opt.invertX ? -1 : 1;
-  const sx = THREE.MathUtils.clamp((input.x + input.kx) * invX, -1, 1), sy = THREE.MathUtils.clamp((input.y + input.ky) * inv, -1, 1);
+  const sens = save.opt.sens || 1;
+  const sx = THREE.MathUtils.clamp((input.x + input.kx) * invX, -1, 1) * sens, sy = THREE.MathUtils.clamp((input.y + input.ky) * inv, -1, 1) * sens;
+  // スロットル: 画面のレバー > キー > （離すと巡航に戻る設定なら）巡航へ戻す
+  if (input.touchThr !== null) st.thr = input.touchThr;
+  else if (input.kthr) st.thr = THREE.MathUtils.clamp(st.thr + input.kthr * 0.7 * dt, 0, 1);
+  else if (save.opt.thr === 'spring') st.thr += (CRUISE - st.thr) * Math.min(1, dt * 1.8);
   // ピッチ（ほうきの横軸まわり）→ 引き続けると宙返り
   st.q.multiply(tmpQ.setFromAxisAngle(V(1, 0, 0), sy * PITCH * dt));
   if (expert()) {
     // エキスパート: 左右はロール（ほうきの前後軸まわりの回転）。傾いた分だけ少し曲がる（揚力の向き）
     st.q.multiply(tmpQ.setFromAxisAngle(V(0, 0, 1), -sx * 2.2 * dt));
     const rud = THREE.MathUtils.clamp(input.rud + input.krud, -1, 1);
-    if (rud) st.q.multiply(tmpQ.setFromAxisAngle(V(0, 1, 0), -rud * 0.45 * dt));
+    if (rud) st.q.multiply(tmpQ.setFromAxisAngle(V(0, 1, 0), -rud * 0.45 * sens * dt));
     const r0 = V(1, 0, 0).applyQuaternion(st.q), f0 = V(0, 0, -1).applyQuaternion(st.q);
     if (Math.abs(f0.y) < 0.9) st.q.premultiply(tmpQ.setFromAxisAngle(V(0, 1, 0), r0.y * 0.35 * dt));
   } else {
@@ -267,13 +327,13 @@ function fly(dt) {
   st.q.normalize();
   st.bank += ((expert() ? 0 : -sx * 0.65) - st.bank) * Math.min(1, dt * 5);
   st.boost = Math.max(0, st.boost - dt);
-  const spd = SPEED * (1 + (BOOST - 1) * Math.min(1, st.boost / 0.8));
+  const spd = (SPEED_MIN + (SPEED_MAX - SPEED_MIN) * st.thr) * (1 + (BOOST - 1) * Math.min(1, st.boost / 0.8));
   const prev = st.pos.clone();
   const fwd = V(0, 0, -1).applyQuaternion(st.q);
   st.pos.addScaledVector(fwd, spd * dt);
   // 地面・建物・水面に当たらないように押し上げる
   let ground = 0; for (const [ox, oz] of [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]]) ground = Math.max(ground, world.heightAt(st.pos.x + ox, st.pos.z + oz));
-  const minY = Math.max(ground, world.B * 0.8) + 3.5;
+  const minY = Math.max(ground, world.B * 0.5) + 3.5;
   if (st.pos.y < minY) {
     st.pos.y = minY;
     if (fwd.y < 0.15) { const right = V(1, 0, 0).applyQuaternion(st.q); st.q.premultiply(tmpQ.setFromAxisAngle(right, Math.min(0.6, (0.15 - fwd.y)) * dt * 6 * Math.sign(up.y || 1))).normalize(); }
@@ -374,7 +434,9 @@ function frame(now) {
   for (const m of world.chunks) m.visible = m.geometry.boundingSphere.center.distanceTo(camera.position) - m.geometry.boundingSphere.radius < far;
   world.farMesh.visible = far * 2.4 > 6000;
   if (st.flying) {
-    $('alt').textContent = Math.round(st.pos.y); $('spd').textContent = Math.round(spd * 3.6);
+    $('alt').textContent = Math.round(st.pos.y); $('spd').textContent = Math.round(spd * 3.6); $('thrPct').textContent = Math.round(st.thr * 100);
+    if (input.touchThr === null) setThrUI(st.thr);
+    drawAttitude();
     if ((mapT -= dt) < 0) { drawMap(); updateNav(); mapT = 0.1; }
     if ((saveT -= dt) < 0) { persist(); saveT = 5; }
   }
@@ -420,7 +482,7 @@ async function loadRegion(spec) {
     save.regions[R.id] = { ...R, total: rings.total, totalPts: rings.totalPts };
     save.current = R.id; persist();
     rings.setDone(reg().done);
-    placeStart(); refreshScore();
+    placeStart(); st.thr = CRUISE; refreshScore();
     $('loading').hidden = true;
     return true;
   } catch (e) {

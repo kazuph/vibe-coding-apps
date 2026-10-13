@@ -426,7 +426,9 @@ export class World {
         }`,
     });
     const g = new THREE.PlaneGeometry(320000, 320000); g.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(g, mat); m.position.y = B * 0.78; this.waterMat = mat;
+    // 水面は陸より半ブロック下げ、さらに深度を奥へずらす（深度の精度が低い端末で、陸の地面に水面が透けるのを防ぐ）
+    mat.polygonOffset = true; mat.polygonOffsetFactor = 4; mat.polygonOffsetUnits = 8;
+    const m = new THREE.Mesh(g, mat); m.position.y = B * 0.5; this.waterMat = mat;
     return m;
   }
 
