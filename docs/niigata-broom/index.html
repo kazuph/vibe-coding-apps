@@ -63,6 +63,10 @@
   #stick::after { top: 50%; left: 12px; right: 12px; bottom: auto; width: auto; height: 2px; transform: translateY(-50%); }
   #knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff8, #b8a6ff 40%, #5b3c9e); border: 2px solid #fff6; box-shadow: 0 4px 12px rgba(0,0,0,.35); pointer-events: none; }
   #stickLbl { position: absolute; left: 50%; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 156px); transform: translateX(-50%); font-size: 10px; opacity: .7; white-space: nowrap; pointer-events: none; }
+  .rud { position: absolute; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 40px); width: 46px; height: 46px; font-size: 16px; touch-action: none; }
+  #rudL { left: calc(50% - 75px - 58px); } #rudR { left: calc(50% + 75px + 12px); }
+  .rud.on { background: rgba(255, 210, 63, .45); }
+  .ctl { display: flex; gap: 8px; align-items: center; flex-basis: 100%; justify-content: center; }
   #meter { position: absolute; left: max(10px, env(safe-area-inset-left)); bottom: max(14px, env(safe-area-inset-bottom)); padding: 6px 10px; font-size: 12px; line-height: 1.5; }
   #meter b { color: var(--cyan); font-weight: normal; }
   #boostFx { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(ellipse at center, transparent 55%, rgba(63, 240, 255, .25) 100%); }
@@ -104,6 +108,7 @@
     #nav { top: calc(var(--pad) + 150px); max-width: 80vw; }
     #stick { width: 136px; height: 136px; }
     #stickLbl { bottom: calc(max(18px, env(safe-area-inset-bottom)) + 140px); }
+    #rudL { left: calc(50% - 68px - 54px); } #rudR { left: calc(50% + 68px + 8px); }
     #meter { font-size: 11px; }
   }
   @media (max-height: 500px) {
@@ -141,6 +146,7 @@
   <div id="meter" class="panel">高度 <b id="alt">0</b>m<br>速度 <b id="spd">0</b>km/h</div>
   <div id="stickLbl">↑下降 ↓上昇 ←→旋回（下に引き続けると宙返り）</div>
   <div id="stick"><div id="knob"></div></div>
+  <button id="rudL" class="rud panel" hidden>◀</button><button id="rudR" class="rud panel" hidden>▶</button>
 </div>
 
 <div id="start" class="screen" hidden>
@@ -158,12 +164,14 @@
     <div style="font-size:12px;margin-top:14px;opacity:.85">天気</div>
     <div class="wx" id="wxList"></div>
     <div class="opt">
+      <span class="ctl">操作: <label><input type="radio" name="ctl" value="beginner"> 🔰 初心者</label><label><input type="radio" name="ctl" value="expert"> ✈️ エキスパート</label></span>
       <label><input type="checkbox" id="optInvert"> 上下を反転</label>
       <label><input type="checkbox" id="optInvertX"> 左右を反転</label>
       <label><input type="checkbox" id="optSound" checked> 効果音</label>
     </div>
     <ul class="how">
       <li>画面下のジョイスティック（PC は矢印キー / WASD）で操作。速さはいつも一定です。</li>
+      <li id="howCtl"></li>
       <li><span id="howY"></span><span style="color:var(--pink)">ピンクのリング</span>は宙返りコース。</li>
       <li><span style="color:var(--cyan)">水色のリング</span>をくぐると一瞬だけ加速。<span style="color:var(--gold)">金のリング</span>は名所のポイント。</li>
       <li>記録はこのブラウザの中に保存されます。</li>

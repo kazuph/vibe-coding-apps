@@ -17,7 +17,7 @@ export const PITCH = 1.0;   // rad/s。宙返りの半径は SPEED / PITCH ≒ 4
 const KEY = 'niigata-broom:v1';
 // 新潟市中央区（PLATEAU から作った作り置きの地域）
 const BUILTIN = { id: 'niigata-chuo', name: '新潟市中央区', muni: '15103', pref: '新潟県', lat: 37.9125, lon: 139.0615, builtin: true };
-const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
+const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'expert', invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
 const newRegion = (r) => ({ done: {}, points: 0, completedAt: null, total: 0, totalPts: 0, created: Date.now(), ...r });
 let save;
 try {
@@ -60,7 +60,7 @@ function placeStart() { // 新潟は萬代橋の上流から、それ以外は�
 const camPos = new THREE.Vector3(), camUp = new THREE.Vector3(0, 1, 0);
 
 // ---------- 入力（ジョイスティック + キーボード）
-const input = { x: 0, y: 0, kx: 0, ky: 0 };
+const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0 };
 {
   const stick = $('stick'), knob = $('knob'); let id = null;
   const set = (e) => {
@@ -74,7 +74,7 @@ const input = { x: 0, y: 0, kx: 0, ky: 0 };
   const end = (e) => { if (e.pointerId !== id) return; id = null; input.x = input.y = 0; knob.style.transform = ''; };
   stick.addEventListener('pointerup', end); stick.addEventListener('pointercancel', end);
   const keys = new Set();
-  const upd = () => { input.kx = (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? 1 : 0); input.ky = (keys.has('ArrowUp') || keys.has('KeyW') ? 1 : 0) - (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0); };
+  const upd = () => { input.kx = (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? 1 : 0); input.ky = (keys.has('ArrowUp') || keys.has('KeyW') ? 1 : 0) - (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0); input.krud = (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0); };
   addEventListener('keydown', (e) => { if (e.code.startsWith('Arrow')) e.preventDefault(); keys.add(e.code); upd(); audio.unlock(); if (e.code === 'KeyC') cycleCam(); if (e.code === 'KeyT') cycleWeather(); });
   addEventListener('keyup', (e) => { keys.delete(e.code); upd(); });
   addEventListener('blur', () => { keys.clear(); upd(); });
@@ -186,14 +186,28 @@ $('bWx').onclick = cycleWeather; $('bCam').onclick = cycleCam;
 $('bPause').onclick = () => { st.flying = false; $('hud').hidden = true; $('start').hidden = false; refreshScore(); persist(); };
 $('go').onclick = () => startFlying();
 // 操作の向き（設定画面で上下・左右をそれぞれ反転できる）
+const expert = () => save.opt.ctl === 'expert';
 function stickLabel() {
   const y = save.opt.invert ? ['↑上昇', '↓下降', '上に倒し'] : ['↑下降', '↓上昇', '下に引き'];
-  const x = save.opt.invertX ? '←右旋回 →左旋回' : '←左旋回 →右旋回';
-  $('stickLbl').textContent = `${y[0]} ${y[1]} ${x}（${y[2]}続けると宙返り）`;
+  const x = expert() ? (save.opt.invertX ? '←右回転 →左回転' : '←左回転 →右回転') : (save.opt.invertX ? '←右旋回 →左旋回' : '←左旋回 →右旋回');
+  $('stickLbl').textContent = expert() ? `${y[0]} ${y[1]} ${x}（傾けて${y[2] === '下に引き' ? '引く' : '倒す'}と曲がる）` : `${y[0]} ${y[1]} ${x}（${y[2]}続けると宙返り）`;
+  $('howCtl').textContent = expert()
+    ? 'エキスパート操作: 左右で機体を回転（ロール）、上下で機首の上げ下げ。曲がるときは傾けてから引く。手を離しても水平には戻らない。左右の小さいボタン（PC は Q / E）で機首を左右に振る（ラダー）。'
+    : '初心者操作: 左右でそのまま左右へ曲がる。手を離すと自動で水平に戻る。';
+  document.querySelectorAll('input[name=ctl]').forEach(r => { r.checked = r.value === save.opt.ctl; });
+  $('rudL').hidden = $('rudR').hidden = !expert();
   $('howY').textContent = save.opt.invert ? 'ジョイスティックは上に倒すと上昇、下に引くと下降。上に倒し続けると宙返り。' : 'ジョイスティックは下に引くと上昇、上に倒すと下降。下に引き続けると宙返り。';
 }
 $('optInvert').checked = save.opt.invert; $('optInvert').onchange = (e) => { save.opt.invert = e.target.checked; persist(); stickLabel(); };
 $('optInvertX').checked = save.opt.invertX; $('optInvertX').onchange = (e) => { save.opt.invertX = e.target.checked; persist(); stickLabel(); };
+document.querySelectorAll('input[name=ctl]').forEach(r => r.onchange = () => { save.opt.ctl = r.value; persist(); stickLabel(); });
+// ラダー（エキスパート操作のときだけ表示）
+for (const [id, v] of [['rudL', -1], ['rudR', 1]]) {
+  const b = $(id);
+  b.addEventListener('pointerdown', (e) => { b.setPointerCapture(e.pointerId); input.rud = v; b.classList.add('on'); });
+  const off = () => { if (input.rud === v) input.rud = 0; b.classList.remove('on'); };
+  b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off);
+}
 stickLabel();
 $('optSound').checked = save.opt.sound; $('optSound').onchange = (e) => { save.opt.sound = e.target.checked; persist(); };
 
@@ -232,17 +246,26 @@ function fly(dt) {
   const sx = THREE.MathUtils.clamp((input.x + input.kx) * invX, -1, 1), sy = THREE.MathUtils.clamp((input.y + input.ky) * inv, -1, 1);
   // ピッチ（ほうきの横軸まわり）→ 引き続けると宙返り
   st.q.multiply(tmpQ.setFromAxisAngle(V(1, 0, 0), sy * PITCH * dt));
-  // 旋回（鉛直軸まわり）
-  st.q.premultiply(tmpQ.setFromAxisAngle(V(0, 1, 0), -sx * 1.05 * dt));
+  if (expert()) {
+    // エキスパート: 左右はロール（ほうきの前後軸まわりの回転）。傾いた分だけ少し曲がる（揚力の向き）
+    st.q.multiply(tmpQ.setFromAxisAngle(V(0, 0, 1), -sx * 2.2 * dt));
+    const rud = THREE.MathUtils.clamp(input.rud + input.krud, -1, 1);
+    if (rud) st.q.multiply(tmpQ.setFromAxisAngle(V(0, 1, 0), -rud * 0.45 * dt));
+    const r0 = V(1, 0, 0).applyQuaternion(st.q), f0 = V(0, 0, -1).applyQuaternion(st.q);
+    if (Math.abs(f0.y) < 0.9) st.q.premultiply(tmpQ.setFromAxisAngle(V(0, 1, 0), r0.y * 0.35 * dt));
+  } else {
+    // 初心者: 左右はそのまま旋回（鉛直軸まわり）
+    st.q.premultiply(tmpQ.setFromAxisAngle(V(0, 1, 0), -sx * 1.05 * dt));
+  }
   const f = V(0, 0, -1).applyQuaternion(st.q), up = V(0, 1, 0).applyQuaternion(st.q);
-  // 操作していない時は、ゆっくり背中を空に向け直す（背面飛行からの復帰）
-  if (Math.abs(sy) < 0.15 && Math.abs(f.y) < 0.97) {
+  // 初心者: 操作していない時は、ゆっくり背中を空に向け直す（背面飛行からの復帰）
+  if (!expert() && Math.abs(sy) < 0.15 && Math.abs(f.y) < 0.97) {
     const want = V(0, 1, 0).addScaledVector(f, -f.y).normalize();
     const ang = Math.atan2(f.dot(up.clone().cross(want)), up.dot(want));
     st.q.premultiply(tmpQ.setFromAxisAngle(f, ang * Math.min(1, dt * 1.6)));
   }
   st.q.normalize();
-  st.bank += (-sx * 0.65 - st.bank) * Math.min(1, dt * 5);
+  st.bank += ((expert() ? 0 : -sx * 0.65) - st.bank) * Math.min(1, dt * 5);
   st.boost = Math.max(0, st.boost - dt);
   const spd = SPEED * (1 + (BOOST - 1) * Math.min(1, st.boost / 0.8));
   const prev = st.pos.clone();
@@ -292,7 +315,7 @@ function updateCamera(dt, spd) {
   const f = V(0, 0, -1).applyQuaternion(st.q), up = V(0, 1, 0).applyQuaternion(st.q);
   const mode = save.opt.cam;
   rider.visible = mode !== 2;
-  const wantUp = up.clone().lerp(V(0, 1, 0), mode === 2 ? 0 : 0.35).normalize();
+  const wantUp = up.clone().lerp(V(0, 1, 0), mode === 2 ? 0 : expert() ? 0.12 : 0.35).normalize(); // エキスパートは機体と一緒に視界も傾く
   camUp.lerp(wantUp, 1 - Math.exp(-dt * 5)).normalize();
   let want, look;
   if (mode === 2) { want = st.pos.clone().addScaledVector(up, 1.9).addScaledVector(f, 0.6); look = want.clone().addScaledVector(f, 20); camPos.copy(want); }
