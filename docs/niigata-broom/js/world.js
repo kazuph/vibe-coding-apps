@@ -1,12 +1,14 @@
 // ボクセル地形・建物・木・水面の生成
 import * as THREE from 'three';
 
-export const LAT0 = 37.9125, LON0 = 139.0615;
-const KY = 111132.0, KX = 111320.0 * Math.cos(LAT0 * Math.PI / 180);
+// 座標系: 原点（地域の中心）からの平面直交 (m)。x=東, z=南。地域を切り替えると原点も変わる
+let LAT0 = 37.9125, LON0 = 139.0615, KY = 111132.0, KX = 111320.0 * Math.cos(LAT0 * Math.PI / 180);
+export function setOrigin(lat, lon) { LAT0 = lat; LON0 = lon; KX = 111320.0 * Math.cos(lat * Math.PI / 180); }
 export const ll = (lat, lon) => [(lon - LON0) * KX, -(lat - LAT0) * KY];
+export const toLatLon = (x, z) => [LAT0 - z / KY, LON0 + x / KX];
 
 // 地面の材質 (build.py と対応)
-export const M = { SEA: 0, RIVER: 1, SAND: 2, GRASS: 3, ROAD: 4, RAIL: 5, FOREST: 6, PARK: 7, FARM: 8, TOWN: 9, BRIDGE: 10, STONE: 11, CONCRETE: 12, PITCH: 13, BIGROAD: 14 };
+export const M = { SEA: 0, RIVER: 1, SAND: 2, GRASS: 3, ROAD: 4, RAIL: 5, FOREST: 6, PARK: 7, FARM: 8, TOWN: 9, BRIDGE: 10, STONE: 11, CONCRETE: 12, PITCH: 13, BIGROAD: 14, LAKE: 15 };
 // シェーダーの模様の種類
 const K = { PLAIN: 0, GRASS: 1, GRASS_SIDE: 2, DIRT: 3, WALL: 4, GLASS: 5, ROOF: 6, LEAVES: 7, WOOD: 8, FARM: 9, ROAD: 10, RAIL: 11, SAND: 12, PITCH: 13, STONE: 14, PINE: 15, ROCK: 16, SNOWCAP: 17 };
 
@@ -14,7 +16,7 @@ const hex = (h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
 const TERRAIN_TOP = {
   [M.SAND]: [0xe6d59c, K.SAND], [M.GRASS]: [0x6fb64a, K.GRASS], [M.ROAD]: [0x8e8e92, K.ROAD], [M.RAIL]: [0x7b6a5c, K.RAIL],
   [M.FOREST]: [0x4f9a3a, K.GRASS], [M.PARK]: [0x7cc254, K.GRASS], [M.FARM]: [0xc9b65a, K.FARM], [M.TOWN]: [0xa8a18c, K.STONE],
-  [M.BRIDGE]: [0x77777c, K.ROAD], [M.STONE]: [0x9c9ca2, K.STONE], [M.CONCRETE]: [0xb3b3b8, K.STONE], [M.PITCH]: [0x5fbf4f, K.PITCH], [M.BIGROAD]: [0x6c6d72, K.ROAD],
+  [M.BRIDGE]: [0x77777c, K.ROAD], [M.STONE]: [0x9c9ca2, K.STONE], [M.CONCRETE]: [0xb3b3b8, K.STONE], [M.PITCH]: [0x5fbf4f, K.PITCH], [M.BIGROAD]: [0x6c6d72, K.ROAD], [M.LAKE]: [0x3f86c4, K.PLAIN],
 };
 const GREEN_TOP = new Set([M.GRASS, M.FOREST, M.PARK, M.PITCH, M.FARM]);
 const WALLS = [
@@ -138,21 +140,29 @@ async function gunzip(url) {
 }
 
 export class World {
-  async load(onProgress) {
+  // 新潟市中央区（PLATEAU から作った作り置きのデータ）
+  static async loadFiles() {
     const [near, far] = await Promise.all([gunzip('data/near.bin.gz'), gunzip('data/far.bin.gz')]);
     const dv = new DataView(near.buffer);
-    const W = dv.getUint32(4, true), H = dv.getUint32(8, true);
-    this.W = W; this.H = H; this.X0 = dv.getFloat32(12, true); this.Z0 = dv.getFloat32(16, true); this.B = dv.getFloat32(20, true);
-    let o = 28; const N = W * H;
-    this.L = near.subarray(o, o += N); this.mat = near.subarray(o, o += N); this.bh = near.subarray(o, o += N); this.style = near.subarray(o, o += N); this.ward = near.subarray(o, o += N); this.bidRaw = near.subarray(o, o += N);
+    const W = dv.getUint32(4, true), H = dv.getUint32(8, true), N = W * H;
+    const g = { W, H, X0: dv.getFloat32(12, true), Z0: dv.getFloat32(16, true), B: dv.getFloat32(20, true) };
+    let o = 28;
+    g.L = near.subarray(o, o += N); g.mat = near.subarray(o, o += N); g.bh = near.subarray(o, o += N); g.style = near.subarray(o, o += N); g.ward = near.subarray(o, o += N); g.bidRaw = near.subarray(o, o += N);
+    const fdv = new DataView(far.buffer);
+    g.far = { N: fdv.getUint32(4, true), F: fdv.getFloat32(8, true), VF: fdv.getFloat32(12, true), lv: far.subarray(24) };
+    return g;
+  }
+  // g: { W, H, X0, Z0, B, L, mat, bh, style, ward, bidRaw, far: { N, F, VF, lv } }
+  async build(g, onProgress) {
+    const { W, H } = g, N = W * H;
+    Object.assign(this, { W, H, X0: g.X0, Z0: g.Z0, B: g.B, L: g.L, mat: g.mat, bh: g.bh, style: g.style, ward: g.ward, bidRaw: g.bidRaw, far: g.far });
     // PLATEAU の用途が「不明」の建物は、高さから住宅・マンション・ビルを推定して色を付ける
     for (let i = 0; i < N; i++) if (this.bh[i] && this.style[i] === 6) { const h = this.bh[i], r = hash(this.bidRaw[i], h * 7 + 1); this.style[i] = h <= 1 ? 0 : h <= 4 ? (r < 0.6 ? 1 : 3) : (r < 0.5 ? 2 : 1); }
     this.top = new Uint16Array(N);
-    for (let i = 0; i < N; i++) this.top[i] = this.L[i] + this.bh[i];
+    let mt = 0; for (let i = 0; i < N; i++) { this.top[i] = this.L[i] + this.bh[i]; if (this.top[i] > mt) mt = this.top[i]; }
+    this.maxTop = mt * this.B;
     this.computeDistances();
     this.labelBuildings();
-    const fdv = new DataView(far.buffer);
-    this.far = { N: fdv.getUint32(4, true), F: fdv.getFloat32(8, true), VF: fdv.getFloat32(12, true), lv: far.subarray(24) };
     this.group = new THREE.Group();
     this.nearMat = voxelMaterial(this.B, this.B);
     this.farMat = voxelMaterial(this.far.F, this.far.VF, 0.42); // 遠くの山（佐渡・弥彦）は霞みすぎないように
@@ -172,6 +182,11 @@ export class World {
     let tris = 0; this.group.traverse(m => { if (m.geometry) tris += m.geometry.attributes.position.count / 3; });
     this.tris = tris;
     return this;
+  }
+  dispose() {
+    this.group?.traverse(m => { m.geometry?.dispose(); });
+    this.nearMat?.dispose(); this.farMat?.dispose(); this.waterMat?.uniforms.uDist.value.dispose(); this.waterMat?.dispose();
+    this.group?.removeFromParent();
   }
   // 陸からの距離（水面の色・波打ち際）と海からの距離（松林）
   computeDistances() {
@@ -419,7 +434,7 @@ export class World {
   mapImage() {
     const { W, H } = this; const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d'); const img = ctx.createImageData(W, H);
-    const C = { 0: 0x2f6fb0, 1: 0x4a9ad0, 2: 0xe8d9a2, 3: 0x86c35a, 4: 0xb8b8bc, 5: 0x8a7a6a, 6: 0x3f8a3a, 7: 0x8fd067, 8: 0xd8c86a, 9: 0xd8d0bc, 10: 0x9a9aa0, 11: 0x9a9aa0, 12: 0xc6c6cc, 13: 0x7ccc6a, 14: 0xa0a0a6 };
+    const C = { 0: 0x2f6fb0, 1: 0x4a9ad0, 2: 0xe8d9a2, 3: 0x86c35a, 4: 0xb8b8bc, 5: 0x8a7a6a, 6: 0x3f8a3a, 7: 0x8fd067, 8: 0xd8c86a, 9: 0xd8d0bc, 10: 0x9a9aa0, 11: 0x9a9aa0, 12: 0xc6c6cc, 13: 0x7ccc6a, 14: 0xa0a0a6, 15: 0x4a9ad0 };
     for (let i = 0; i < W * H; i++) {
       let c0 = C[this.mat[i]] ?? 0x86c35a;
       if (this.bh[i]) { const h = this.bh[i]; c0 = h > 6 ? 0x8c7e90 : h > 2 ? 0xb39a8c : 0xcbb3a0; }

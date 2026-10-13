@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { ll } from './world.js';
 
 // t: p=ポイント b=加速 l=宙返り / hd=進行方向(度, 北=0 東=90) / agl=周りの建物・地面からの最低高さ / alt=最低高度(m)
-const P = (id, name, lat, lon, o = {}) => ({ id, t: 'p', name, lat, lon, agl: 30, alt: 0, hd: 0, r: 16, pts: 100, ...o });
+export const P = (id, name, lat, lon, o = {}) => ({ id, t: 'p', name, lat, lon, agl: 30, alt: 0, hd: 0, r: 16, pts: 100, ...o });
 const POINT = [
   P('bandaibashi', '萬代橋', 37.91957, 139.05313, { agl: 18, hd: 50, note: '六連アーチの石の橋' }),
   P('toki', '朱鷺メッセ・万代島ビル', 37.92521, 139.05969, { dx: 70, alt: 110, hd: 330, note: '日本海側で一番高い展望室' }),
@@ -55,11 +55,15 @@ const LOOPS = [
   { id: 'loop_sea', name: '日本海の宙返り', lat: 37.9420, lon: 139.0420, hd: 300, R: 44, base: 50 },
 ];
 
+// 新潟市中央区の手置きリング
+export const NIIGATA_RINGS = { points: POINT, chains: CHAINS, loops: LOOPS };
+
 const hdVec = (hd) => new THREE.Vector3(Math.sin(hd * Math.PI / 180), 0, -Math.cos(hd * Math.PI / 180));
 
 export class Rings {
-  constructor(scene, world) {
-    this.world = world; this.list = [];
+  constructor(scene, world, defs = NIIGATA_RINGS) {
+    this.world = world; this.list = []; this.scene = scene;
+    const { points: POINT, chains: CHAINS, loops: LOOPS } = defs;
     const maxTop = (x, z, r) => { let m = 0; for (let a = -r; a <= r; a += 4) for (let b = -r; b <= r; b += 4) m = Math.max(m, world.heightAt(x + a, z + b)); return m; };
     for (const p of POINT) {
       const [x0, z0] = ll(p.lat, p.lon); const x = x0 + (p.dx || 0), z = z0 + (p.dz || 0);
@@ -113,6 +117,10 @@ export class Rings {
       r.label = sp; this.labels.add(sp);
     }
     this.burst = [];
+  }
+  dispose() {
+    this.mesh.geometry.dispose(); this.mesh.material.dispose(); this.mesh.removeFromParent();
+    this.labels.traverse(o => { if (o.material) { o.material.map?.dispose(); o.material.dispose(); } }); this.labels.removeFromParent();
   }
   setDone(done) { this.done = done; this.refreshColors(); }
   refreshColors() {

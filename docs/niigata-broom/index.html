@@ -27,6 +27,24 @@
   #comp { font-size: 13px; margin-top: 2px; }
   #bar { height: 8px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 5px; overflow: hidden; }
   #bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), var(--pink)); transition: width .5s; }
+  #regionName { font-size: 12px; opacity: .9; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #jpLine { font-size: 11px; margin-top: 4px; opacity: .9; }
+  .here { font-size: 13px; margin: -4px 0 12px; } .here b { color: var(--gold); font-weight: normal; }
+  .jp { width: min(760px, 100%); }
+  .jpHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #jpStat { font-size: 12px; text-align: right; } #jpStat b { color: var(--gold); font-size: 18px; font-weight: normal; }
+  .jpWrap { position: relative; margin-top: 8px; }
+  #jpMap { width: 100%; aspect-ratio: 1; max-height: 56vh; object-fit: contain; display: block; border-radius: 8px; background: #2f6fb0; touch-action: manipulation; cursor: pointer; }
+  #jpBack { position: absolute; left: 8px; top: 8px; padding: 6px 10px; font-size: 12px; }
+  .jpLegend { position: absolute; right: 8px; bottom: 8px; font-size: 10px; background: rgba(0,0,0,.45); padding: 4px 6px; border-radius: 6px; display: flex; gap: 8px; }
+  .jpLegend b { display: inline-block; width: 9px; height: 9px; margin-right: 3px; }
+  #jpInfo { font-size: 13px; margin-top: 8px; line-height: 1.6; text-align: left; }
+  #jpInfo .rg { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #fff2; }
+  #jpInfo .rg button, #jpResults button { padding: 6px 12px; font-size: 13px; }
+  #jpQ { flex: 1; min-width: 0; padding: 9px 10px; border-radius: 8px; border: 2px solid #fff4; background: rgba(0,0,0,.3); color: #fff; font-family: inherit; font-size: 14px; }
+  #jpResults { text-align: left; font-size: 12px; margin-top: 6px; }
+  #jpResults .res { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px dashed #fff2; }
+  #jpResults .res span { overflow: hidden; text-overflow: ellipsis; }
   #legend { font-size: 10px; margin-top: 5px; opacity: .85; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   #legend b { display: inline-block; width: 8px; height: 8px; margin-right: 3px; vertical-align: 0; }
   #btns { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(var(--pad) + 118px); display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
@@ -104,9 +122,11 @@
 <div id="hud" hidden>
   <div id="mapBox" class="panel"><canvas id="map" width="296" height="296"></canvas><div id="mapHint">タップで全体図</div></div>
   <div id="score" class="panel">
+    <div id="regionName">新潟市中央区</div>
     <div id="pts">0 <small>pt</small></div>
     <div id="comp">コンプリート 0%</div>
     <div id="bar"><i></i></div>
+    <div id="jpLine">🗾 日本 0%</div>
     <div id="legend"><span><b style="background:var(--gold)"></b>ポイント</span><span><b style="background:var(--cyan)"></b>加速</span><span><b style="background:var(--pink)"></b>宙返り</span></div>
   </div>
   <div id="btns">
@@ -126,13 +146,15 @@
 <div id="start" class="screen" hidden>
   <div class="card panel">
     <h1>ほうきで新潟</h1>
-    <div class="sub">マイクラ風に再現した新潟市中央区の空を、魔法のほうきで飛びまわろう。<br>街じゅうのリングをくぐって、コンプリート率 100% をめざそう！</div>
+    <div class="sub">マイクラ風に再現した街の空を、魔法のほうきで飛びまわろう。<br>リングをくぐってコンプリート率 100% をめざし、日本地図を塗りつぶそう！</div>
+    <div class="here">いまの場所: <b id="sRegion">新潟市中央区</b></div>
     <div class="stats">
       <div><b id="sComp">0%</b>コンプリート</div>
       <div><b id="sPts">0</b>ポイント</div>
       <div><b id="sDist">0km</b>飛んだ距離</div>
+      <div style="grid-column:1/-1"><b id="sJapan">0%</b>日本地図のコンプリート（<span id="sJapanN">0/1,894</span> 市区町村）</div>
     </div>
-    <div class="row"><button class="btn" id="go">🧹 飛ぶ！</button><button class="btn sec" id="openRec">📖 記録</button></div>
+    <div class="row"><button class="btn" id="go">🧹 飛ぶ！</button><button class="btn sec" id="openJapan">🗾 日本地図</button><button class="btn sec" id="openRec">📖 記録</button></div>
     <div style="font-size:12px;margin-top:14px;opacity:.85">天気</div>
     <div class="wx" id="wxList"></div>
     <div class="opt">
@@ -146,7 +168,20 @@
       <li><span style="color:var(--cyan)">水色のリング</span>をくぐると一瞬だけ加速。<span style="color:var(--gold)">金のリング</span>は名所のポイント。</li>
       <li>記録はこのブラウザの中に保存されます。</li>
     </ul>
-    <div class="credit">地形: 国土地理院 標高タイル ／ 建物: 国土交通省 Project PLATEAU（新潟市 2023年度）／ 地図: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors ／ 天気: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></div>
+    <div class="credit">地形: 国土地理院 標高タイル ／ 建物: 国土交通省 Project PLATEAU（新潟市 2023年度）／ 地図: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors ／ 天気: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ／ 自動生成の地図: <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>・OpenMapTiles・AWS Terrain Tiles ／ 日本地図: 国土数値情報（行政区域）</div>
+  </div>
+</div>
+
+<div id="japan" class="screen" hidden>
+  <div class="card panel jp">
+    <div class="jpHead"><h1 style="font-size:24px">🗾 日本地図</h1><div id="jpStat"></div></div>
+    <div class="jpWrap"><canvas id="jpMap" width="900" height="900"></canvas><button class="btn sec" id="jpBack" hidden>◀ 日本全体</button>
+      <div class="jpLegend"><span><b style="background:#ffd23f"></b>コンプリート</span><span><b style="background:#ff8a3d"></b>飛行中</span><span><b style="background:#7cc254"></b>まだ</span></div></div>
+    <div id="jpInfo">都道府県をタップすると、市区町村ごとに見られます。</div>
+    <form id="jpSearch" class="row" style="margin-top:8px"><input id="jpQ" placeholder="地名・駅名・住所で探す（例: 金沢駅）" autocomplete="off"><button class="btn sec" style="padding:8px 14px">検索</button></form>
+    <div id="jpResults"></div>
+    <div class="row" style="margin-top:10px"><button class="btn sec" id="jpClose">閉じる</button></div>
+    <div class="credit">市区町村の境界: 国土交通省 国土数値情報（行政区域）2021年を smartnews-smri/japan-topography が簡素化した物 ／ 検索: Nominatim（© OpenStreetMap contributors）</div>
   </div>
 </div>
 
@@ -160,7 +195,7 @@
   </div>
 </div>
 
-<div id="loading"><div style="text-align:center"><div style="font-size:22px">🧹 新潟の街を組み立て中…</div><div class="bar"><i id="loadBar"></i></div><div id="loadMsg" style="font-size:11px;opacity:.7;margin-top:8px">データを読み込んでいます</div></div></div>
+<div id="loading"><div style="text-align:center;padding:16px"><div style="font-size:22px" id="loadTitle">🧹 新潟の街を組み立て中…</div><div class="bar"><i id="loadBar"></i></div><div id="loadMsg" style="font-size:11px;opacity:.7;margin-top:8px">データを読み込んでいます</div><button class="btn sec" id="loadBack" hidden style="margin-top:14px">もどる</button></div></div>
 
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }

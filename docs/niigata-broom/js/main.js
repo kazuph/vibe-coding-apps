@@ -1,7 +1,9 @@
 import * as THREE from 'three';
-import { World, U, ll } from './world.js';
+import { World, U, ll, setOrigin } from './world.js';
 import { Sky, WEATHERS, WEATHER_ORDER, liveWeather } from './sky.js';
-import { Rings } from './rings.js';
+import { Rings, NIIGATA_RINGS } from './rings.js';
+import { generate, cache, inJapan } from './gen.js';
+import { JapanMap, JAPAN_VIEW } from './japan.js';
 import { makeRider, animateRider, Sparkles } from './broom.js';
 
 THREE.ColorManagement.enabled = false;
@@ -13,9 +15,22 @@ export const PITCH = 1.0;   // rad/s。宙返りの半径は SPEED / PITCH ≒ 4
 
 // ---------- 記録（ブラウザに保存）
 const KEY = 'niigata-broom:v1';
-const fresh = () => ({ done: {}, points: 0, dist: 0, time: 0, flights: 0, first: Date.now(), completedAt: null, opt: { invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
+// 新潟市中央区（PLATEAU から作った作り置きの地域）
+const BUILTIN = { id: 'niigata-chuo', name: '新潟市中央区', muni: '15103', pref: '新潟県', lat: 37.9125, lon: 139.0615, builtin: true };
+const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
+const newRegion = (r) => ({ done: {}, points: 0, completedAt: null, total: 0, totalPts: 0, created: Date.now(), ...r });
 let save;
-try { save = { ...fresh(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; save.opt = { ...fresh().opt, ...(save.opt || {}) }; } catch { save = fresh(); }
+try {
+  const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
+  save = { ...fresh(), ...raw }; save.opt = { ...fresh().opt, ...(raw.opt || {}) };
+  if (!raw.v && raw.done) { // 地域ごとの記録になる前（新潟市中央区だけだった頃）の記録を引き継ぐ
+    save.regions = { [BUILTIN.id]: newRegion({ ...BUILTIN, done: raw.done, points: raw.points || 0, completedAt: raw.completedAt || null, total: 83 }) };
+    delete save.done; delete save.points; delete save.completedAt; save.v = 2;
+  }
+} catch { save = fresh(); }
+if (!save.regions[BUILTIN.id]) save.regions[BUILTIN.id] = newRegion({ ...BUILTIN });
+if (!save.regions[save.current]) save.current = BUILTIN.id;
+const reg = () => save.regions[save.current];
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* 保存できない環境（プライベート等）では保持しない */ } };
 
 // ---------- three.js
@@ -30,14 +45,18 @@ const sunL = new THREE.DirectionalLight(0xffffff, 1.6); scene.add(sunL);
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
-const world = new World();
+let world = null;
 const sky = new Sky(scene);
 let rings, sparkles;
 const rider = makeRider(); scene.add(rider);
 
 // ---------- 飛行状態
-const START = (() => { const [x, z] = ll(37.9085, 139.0395); return new THREE.Vector3(x, 110, z); })();
-const st = { pos: START.clone(), q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -50 * Math.PI / 180), boost: 0, bank: 0, flying: false, warn: 0 };
+const st = { pos: new THREE.Vector3(0, 110, 0), q: new THREE.Quaternion(), boost: 0, bank: 0, flying: false, warn: 0 };
+function placeStart() { // 新潟は萬代橋の上流から、それ以外は地図の南側から北へ
+  if (reg().builtin) { const [x, z] = ll(37.9085, 139.0395); st.pos.set(x, 110, z); st.q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -50 * Math.PI / 180); }
+  else { let g = 0; for (let k = -6; k <= 6; k++) g = Math.max(g, world.heightAt(k * 40, 900), world.heightAt(k * 40, 700)); st.pos.set(0, g + 70, 900); st.q.identity(); }
+  camPos.copy(st.pos).add(new THREE.Vector3(0, 6, 15));
+}
 const camPos = new THREE.Vector3(), camUp = new THREE.Vector3(0, 1, 0);
 
 // ---------- 入力（ジョイスティック + キーボード）
@@ -107,34 +126,65 @@ function cycleCam() { save.opt.cam = (save.opt.cam + 1) % CAMS.length; persist()
 
 // ---------- HUD
 function toast(text, cls = 'p') { const d = document.createElement('div'); d.className = `t panel ${cls}`; d.textContent = text; $('toast').appendChild(d); setTimeout(() => d.remove(), 2300); while ($('toast').children.length > 3) $('toast').firstChild.remove(); }
-function doneCount() { return rings.list.filter(r => save.done[r.id]).length; }
+function doneCount() { return rings.list.filter(r => reg().done[r.id]).length; }
+const pctOf = (r) => r.total ? Math.floor(Object.keys(r.done).length / r.total * 1000) / 10 : 0;
+// 日本地図: 市区町村ごとの状態（その市区町村の中のどこかを 100% にしたら「コンプリート」）
+function muniStatus(code) {
+  let st0 = null;
+  for (const r of Object.values(save.regions)) if (r.muni === code) { if (r.completedAt) return 'done'; if (Object.keys(r.done).length) st0 = 'part'; }
+  return st0;
+}
+function japanStats() { const done = new Set(Object.values(save.regions).filter(r => r.completedAt && r.muni).map(r => r.muni)); const total = japan?.munis.length || 1894; return { n: done.size, total, pct: Math.floor(done.size / total * 10000) / 100 }; }
 function refreshScore() {
-  const n = doneCount(), pct = Math.floor(n / rings.total * 1000) / 10;
-  $('pts').innerHTML = `${save.points.toLocaleString()} <small>/ ${rings.totalPts.toLocaleString()} pt</small>`;
+  const R = reg(), n = doneCount(), pct = Math.floor(n / rings.total * 1000) / 10;
+  $('regionName').textContent = `📍 ${R.name}`;
+  $('pts').innerHTML = `${R.points.toLocaleString()} <small>/ ${rings.totalPts.toLocaleString()} pt</small>`;
   $('comp').textContent = `コンプリート ${pct}%（${n}/${rings.total}）`;
   $('bar').firstElementChild.style.width = pct + '%';
-  $('sComp').textContent = pct + '%'; $('sPts').textContent = save.points.toLocaleString(); $('sDist').textContent = (save.dist / 1000).toFixed(1) + 'km';
+  const js = japanStats();
+  $('jpLine').textContent = `🗾 日本 ${js.pct}%（${js.n}/${js.total.toLocaleString()} 市区町村）`;
+  $('sComp').textContent = pct + '%'; $('sPts').textContent = R.points.toLocaleString(); $('sDist').textContent = (save.dist / 1000).toFixed(1) + 'km';
+  layoutHud();
+  $('sRegion').textContent = R.pref && R.pref !== R.name ? `${R.pref} ${R.name}` : R.name; $('sJapan').textContent = js.pct + '%'; $('sJapanN').textContent = `${js.n}/${js.total.toLocaleString()}`;
 }
+// 右上の得点パネルの高さが地域名で変わるので、ボタンと案内をその下に並べ直す
+function layoutHud() {
+  requestAnimationFrame(() => {
+    const sc = $('score').getBoundingClientRect(), mp = $('mapBox').getBoundingClientRect();
+    if (!sc.height) return;
+    $('btns').style.top = sc.bottom + 8 + 'px'; $('wxLabel').style.top = sc.bottom + 14 + 'px';
+    $('nav').style.top = innerWidth < 560 ? Math.max(sc.bottom, mp.bottom) + 8 + 'px' : '';
+  });
+}
+addEventListener('resize', layoutHud);
 const fmtDate = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function showRecords() {
-  const n = doneCount();
-  $('recStats').innerHTML = `<div><b>${Math.floor(n / rings.total * 1000) / 10}%</b>${n}/${rings.total} リング</div><div><b>${save.points.toLocaleString()}</b>ポイント</div><div><b>${(save.dist / 1000).toFixed(1)}km</b>${Math.round(save.time / 60)}分・${save.flights}回</div>`
-    + (save.completedAt ? `<div style="grid-column:1/-1"><b>🏆 コンプリート</b>${fmtDate(save.completedAt)}</div>` : '');
+  const n = doneCount(), R = reg(), js = japanStats();
+  $('recStats').innerHTML = `<div><b>${Math.floor(n / rings.total * 1000) / 10}%</b>${R.name}<br>${n}/${rings.total} リング</div><div><b>${R.points.toLocaleString()}</b>ポイント</div><div><b>${(save.dist / 1000).toFixed(1)}km</b>${Math.round(save.time / 60)}分・${save.flights}回</div>`
+    + (R.completedAt ? `<div style="grid-column:1/-1"><b>🏆 コンプリート</b>${fmtDate(R.completedAt)}</div>` : '')
+    + `<div style="grid-column:1/-1"><b>🗾 ${js.pct}%</b>日本地図 ${js.n}/${js.total.toLocaleString()} 市区町村</div>`;
+  const others = Object.values(save.regions).filter(r => r.total && (Object.keys(r.done).length || r.id === R.id)).sort((a, b) => b.created - a.created);
+  const regionsHtml = `<h3>飛んだ場所 ${others.length}</h3>` + others.map(r => `<div class="it ${r.completedAt ? 'done' : ''}"><span>${r.completedAt ? '🏆' : '📍'} ${r.pref && r.pref !== r.name ? r.pref + ' ' : ''}${r.name}</span><span>${pctOf(r)}%</span></div>`).join('');
   const groups = [['金のリング（名所）', r => r.t === 'p'], ['水色のリング（加速）', r => r.t === 'b'], ['ピンクのリング（宙返り）', r => r.t === 'l']];
   $('recList').innerHTML = groups.map(([title, f]) => {
-    const rs = rings.list.filter(f), c = rs.filter(r => save.done[r.id]).length;
-    return `<h3>${title} ${c}/${rs.length}</h3>` + rs.map(r => `<div class="it ${save.done[r.id] ? 'done' : ''}"><span>${save.done[r.id] ? '✅' : '⬜'} ${r.name}</span><span>${save.done[r.id] ? fmtDate(save.done[r.id]) : `${r.pts}pt`}</span></div>`).join('');
-  }).join('');
+    const rs = rings.list.filter(f), c = rs.filter(r => R.done[r.id]).length;
+    const D = R.done; if (!rs.length) return '';
+    return `<h3>${title} ${c}/${rs.length}</h3>` + rs.map(r => `<div class="it ${D[r.id] ? 'done' : ''}"><span>${D[r.id] ? '✅' : '⬜'} ${r.name}</span><span>${D[r.id] ? fmtDate(D[r.id]) : `${r.pts}pt`}</span></div>`).join('');
+  }).join('') + regionsHtml;
   $('confirm').hidden = true; $('rec').hidden = false;
 }
 $('recClose').onclick = () => { $('rec').hidden = true; };
 $('recReset').onclick = () => { $('confirm').hidden = false; };
 $('resetNo').onclick = () => { $('confirm').hidden = true; };
-$('resetYes').onclick = () => { const opt = save.opt; save = fresh(); save.opt = opt; persist(); rings.setDone(save.done); refreshScore(); showRecords(); };
+$('resetYes').onclick = () => { // すべての地域の記録を消す（作った地図はブラウザに残る）
+  const opt = save.opt, cur = reg(); save = fresh(); save.opt = opt;
+  save.regions[BUILTIN.id] = newRegion({ ...BUILTIN, total: cur.builtin ? cur.total : 0, totalPts: cur.builtin ? cur.totalPts : 0 });
+  if (!cur.builtin) save.regions[cur.id] = newRegion({ ...cur, done: {}, points: 0, completedAt: null });
+  save.current = cur.id; persist(); rings.setDone(reg().done); refreshScore(); showRecords(); };
 $('bRec').onclick = showRecords; $('openRec').onclick = showRecords;
 $('bWx').onclick = cycleWeather; $('bCam').onclick = cycleCam;
 $('bPause').onclick = () => { st.flying = false; $('hud').hidden = true; $('start').hidden = false; refreshScore(); persist(); };
-$('go').onclick = () => { audio.unlock(); save.flights++; persist(); st.flying = true; $('start').hidden = true; $('hud').hidden = false; $('go').textContent = '🧹 つづきを飛ぶ'; };
+$('go').onclick = () => startFlying();
 // 操作の向き（設定画面で上下・左右をそれぞれ反転できる）
 function stickLabel() {
   const y = save.opt.invert ? ['↑上昇', '↓下降', '上に倒し'] : ['↑下降', '↓上昇', '下に引き'];
@@ -159,11 +209,11 @@ function drawMap() {
   ctx.fillStyle = '#2f6fb0'; ctx.fillRect(0, 0, S, S);
   ctx.imageSmoothingEnabled = mapWhole;
   const [ix, iz] = toS(X0, Z0); ctx.drawImage(mapImg, ix, iz, W * B * k, H * B * k);
-  if (wardRing.length) { ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5; ctx.beginPath(); wardRing.forEach(([x, z], i) => { const [a, b] = toS(x, z); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); ctx.setLineDash([]); }
+  if (wardRing.length) { ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5; ctx.beginPath(); for (const ring of wardRing) ring.forEach(([x, z], i) => { const [a, b] = toS(x, z); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); ctx.setLineDash([]); }
   const colors = { p: '#ffd23f', b: '#3ff0ff', l: '#ff5fd2' };
   for (const r of rings.list) {
     const [a, b] = toS(r.pos.x, r.pos.z); if (a < -6 || b < -6 || a > S + 6 || b > S + 6) continue;
-    const d = save.done[r.id], s = mapWhole ? 3 : 5;
+    const d = reg().done[r.id], s = mapWhole ? 3 : 5;
     ctx.fillStyle = d ? 'rgba(60,60,70,.8)' : colors[r.t]; ctx.strokeStyle = '#000a'; ctx.lineWidth = 1;
     ctx.fillRect(a - s / 2, b - s / 2, s, s); ctx.strokeRect(a - s / 2, b - s / 2, s, s);
   }
@@ -205,14 +255,15 @@ function fly(dt) {
     st.pos.y = minY;
     if (fwd.y < 0.15) { const right = V(1, 0, 0).applyQuaternion(st.q); st.q.premultiply(tmpQ.setFromAxisAngle(right, Math.min(0.6, (0.15 - fwd.y)) * dt * 6 * Math.sign(up.y || 1))).normalize(); }
   }
-  if (st.pos.y > 1400) { st.pos.y = 1400; const right = V(1, 0, 0).applyQuaternion(st.q); if (fwd.y > -0.1) st.q.premultiply(tmpQ.setFromAxisAngle(right, -dt * 2)).normalize(); }
+  const ceil = Math.max(1400, world.maxTop + 400);
+  if (st.pos.y > ceil) { st.pos.y = ceil; const right = V(1, 0, 0).applyQuaternion(st.q); if (fwd.y > -0.1) st.q.premultiply(tmpQ.setFromAxisAngle(right, -dt * 2)).normalize(); }
   // 区域の外に出すぎたら中央へ向けて曲がる
-  const cx = -500, cz = 0, R = Math.hypot(st.pos.x - cx, st.pos.z - cz);
-  if (R > 9000) {
+  const cx = world.X0 + world.W * world.B / 2, cz = world.Z0 + world.H * world.B / 2, R = Math.hypot(st.pos.x - cx, st.pos.z - cz);
+  if (R > Math.max(world.W, world.H) * world.B / 2 + 2500) {
     const toC = Math.atan2(cx - st.pos.x, -(cz - st.pos.z)), h = Math.atan2(fwd.x, -fwd.z);
     let d = toC - h; d = Math.atan2(Math.sin(d), Math.cos(d));
     st.q.premultiply(tmpQ.setFromAxisAngle(V(0, 1, 0), -Math.sign(d) * dt * 0.9)).normalize();
-    if (st.warn <= 0) { toast('ここから先は中央区の外。引き返します', ''); st.warn = 6; }
+    if (st.warn <= 0) { toast('ここから先は地図の外。引き返します', ''); st.warn = 6; }
   }
   st.warn -= dt;
   save.dist += spd * dt; save.time += dt;
@@ -221,19 +272,19 @@ function fly(dt) {
   return spd;
 }
 function hitRing(r) {
-  const first = !save.done[r.id];
+  const R = reg(), first = !R.done[r.id];
   if (r.t === 'b') { st.boost = BOOST_T; audio.noise(0.6, 400, 2400, 0.12); }
   sparkles.burst(r.pos, r.t === 'p' ? [1, 0.85, 0.3] : r.t === 'b' ? [0.3, 0.95, 1] : [1, 0.4, 0.85], first ? 70 : 25, r.r);
   if (!first) return;
-  save.done[r.id] = Date.now(); save.points += r.pts;
+  R.done[r.id] = Date.now(); R.points += r.pts;
   audio.tone(r.t === 'p' ? [988, 1319] : r.t === 'b' ? [659, 880] : [784, 1047], 0.16);
   toast(`+${r.pts} ${r.name}`, r.t);
   if (r.group) {
     const g = rings.list.filter(x => x.group === r.group);
-    if (g.every(x => save.done[x.id])) { setTimeout(() => { toast(r.t === 'l' ? `🎉 ${r.group} 達成！` : `🎉 ${r.group}の加速リング 全部くぐった！`, 'l big'); audio.tone([784, 988, 1175, 1568], 0.2); }, 600); }
+    if (g.every(x => R.done[x.id])) { setTimeout(() => { toast(r.t === 'l' ? `🎉 ${r.group} 達成！` : `🎉 ${r.group}の加速リング 全部くぐった！`, 'l big'); audio.tone([784, 988, 1175, 1568], 0.2); }, 600); }
   }
-  if (doneCount() === rings.total && !save.completedAt) { save.completedAt = Date.now(); setTimeout(() => { toast('🏆 コンプリート 100%！ おめでとう！', 'p big'); audio.tone([523, 659, 784, 1047, 1319], 0.25); }, 1200); }
-  rings.setDone(save.done); refreshScore(); persist();
+  if (doneCount() === rings.total && !R.completedAt) { R.completedAt = Date.now(); setTimeout(() => { toast(`🏆 ${R.name} コンプリート！ 日本地図が塗られました`, 'p big'); audio.tone([523, 659, 784, 1047, 1319], 0.25); }, 1200); }
+  rings.setDone(R.done); refreshScore(); persist();
 }
 
 // ---------- カメラ追従
@@ -280,6 +331,7 @@ let last = performance.now(), mapT = 0, saveT = 0, t = 0, fps = 60, fpsN = 0, fp
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+  if (!world || !rings) return;
   U.uTime.value = t;
   let spd = 0;
   if (st.flying) spd = fly(dt);
@@ -312,19 +364,120 @@ function frame(now) {
 addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 addEventListener('pagehide', persist);
 
-// ---------- 起動
-(async () => {
+// ---------- 地域の読み込み（作り置きの新潟市中央区 / このブラウザに覚えた地図 / その場で自動生成）
+let japan = null, loadingRegion = false;
+function showLoading(title, msg, p) { $('loading').hidden = false; $('loadTitle').textContent = title; $('loadMsg').textContent = msg; $('loadBar').style.width = Math.round(p * 100) + '%'; }
+async function loadRegion(spec) {
+  if (loadingRegion) return; loadingRegion = true;
+  const prevId = save.current;
   try {
-    await world.load((p) => { $('loadBar').style.width = Math.round(p * 100) + '%'; $('loadMsg').textContent = `ブロックを積んでいます ${Math.round(p * 100)}%`; });
+    $('loadBack').hidden = true;
+    const R = save.regions[spec.id] || newRegion(spec);
+    showLoading(`🧹 ${R.name} を組み立て中…`, 'データを読み込んでいます', 0.02);
+    let grid, defs, ward = [];
+    setOrigin(R.lat, R.lon);
+    if (R.builtin) {
+      grid = await World.loadFiles(); defs = NIIGATA_RINGS;
+      try { ward = [(await (await fetch('data/ward.json')).json()).ward || []]; } catch { }
+    } else {
+      const c = await cache.get('region/' + R.id);
+      if (c && c.v === 1) ({ grid, defs } = c);
+      else { ({ grid, defs } = await generate({ lat: R.lat, lon: R.lon, name: R.name }, (m, p) => showLoading(`🧹 ${R.name} を組み立て中…`, m, p * 0.8))); cache.put('region/' + R.id, { v: 1, grid, defs }); }
+      setOrigin(R.lat, R.lon);
+      const m = japan?.byCode.get(R.muni);
+      if (m) ward = m.rings.map(r => { const o = []; for (let i = 0; i < r.length; i += 2) o.push(ll(r[i + 1], r[i])); return o; });
+    }
+    // 古い地域を片付けてから新しい地域を組み立てる
+    if (world) { world.dispose(); rings.dispose(); }
+    world = new World(); rings = null;
+    await world.build(grid, (p) => showLoading(`🧹 ${R.name} を組み立て中…`, `ブロックを積んでいます ${Math.round(p * 100)}%`, 0.8 + p * 0.2));
     scene.add(world.group);
-    mapImg = world.mapImage();
-    try { wardRing = (await (await fetch('data/ward.json')).json()).ward || []; } catch { }
-    rings = new Rings(scene, world); rings.setDone(save.done);
-    sparkles = new Sparkles(scene);
-    refreshScore();
-    await applyWeather(wxKey, true);
-    $('loading').remove(); $('start').hidden = false;
-    requestAnimationFrame((n) => { last = n; frame(n); });
-    window.__app = { world, rings, st, input, sky, save, camera, applyWeather, get fps() { return fps; }, renderer, hitRing, flyTo: (x, y, z, hd) => { st.pos.set(x, y, z); st.q.setFromAxisAngle(V(0, 1, 0), -hd * Math.PI / 180); camPos.copy(st.pos).add(V(0, 5, 20)); } };
-  } catch (e) { $('loadMsg').textContent = '読み込みに失敗しました: ' + e.message; console.error(e); }
+    mapImg = world.mapImage(); wardRing = ward;
+    rings = new Rings(scene, world, defs);
+    save.regions[R.id] = { ...R, total: rings.total, totalPts: rings.totalPts };
+    save.current = R.id; persist();
+    rings.setDone(reg().done);
+    placeStart(); refreshScore();
+    $('loading').hidden = true;
+    return true;
+  } catch (e) {
+    console.error(e); save.current = prevId;
+    showLoading('😿 地図を作れませんでした', e.message + '（通信を確かめて、もう一度試してください）', 0); $('loadBack').hidden = !world;
+    return false;
+  } finally { loadingRegion = false; }
+}
+$('loadBack').onclick = () => { $('loading').hidden = true; };
+
+// ---------- 日本地図の画面
+let jpView = JAPAN_VIEW, jpSel = null, jpPref = null;
+function drawJapan() { japan.draw($('jpMap'), jpView, muniStatus, jpSel?.code); $('jpBack').hidden = !jpPref; }
+function jpStatHtml() {
+  const js = japanStats();
+  let h = `日本全体 <b>${js.pct}%</b><br>${js.n}/${js.total.toLocaleString()} 市区町村をコンプリート`;
+  if (jpPref) { const ms = japan.munis.filter(m => m.pref === jpPref), d = ms.filter(m => muniStatus(m.code) === 'done').length; h += `<br>${jpPref} ${d}/${ms.length}`; }
+  $('jpStat').innerHTML = h;
+}
+const fly2 = async (spec) => { $('japan').hidden = true; if (await loadRegion(spec)) { $('start').hidden = true; startFlying(); } };
+function regionSpecForMuni(m) {
+  if (m.code === BUILTIN.muni) return { ...BUILTIN };
+  return { id: `m:${m.code}`, name: m.name, muni: m.code, pref: m.pref, lat: m.lat, lon: m.lon };
+}
+function jpShowMuni(m) {
+  jpSel = m; drawJapan(); jpStatHtml();
+  const rs = Object.values(save.regions).filter(r => r.muni === m.code && r.total);
+  const st0 = muniStatus(m.code);
+  $('jpInfo').innerHTML = `<b>${m.pref} ${m.name}</b> ${st0 === 'done' ? '🏆 コンプリート' : st0 === 'part' ? '🧹 飛行中' : '・まだ飛んでいません'}`
+    + rs.map(r => `<div class="rg"><span>📍 ${r.name}（${pctOf(r)}%）</span><button class="btn sec" data-id="${r.id}">つづきを飛ぶ</button></div>`).join('')
+    + (rs.some(r => r.id === regionSpecForMuni(m).id) ? '' : `<div class="rg"><span>${m.code === BUILTIN.muni ? 'PLATEAU の建物で作った特別な地図' : 'この市区町村の中心あたり 5km 四方を自動で作ります'}</span><button class="btn" data-new="1">ここを飛ぶ</button></div>`);
+  $('jpInfo').querySelectorAll('button').forEach(b => b.onclick = () => fly2(b.dataset.new ? regionSpecForMuni(m) : save.regions[b.dataset.id]));
+}
+async function openJapan() {
+  $('japan').hidden = false;
+  if (!japan) { $('jpInfo').textContent = '日本地図を読み込み中…'; japan = await new JapanMap().load(); }
+  jpStatHtml(); drawJapan();
+}
+$('openJapan').onclick = openJapan;
+$('jpClose').onclick = () => { $('japan').hidden = true; refreshScore(); };
+$('jpBack').onclick = () => { jpPref = null; jpSel = null; jpView = JAPAN_VIEW; $('jpInfo').textContent = '都道府県をタップすると、市区町村ごとに見られます。'; jpStatHtml(); drawJapan(); };
+$('jpMap').addEventListener('click', (e) => {
+  const m = japan?.pick($('jpMap'), e.clientX, e.clientY); if (!m) return;
+  if (!jpPref || m.pref !== jpPref) { jpPref = m.pref; jpView = japan.prefBox(m.pref); }
+  jpShowMuni(m);
+});
+// 地名で探す（Nominatim。押した時だけ・1 秒に 1 回まで）
+let lastSearch = 0;
+$('jpSearch').addEventListener('submit', async (e) => {
+  e.preventDefault(); const q = $('jpQ').value.trim(); if (!q) return;
+  const wait = 1100 - (Date.now() - lastSearch); if (wait > 0) await new Promise(r => setTimeout(r, wait)); lastSearch = Date.now();
+  $('jpResults').textContent = '探しています…';
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=ja&q=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error('検索 ' + r.status);
+    const list = await r.json();
+    if (!japan) japan = await new JapanMap().load();
+    if (!list.length) { $('jpResults').textContent = '見つかりませんでした。別の言い方で試してください。'; return; }
+    $('jpResults').innerHTML = '';
+    for (const x of list) {
+      const lat = +x.lat, lon = +x.lon, m = japan.find(lat, lon), short = (x.name || x.display_name.split(',')[0]).replace(/[（(].*$/, '').trim();
+      const row = document.createElement('div'); row.className = 'res';
+      row.innerHTML = `<span>${x.display_name}${m ? '' : '（日本の地図の外: 日本地図のコンプリートには数えません）'}</span>`;
+      const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'ここを飛ぶ';
+      b.onclick = () => fly2({ id: `g:${lat.toFixed(3)},${lon.toFixed(3)}`, name: short, muni: m?.code || null, pref: m?.pref || '', lat, lon });
+      row.appendChild(b); $('jpResults').appendChild(row);
+    }
+  } catch (err) { $('jpResults').textContent = '検索できませんでした: ' + err.message; }
+});
+
+// ---------- 起動
+function startFlying() { audio.unlock(); save.flights++; persist(); st.flying = true; $('start').hidden = true; $('hud').hidden = false; $('go').textContent = '🧹 つづきを飛ぶ'; layoutHud(); }
+(async () => {
+  sparkles = new Sparkles(scene);
+  await applyWeather(wxKey, true);
+  japan = await new JapanMap().load().catch(() => null);
+  let ok = await loadRegion(reg());
+  if (!ok && save.current !== BUILTIN.id) ok = await loadRegion(save.regions[BUILTIN.id]);
+  if (!ok) return;
+  $('start').hidden = false;
+  requestAnimationFrame((n) => { last = n; frame(n); });
+  window.__app = { get world() { return world; }, get rings() { return rings; }, st, input, sky, get save() { return save; }, camera, applyWeather, loadRegion, get japan() { return japan; }, get fps() { return fps; }, renderer, hitRing, flyTo: (x, y, z, hd) => { st.pos.set(x, y, z); st.q.setFromAxisAngle(V(0, 1, 0), -hd * Math.PI / 180); camPos.copy(st.pos).add(V(0, 5, 20)); } };
 })();
