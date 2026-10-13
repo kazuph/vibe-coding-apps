@@ -18,12 +18,13 @@ export const PITCH = 1.0;   // rad/s。巡航（約 42m/s）で宙返りの半�
 const KEY = 'niigata-broom:v1';
 // 新潟市中央区（PLATEAU から作った作り置きの地域）
 const BUILTIN = { id: 'niigata-chuo', name: '新潟市中央区', muni: '15103', pref: '新潟県', lat: 37.9125, lon: 139.0615, builtin: true };
-const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'expert', keys: 'ace', thr: 'spring', sens: 1, invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
+const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'beginner', ctlChosen: false, keys: 'ace', thr: 'spring', sens: 1, invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
 const newRegion = (r) => ({ done: {}, points: 0, completedAt: null, total: 0, totalPts: 0, created: Date.now(), ...r });
 let save;
 try {
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
   save = { ...fresh(), ...raw }; save.opt = { ...fresh().opt, ...(raw.opt || {}) };
+  if (!save.opt.ctlChosen) save.opt.ctl = 'beginner'; // 操作モードを自分で選んだことがない人は初心者から
   if (!raw.v && raw.done) { // 地域ごとの記録になる前（新潟市中央区だけだった頃）の記録を引き継ぐ
     save.regions = { [BUILTIN.id]: newRegion({ ...BUILTIN, done: raw.done, points: raw.points || 0, completedAt: raw.completedAt || null, total: 83 }) };
     delete save.done; delete save.points; delete save.completedAt; save.v = 2;
@@ -92,6 +93,7 @@ const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0, kthr: 0, touchThr: nu
     keys.add(e.code); upd(); audio.unlock();
     if (e.repeat) return;
     if (e.code === 'KeyC') cycleCam(); if (e.code === 'KeyT') cycleWeather(); if (e.code === 'KeyM') $('map').click();
+    if (e.code === 'KeyF' && st.flying) { if (st.photo) closePhoto(); else takePhoto(); }
     if ((e.code === 'Escape' || e.code === 'KeyP') && st.flying) $('bPause').click();
     else if (e.code === 'Enter' && !$('start').hidden && $('japan').hidden && $('rec').hidden) startFlying();
     const d = /^Digit(\d)$/.exec(e.code); if (d && st.flying && save.opt.thr === 'hold') st.thr = d[1] === '0' ? 1 : +d[1] / 10;
@@ -141,7 +143,7 @@ function cycleWeather() { const i = WEATHER_ORDER.indexOf(wxKey); applyWeather(W
 }
 
 // ---------- カメラ
-const CAMS = ['うしろから', '遠くから', 'ほうき視点'];
+const CAMS = ['うしろから', '遠くから', 'ほうき視点', 'まえから'];
 function cycleCam() { save.opt.cam = (save.opt.cam + 1) % CAMS.length; persist(); toast(`🎥 ${CAMS[save.opt.cam]}`, ''); }
 
 // ---------- HUD
@@ -208,6 +210,7 @@ $('go').onclick = () => startFlying();
 // 操作の向き（設定画面で上下・左右をそれぞれ反転できる）
 const expert = () => save.opt.ctl === 'expert';
 function stickLabel() {
+  keyCaps();
   const y = save.opt.invert ? ['↑上昇', '↓下降', '上に倒し'] : ['↑下降', '↓上昇', '下に引き'];
   const x = expert() ? (save.opt.invertX ? '←右回転 →左回転' : '←左回転 →右回転') : (save.opt.invertX ? '←右旋回 →左旋回' : '←左旋回 →右旋回');
   $('stickLbl').textContent = expert() ? `${y[0]} ${y[1]} ${x}（傾けて${y[2] === '下に引き' ? '引く' : '倒す'}と曲がる）` : `${y[0]} ${y[1]} ${x}（${y[2]}続けると宙返り）`;
@@ -220,7 +223,7 @@ function stickLabel() {
 }
 $('optInvert').checked = save.opt.invert; $('optInvert').onchange = (e) => { save.opt.invert = e.target.checked; persist(); stickLabel(); };
 $('optInvertX').checked = save.opt.invertX; $('optInvertX').onchange = (e) => { save.opt.invertX = e.target.checked; persist(); stickLabel(); };
-document.querySelectorAll('input[name=ctl]').forEach(r => r.onchange = () => { save.opt.ctl = r.value; persist(); stickLabel(); });
+document.querySelectorAll('input[name=ctl]').forEach(r => r.onchange = () => { save.opt.ctl = r.value; save.opt.ctlChosen = true; persist(); stickLabel(); });
 // ラダー（エキスパート操作のときだけ表示）
 for (const [id, v] of [['rudL', -1], ['rudR', 1]]) {
   const b = $(id);
@@ -257,14 +260,48 @@ function keyHelp() {
   const ace = save.opt.keys === 'ace';
   const rows = [['機首の上げ / 下げ', ace ? '↓ / ↑' : 'S・↓ / W・↑'], ['左右（回転・旋回）', 'A・← / D・→'], ['ラダー（機首を左右に振る）', 'Q / E'],
     ['加速 / 減速', (ace ? 'W / S、' : '') + 'Shift / Ctrl、PageUp / PageDown、+ / -'], ['スロットルを 10〜100% に', '1〜9・0（「位置を保つ」の時）'],
-    ['カメラ / 天気 / マップ', 'C / T / M'], ['一時停止 / 再開', 'Esc・P / Enter']];
+    ['カメラ / 天気 / マップ / 写真', 'C / T / M / F'], ['一時停止 / 再開', 'Esc・P / Enter']];
   $('keyHelp').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td><kbd>${b}</kbd></td></tr>`).join('');
 }
-$('optKeys').value = save.opt.keys; $('optKeys').onchange = (e) => { save.opt.keys = e.target.value; persist(); keyHelp(); };
+$('optKeys').value = save.opt.keys; $('optKeys').onchange = (e) => { save.opt.keys = e.target.value; persist(); keyHelp(); keyCaps(); };
 document.querySelectorAll('input[name=thr]').forEach(r => { r.checked = r.value === save.opt.thr; r.onchange = () => { save.opt.thr = r.value; persist(); }; });
 $('optSens').value = save.opt.sens; $('sensVal').textContent = `×${(+save.opt.sens).toFixed(1)}`;
 $('optSens').oninput = (e) => { save.opt.sens = +e.target.value; $('sensVal').textContent = `×${save.opt.sens.toFixed(1)}`; persist(); };
-keyHelp(); setThrUI(CRUISE);
+keyHelp(); keyCaps(); setThrUI(CRUISE);
+
+// ---------- 写真（画面の表示を消して風景だけを撮る）
+let photoBlob = null, photoUrl = null;
+function takePhoto() {
+  if (st.photo) return;
+  st.photo = true; const hud = $('hud').hidden; $('hud').hidden = true; $('boostFx').style.opacity = 0;
+  renderer.render(scene, camera); // 表示を消した状態で 1 枚描いて、すぐに取り出す
+  renderer.domElement.toBlob((b) => {
+    $('hud').dataset.was = hud ? '1' : '';
+    photoBlob = b; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = URL.createObjectURL(b);
+    $('photoImg').src = photoUrl; $('photo').hidden = false; $('flash').classList.remove('on'); void $('flash').offsetWidth; $('flash').classList.add('on');
+    audio.noise(0.08, 3000, 1500, 0.2);
+  }, 'image/png');
+}
+function closePhoto() { $('photo').hidden = true; $('hud').hidden = $('hud').dataset.was === '1'; st.photo = false; }
+const photoName = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `houki-niigata-${reg().name}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`; };
+$('photoSave').onclick = async () => {
+  const file = new File([photoBlob], photoName(), { type: 'image/png' });
+  if (navigator.canShare?.({ files: [file] }) && matchMedia('(pointer: coarse)').matches) { try { await navigator.share({ files: [file], title: 'ほうきで新潟' }); return; } catch { /* 共有をやめた時はそのまま */ return; } }
+  const a = document.createElement('a'); a.href = photoUrl; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+};
+$('photoClose').onclick = closePhoto; $('bPhoto').onclick = takePhoto;
+
+// ---------- PC のキー表示（左下 = WASD、右下 = 矢印キー）
+function keyCaps() {
+  const ace = save.opt.keys === 'ace', ex = expert(), inv = save.opt.invert, invX = save.opt.invertX;
+  const up = inv ? '機首上げ' : '機首下げ', dn = inv ? '機首下げ' : '機首上げ';
+  const turn = ex ? '回転' : '旋回', L = (invX ? '右' : '左') + turn, R = (invX ? '左' : '右') + turn;
+  const cap = { KeyW: ace ? '加速' : up, KeyS: ace ? '減速' : dn, KeyA: L, KeyD: R, KeyQ: ex ? '左ラダー' : '—', KeyE: ex ? '右ラダー' : '—', ArrowUp: up, ArrowDown: dn, ArrowLeft: L, ArrowRight: R };
+  document.querySelectorAll('.key[data-k]').forEach(k => { k.querySelector('i').textContent = cap[k.dataset.k]; k.classList.toggle('off', cap[k.dataset.k] === '—'); });
+  $('keysNote').textContent = ace ? 'Shift / Ctrl でも加速・減速' : 'Shift / Ctrl で加速・減速';
+}
+addEventListener('keydown', (e) => document.querySelector(`.key[data-k="${e.code}"]`)?.classList.add('on'));
+addEventListener('keyup', (e) => document.querySelector(`.key[data-k="${e.code}"]`)?.classList.remove('on'));
 
 // ---------- ミニマップ
 let mapImg, wardRing = [], mapWhole = false;
@@ -379,6 +416,10 @@ function updateCamera(dt, spd) {
   camUp.lerp(wantUp, 1 - Math.exp(-dt * 5)).normalize();
   let want, look;
   if (mode === 2) { want = st.pos.clone().addScaledVector(up, 1.9).addScaledVector(f, 0.6); look = want.clone().addScaledVector(f, 20); camPos.copy(want); }
+  else if (mode === 3) { // 正面から: 魔女の顔と、後ろに流れていく街を写す
+    want = st.pos.clone().addScaledVector(f, 10).addScaledVector(camUp, 2.2).addScaledVector(V(1, 0, 0).applyQuaternion(st.q), 1.5);
+    camPos.copy(want); look = st.pos.clone().addScaledVector(camUp, 1.6);
+  }
   else {
     const back = mode === 1 ? 58 : 15, high = mode === 1 ? 18 : 6.5;
     want = st.pos.clone().addScaledVector(f, -back).addScaledVector(camUp, high);
@@ -417,7 +458,8 @@ function frame(now) {
   if (!world || !rings) return;
   U.uTime.value = t;
   let spd = 0;
-  if (st.flying) spd = fly(dt);
+  if (st.photo) { /* 写真の確認中は止める */ }
+  else if (st.flying) spd = fly(dt);
   else { // タイトル画面では、ゆっくり旋回して街を見せる
     st.q.premultiply(tmpQ.setFromAxisAngle(V(0, 1, 0), -dt * 0.12)).normalize();
     const f = V(0, 0, -1).applyQuaternion(st.q); st.pos.addScaledVector(f, 18 * dt);
