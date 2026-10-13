@@ -48,7 +48,7 @@ const input = { x: 0, y: 0, kx: 0, ky: 0 };
     const r = stick.getBoundingClientRect(), R = r.width / 2;
     let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R); const d = Math.hypot(dx, dy), m = R * 0.78;
     if (d > m) { dx *= m / d; dy *= m / d; }
-    knob.style.transform = `translate(${dx}px, ${dy}px)`; input.x = dx / m; input.y = -dy / m;
+    knob.style.transform = `translate(${dx}px, ${dy}px)`; input.x = dx / m; input.y = dy / m; // スティックは下に引くと上昇（上下反転）
   };
   stick.addEventListener('pointerdown', (e) => { id = e.pointerId; stick.setPointerCapture(id); set(e); audio.unlock(); });
   stick.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });

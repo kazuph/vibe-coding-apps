@@ -119,7 +119,7 @@
   <div id="nav" class="panel" hidden><span class="arrow">▲</span><span class="nm"></span><span class="ds"></span></div>
   <div id="toast"></div>
   <div id="meter" class="panel">高度 <b id="alt">0</b>m<br>速度 <b id="spd">0</b>km/h</div>
-  <div id="stickLbl">↑上昇 ↓下降 ←→旋回（引き続けると宙返り）</div>
+  <div id="stickLbl">↑下降 ↓上昇 ←→旋回（下に引き続けると宙返り）</div>
   <div id="stick"><div id="knob"></div></div>
 </div>
 
@@ -136,12 +136,12 @@
     <div style="font-size:12px;margin-top:14px;opacity:.85">天気</div>
     <div class="wx" id="wxList"></div>
     <div class="opt">
-      <label><input type="checkbox" id="optInvert"> 上下を反転（飛行機式）</label>
+      <label><input type="checkbox" id="optInvert"> 上下を反転</label>
       <label><input type="checkbox" id="optSound" checked> 効果音</label>
     </div>
     <ul class="how">
       <li>画面下のジョイスティック（PC は矢印キー / WASD）で操作。速さはいつも一定です。</li>
-      <li>上に倒し続けると宙返り。<span style="color:var(--pink)">ピンクのリング</span>は宙返りコース。</li>
+      <li>ジョイスティックは下に引くと上昇、上に倒すと下降。下に引き続けると宙返り。<span style="color:var(--pink)">ピンクのリング</span>は宙返りコース。</li>
       <li><span style="color:var(--cyan)">水色のリング</span>をくぐると一瞬だけ加速。<span style="color:var(--gold)">金のリング</span>は名所のポイント。</li>
       <li>記録はこのブラウザの中に保存されます。</li>
     </ul>
