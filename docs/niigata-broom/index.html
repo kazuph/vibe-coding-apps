@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#2f6fd6">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🧹%3C/text%3E%3C/svg%3E">
-<title>ほうきで新潟 — 新潟市中央区フライト</title>
+<title>ほうきでニッポン — マイクラ風の街を魔法のほうきで飛ぶ</title>
 <meta name="description" content="マイクラ風に再現した新潟市中央区の上空を、魔法のほうきで飛んでリングを集めるフライトシミュレーター。PLATEAU・国土地理院・OpenStreetMap のオープンデータを使用。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
@@ -42,6 +42,9 @@
   #jpInfo .rg { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #fff2; }
   #jpInfo .rg button, #jpResults button { padding: 6px 12px; font-size: 13px; }
   #jpQ { flex: 1; min-width: 0; padding: 9px 10px; border-radius: 8px; border: 2px solid #fff4; background: rgba(0,0,0,.3); color: #fff; font-family: inherit; font-size: 14px; }
+  .jpLabel { font-size: 12px; text-align: left; margin: 10px 0 4px; opacity: .9; }
+  .cities { display: flex; flex-wrap: wrap; gap: 6px; } .cities .btn { padding: 6px 10px; font-size: 13px; }
+  .searchNote { font-size: 11px; text-align: left; line-height: 1.6; opacity: .8; margin-top: 6px; } .searchNote b { color: var(--gold); font-weight: normal; }
   #jpResults { text-align: left; font-size: 12px; margin-top: 6px; }
   #jpResults .res { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px dashed #fff2; }
   #jpResults .res span { overflow: hidden; text-overflow: ellipsis; }
@@ -209,7 +212,7 @@
 
 <div id="start" class="screen" hidden>
   <div class="card panel">
-    <h1>ほうきで新潟</h1>
+    <h1>ほうきでニッポン</h1>
     <div class="sub">マイクラ風に再現した街の空を、魔法のほうきで飛びまわろう。<br>リングをくぐってコンプリート率 100% をめざし、日本地図を塗りつぶそう！</div>
     <div class="here">いまの場所: <b id="sRegion">新潟市中央区</b></div>
     <div class="stats">
@@ -257,10 +260,14 @@
     <div class="jpWrap"><canvas id="jpMap" width="900" height="900"></canvas><button class="btn sec" id="jpBack" hidden>◀ 日本全体</button>
       <div class="jpLegend"><span><b style="background:#ffd23f"></b>コンプリート</span><span><b style="background:#ff8a3d"></b>飛行中</span><span><b style="background:#7cc254"></b>まだ</span></div></div>
     <div id="jpInfo">都道府県をタップすると、市区町村ごとに見られます。</div>
-    <form id="jpSearch" class="row" style="margin-top:8px"><input id="jpQ" placeholder="地名・駅名・住所で探す（例: 金沢駅）" autocomplete="off"><button class="btn sec" style="padding:8px 14px">検索</button></form>
+    <div class="jpLabel">すぐ飛べる主要都市（地図をサイトに作り置き）</div>
+    <div id="jpCities" class="cities"></div>
+    <div class="jpLabel">市区町村の名前で探す</div>
+    <form id="jpSearch" class="row"><input id="jpQ" placeholder="市区町村の名前（例: 金沢市・千代田区・札幌）" autocomplete="off"><button class="btn sec" style="padding:8px 14px">検索</button></form>
+    <div class="searchNote">探せるのは<b>市区町村の名前</b>と<b>都道府県の名前</b>だけです（全国 1,894 市区町村。政令市は区ごと）。駅名・住所・建物名や、ひらがなの読み（例: ちよだ）では探せません。外部の検索サービスは使わず、このページに読み込んである市区町村の一覧から探します。作り置きの都市と新潟市中央区以外は、飛ぶときに地図サーバーから 5km 四方を作ります。</div>
     <div id="jpResults"></div>
     <div class="row" style="margin-top:10px"><button class="btn sec" id="jpClose">閉じる</button></div>
-    <div class="credit">市区町村の境界: 国土交通省 国土数値情報（行政区域）2021年を smartnews-smri/japan-topography が簡素化した物 ／ 検索: Nominatim（© OpenStreetMap contributors）</div>
+    <div class="credit">市区町村の境界: 国土交通省 国土数値情報（行政区域）2021年を smartnews-smri/japan-topography が簡素化した物 ／ 地図: © OpenStreetMap contributors・OpenMapTiles・OpenFreeMap ／ 標高: 国土地理院</div>
   </div>
 </div>
 

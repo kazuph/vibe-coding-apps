@@ -116,7 +116,7 @@ async function getDEM(z, x, y, japan) {
 async function sampleDEM(points, z, japan, onTile) { // points: [[lat, lon], ...] → 標高[]
   const need = new Map(), loc = points.map(([la, lo]) => { const [fx, fy] = tileXY(la, lo, z); const tx = Math.floor(fx), ty = Math.floor(fy); const k = tx + ',' + ty; if (!need.has(k)) need.set(k, [tx, ty]); return [k, Math.min(255, Math.floor((fx - tx) * 256)), Math.min(255, Math.floor((fy - ty) * 256))]; });
   const tiles = new Map(); let n = 0;
-  await pool([...need.entries()], 6, async ([k, [tx, ty]]) => { tiles.set(k, await getDEM(z, tx, ty, japan)); onTile?.(++n, need.size); });
+  await pool([...need.entries()], 4, async ([k, [tx, ty]]) => { tiles.set(k, await getDEM(z, tx, ty, japan)); onTile?.(++n, need.size); });
   return loc.map(([k, px, py]) => tiles.get(k)[py * 256 + px]);
 }
 async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const it = items[i++]; await fn(it); } })); }
@@ -165,7 +165,7 @@ export async function generate({ lat, lon, name }, onStep = () => {}) {
   const jobs = []; for (let ty = Math.floor(ty0); ty <= Math.floor(ty1); ty++) for (let tx = Math.floor(tx0); tx <= Math.floor(tx1); tx++) jobs.push([tx, ty]);
   const feats = { water: [], waterway: [], landcover: [], landuse: [], transportation: [], building: [], poi: [], mountain_peak: [] };
   let n = 0;
-  await pool(jobs, 6, async ([tx, ty]) => {
+  await pool(jobs, 4, async ([tx, ty]) => {
     const buf = await getVT(14, tx, ty);
     if (buf.length) {
       const L = decodeTile(buf, Object.keys(feats));

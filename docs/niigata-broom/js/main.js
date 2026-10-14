@@ -4,6 +4,7 @@ import { Sky, WEATHERS, WEATHER_ORDER, liveWeather } from './sky.js';
 import { Rings, NIIGATA_RINGS } from './rings.js';
 import { generate, cache, inJapan } from './gen.js';
 import { JapanMap, JAPAN_VIEW } from './japan.js';
+import { CITIES, cityByMuni, loadPacked } from './cities.js';
 import { makeRider, animateRider, Sparkles } from './broom.js';
 
 THREE.ColorManagement.enabled = false;
@@ -509,6 +510,10 @@ async function loadRegion(spec) {
     if (R.builtin) {
       grid = await World.loadFiles(); defs = NIIGATA_RINGS;
       try { ward = [(await (await fetch('data/ward.json')).json()).ward || []]; } catch { }
+    } else if (R.packed) { // 作り置きの主要都市（サイトの中のファイルだけを読む）
+      ({ grid, defs } = await loadPacked(R.packed));
+      const m = japan?.byCode.get(R.muni);
+      if (m) ward = m.rings.map(r => { const o = []; for (let i = 0; i < r.length; i += 2) o.push(ll(r[i + 1], r[i])); return o; });
     } else {
       const c = await cache.get('region/' + R.id);
       if (c && c.v === 1) ({ grid, defs } = c);
@@ -550,6 +555,7 @@ function jpStatHtml() {
 const fly2 = async (spec) => { $('japan').hidden = true; if (await loadRegion(spec)) { $('start').hidden = true; startFlying(); } };
 function regionSpecForMuni(m) {
   if (m.code === BUILTIN.muni) return { ...BUILTIN };
+  const c = cityByMuni.get(m.code); if (c) return { ...c };
   return { id: `m:${m.code}`, name: m.name, muni: m.code, pref: m.pref, lat: m.lat, lon: m.lon };
 }
 function jpShowMuni(m) {
@@ -558,7 +564,7 @@ function jpShowMuni(m) {
   const st0 = muniStatus(m.code);
   $('jpInfo').innerHTML = `<b>${m.pref} ${m.name}</b> ${st0 === 'done' ? '🏆 コンプリート' : st0 === 'part' ? '🧹 飛行中' : '・まだ飛んでいません'}`
     + rs.map(r => `<div class="rg"><span>📍 ${r.name}（${pctOf(r)}%）</span><button class="btn sec" data-id="${r.id}">つづきを飛ぶ</button></div>`).join('')
-    + (rs.some(r => r.id === regionSpecForMuni(m).id) ? '' : `<div class="rg"><span>${m.code === BUILTIN.muni ? 'PLATEAU の建物で作った特別な地図' : 'この市区町村の中心あたり 5km 四方を自動で作ります'}</span><button class="btn" data-new="1">ここを飛ぶ</button></div>`);
+    + (rs.some(r => r.id === regionSpecForMuni(m).id) ? '' : `<div class="rg"><span>${m.code === BUILTIN.muni ? 'PLATEAU の建物で作った特別な地図' : cityByMuni.has(m.code) ? `作り置きの地図: ${cityByMuni.get(m.code).label}` : 'この市区町村の中心あたり 5km 四方を、その場で地図サーバーから作ります'}</span><button class="btn" data-new="1">ここを飛ぶ</button></div>`);
   $('jpInfo').querySelectorAll('button').forEach(b => b.onclick = () => fly2(b.dataset.new ? regionSpecForMuni(m) : save.regions[b.dataset.id]));
 }
 async function openJapan() {
@@ -574,29 +580,51 @@ $('jpMap').addEventListener('click', (e) => {
   if (!jpPref || m.pref !== jpPref) { jpPref = m.pref; jpView = japan.prefBox(m.pref); }
   jpShowMuni(m);
 });
-// 地名で探す（Nominatim。押した時だけ・1 秒に 1 回まで）
-let lastSearch = 0;
-$('jpSearch').addEventListener('submit', async (e) => {
-  e.preventDefault(); const q = $('jpQ').value.trim(); if (!q) return;
-  const wait = 1100 - (Date.now() - lastSearch); if (wait > 0) await new Promise(r => setTimeout(r, wait)); lastSearch = Date.now();
-  $('jpResults').textContent = '探しています…';
-  try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=ja&q=' + encodeURIComponent(q));
-    if (!r.ok) throw new Error('検索 ' + r.status);
-    const list = await r.json();
-    if (!japan) japan = await new JapanMap().load();
-    if (!list.length) { $('jpResults').textContent = '見つかりませんでした。別の言い方で試してください。'; return; }
-    $('jpResults').innerHTML = '';
-    for (const x of list) {
-      const lat = +x.lat, lon = +x.lon, m = japan.find(lat, lon), short = (x.name || x.display_name.split(',')[0]).replace(/[（(].*$/, '').trim();
-      const row = document.createElement('div'); row.className = 'res';
-      row.innerHTML = `<span>${x.display_name}${m ? '' : '（日本の地図の外: 日本地図のコンプリートには数えません）'}</span>`;
-      const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'ここを飛ぶ';
-      b.onclick = () => fly2({ id: `g:${lat.toFixed(3)},${lon.toFixed(3)}`, name: short, muni: m?.code || null, pref: m?.pref || '', lat, lon });
-      row.appendChild(b); $('jpResults').appendChild(row);
-    }
-  } catch (err) { $('jpResults').textContent = '検索できませんでした: ' + err.message; }
-});
+// 市区町村の名前で探す: 外部の検索サービスは使わず、読み込み済みの日本地図の一覧（1,894 市区町村）から探す
+const norm = (s) => s.normalize('NFKC').replace(/[ 　]/g, '').toLowerCase();
+function searchMunis(q) {
+  const n = norm(q).replace(/(都|道|府|県)$/, (a) => a); if (!n) return [];
+  const hits = [];
+  for (const m of japan.munis) {
+    const full = norm(m.pref + m.name), name = norm(m.name);
+    let score = -1;
+    if (name === n || name === n + '市' || name === n + '区' || name === n + '町' || name === n + '村') score = 0;
+    else if (name.startsWith(n)) score = 1;
+    else if (name.includes(n)) score = 2;
+    else if (full.includes(n)) score = 3; // 都道府県名でも探せる（例: 新潟 → 新潟県の市区町村）
+    if (score >= 0) hits.push([score + (cityByMuni.has(m.code) || m.code === BUILTIN.muni ? -0.5 : 0), m]);
+  }
+  return hits.sort((a, b) => a[0] - b[0]).map(h => h[1]);
+}
+function showSearch() {
+  const q = $('jpQ').value.trim(); if (!japan) return;
+  if (!q) { $('jpResults').innerHTML = ''; return; }
+  const list = searchMunis(q), shown = list.slice(0, 20);
+  if (!list.length) { $('jpResults').textContent = `「${q}」を名前に含む市区町村は見つかりませんでした。駅名・住所・建物名では探せないので、市区町村の名前（例: 金沢市）で探してください。`; return; }
+  $('jpResults').innerHTML = (list.length > shown.length ? `<div class="res"><span>${list.length} 件中 ${shown.length} 件を表示（もう少し詳しく入れると絞れます）</span></div>` : '');
+  for (const m of shown) {
+    const row = document.createElement('div'); row.className = 'res';
+    const tag = m.code === BUILTIN.muni ? '（PLATEAU の特別な地図）' : cityByMuni.has(m.code) ? '（作り置きの地図）' : '';
+    row.innerHTML = `<span>${m.pref} ${m.name}${tag}</span>`;
+    const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'ここを飛ぶ';
+    b.onclick = () => fly2(regionSpecForMuni(m));
+    const v = document.createElement('button'); v.className = 'btn sec'; v.textContent = '地図で見る';
+    v.onclick = () => { jpPref = m.pref; jpView = japan.prefBox(m.pref); jpShowMuni(m); $('jpMap').scrollIntoView({ block: 'nearest' }); };
+    const wrap = document.createElement('span'); wrap.style.cssText = 'display:flex;gap:6px;flex-shrink:0'; wrap.append(v, b);
+    row.appendChild(wrap); $('jpResults').appendChild(row);
+  }
+}
+$('jpSearch').addEventListener('submit', (e) => { e.preventDefault(); showSearch(); });
+$('jpQ').addEventListener('input', showSearch); // 外部に問い合わせないので、打つたびに絞り込める
+// 作り置きの主要都市のボタン
+{
+  const box = $('jpCities');
+  for (const c of [{ ...BUILTIN, label: '新潟（萬代橋・新潟駅）PLATEAU' }, ...CITIES]) {
+    const b = document.createElement('button'); b.className = 'btn sec'; b.textContent = c.label.replace(/（.*$/, '');
+    b.title = `${c.pref} ${c.name}: ${c.label}`; b.onclick = () => fly2(c.builtin ? { ...BUILTIN } : { ...c });
+    box.appendChild(b);
+  }
+}
 
 // ---------- 起動
 function startFlying() { audio.unlock(); save.flights++; persist(); st.flying = true; $('start').hidden = true; $('hud').hidden = false; $('go').textContent = '🧹 つづきを飛ぶ'; layoutHud(); }
