@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
 <style>
-  :root { --ui: rgba(18, 22, 40, .62); --line: rgba(255,255,255,.18); --gold: #ffd23f; --cyan: #3ff0ff; --pink: #ff5fd2; --pad: max(10px, env(safe-area-inset-top)); }
+  :root { --stk: 150px; --rud: 46px; --ui: rgba(18, 22, 40, .62); --line: rgba(255,255,255,.18); --gold: #ffd23f; --cyan: #3ff0ff; --pink: #ff5fd2; --pad: max(10px, env(safe-area-inset-top)); }
   [hidden] { display: none !important; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0c1020; color: #fff; font-family: "DotGothic16", system-ui, -apple-system, "Hiragino Sans", sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
@@ -136,6 +136,7 @@
     #map { width: 190px; height: 190px; }
     #score { min-width: 210px; font-size: 15px; } #pts { font-size: 28px; } #comp { font-size: 15px; } #jpLine, #regionName { font-size: 14px; }
     .ib { width: 58px; height: 58px; font-size: 26px; }
+    :root { --stk: 200px; --rud: 64px; }
     #stick { width: 200px; height: 200px; } #knob { width: 84px; height: 84px; margin: -42px 0 0 -42px; }
     #stickLbl { bottom: calc(max(18px, env(safe-area-inset-bottom)) + 208px); font-size: 13px; }
     .rud { width: 64px; height: 64px; font-size: 22px; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 68px); }
@@ -152,6 +153,7 @@
     #wxLabel { top: calc(var(--pad) + 110px); }
     #nav { top: calc(var(--pad) + 150px); max-width: 80vw; }
     #stick { width: 136px; height: 136px; }
+    :root { --stk: 136px; }
     #stickLbl { bottom: calc(max(18px, env(safe-area-inset-bottom)) + 140px); }
     #rudL { left: calc(50% - 68px - 54px); } #rudR { left: calc(50% + 68px + 8px); }
     #meter { font-size: 11px; flex-direction: column; align-items: flex-start; gap: 2px; padding: 5px 7px; left: max(10px, env(safe-area-inset-left)); bottom: calc(max(14px, env(safe-area-inset-bottom)) + 192px); }
@@ -162,11 +164,19 @@
     #map { width: 100px; height: 100px; }
     #btns { flex-direction: row; top: calc(var(--pad) + 96px); }
     #wxLabel { display: none; }
-    #stick { width: 124px; height: 124px; }
+    #stick { width: 124px; height: 124px; } :root { --stk: 124px; }
     #stickLbl { display: none; }
     .screen { place-items: start center; }
     #thrTrack { height: 110px; }
     #att { width: 44px; height: 44px; }
+  }
+  /* 横長のタッチ画面: ジョイスティックは右手で持てる右下へ。ラダーはスティックの左に並べる */
+  @media (orientation: landscape) and (pointer: coarse) {
+    :root { --stkR: calc(max(14px, env(safe-area-inset-right)) + 8px); }
+    #stick { left: auto; right: var(--stkR); transform: none; }
+    #stickLbl { left: auto; right: max(10px, env(safe-area-inset-right)); transform: none; }
+    #rudR { left: auto; right: calc(var(--stkR) + var(--stk) + 12px); }
+    #rudL { left: auto; right: calc(var(--stkR) + var(--stk) + 12px + var(--rud) + 8px); }
   }
 </style>
 </head>
@@ -235,7 +245,7 @@
     </div>
     <details class="kb keys"><summary>⌨️ キーボードの操作</summary><table id="keyHelp"></table></details>
     <ul class="how">
-      <li>画面下のジョイスティック（PC はキーボード）で操作。速さは左下のスロットルのレバーで変えられます（上で加速・下で減速）。</li>
+      <li>画面下のジョイスティック（横向きでは右下。PC はキーボード）で操作。速さは左下のスロットルのレバーで変えられます（上で加速・下で減速）。</li>
       <li id="howCtl"></li>
       <li><span id="howY"></span><span style="color:var(--pink)">ピンクのリング</span>は宙返りコース。</li>
       <li><span style="color:var(--cyan)">水色のリング</span>をくぐると一瞬だけ加速。<span style="color:var(--gold)">金のリング</span>は名所のポイント。</li>

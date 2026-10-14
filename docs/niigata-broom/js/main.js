@@ -19,13 +19,14 @@ export const PITCH = 1.0;   // rad/s。巡航（約 42m/s）で宙返りの半�
 const KEY = 'niigata-broom:v1';
 // 新潟市中央区（PLATEAU から作った作り置きの地域）
 const BUILTIN = { id: 'niigata-chuo', name: '新潟市中央区', muni: '15103', pref: '新潟県', lat: 37.9125, lon: 139.0615, builtin: true };
-const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'beginner', ctlChosen: false, keys: 'ace', thr: 'spring', sens: 1, invert: false, invertX: false, sound: true, weather: 'clear', cam: 0 } });
+const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'beginner', ctlChosen: false, keys: 'ace', thr: 'spring', sens: 1, invert: false, invertX: false, dirV: 2, sound: true, weather: 'clear', cam: 0 } });
 const newRegion = (r) => ({ done: {}, points: 0, completedAt: null, total: 0, totalPts: 0, created: Date.now(), ...r });
 let save;
 try {
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
   save = { ...fresh(), ...raw }; save.opt = { ...fresh().opt, ...(raw.opt || {}) };
   if (!save.opt.ctlChosen) save.opt.ctl = 'beginner'; // 操作モードを自分で選んだことがない人は初心者から
+  if (raw.opt && raw.opt.dirV !== 2) { save.opt.invert = false; save.opt.dirV = 2; } // 上下の向きを「スティックは反転・矢印キーはそのまま」に変えた時に、前の反転設定を既定へ戻す
   if (!raw.v && raw.done) { // 地域ごとの記録になる前（新潟市中央区だけだった頃）の記録を引き継ぐ
     save.regions = { [BUILTIN.id]: newRegion({ ...BUILTIN, done: raw.done, points: raw.points || 0, completedAt: raw.completedAt || null, total: 83 }) };
     delete save.done; delete save.points; delete save.completedAt; save.v = 2;
@@ -76,7 +77,7 @@ const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0, kthr: 0, touchThr: nu
   stick.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
   const end = (e) => { if (e.pointerId !== id) return; id = null; input.x = input.y = 0; knob.style.transform = ''; };
   stick.addEventListener('pointerup', end); stick.addEventListener('pointercancel', end);
-  // キーボード: 2 つの配置から選ぶ（どちらも ↑ で機首下げ・↓ で機首上げ = 操縦桿と同じ向き）
+  // キーボード: 2 つの配置から選ぶ（どちらも ↑ で機首上げ・↓ で機首下げ = カーソルキーの向きのまま。反転するのはジョイスティックだけ）
   //  エースコンバット風: W/S = 加速/減速、↑↓ = 上下、A/D・←→ = 左右、Q/E = ラダー
   //  フライトシム風   : W/S・↑↓ = 上下、A/D・←→ = 左右、Q/E = ラダー、Shift/Ctrl = 加速/減速
   //  共通: PageUp/PageDown・+/- = 加速/減速、1〜9・0 = スロットル 10〜100%（位置を保つ設定の時）
@@ -84,7 +85,7 @@ const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0, kthr: 0, touchThr: nu
   const upd = () => {
     const ace = save.opt.keys === 'ace';
     input.kx = (has('ArrowRight', 'KeyD') ? 1 : 0) - (has('ArrowLeft', 'KeyA') ? 1 : 0);
-    input.ky = (has('ArrowDown', ...(ace ? [] : ['KeyS'])) ? 1 : 0) - (has('ArrowUp', ...(ace ? [] : ['KeyW'])) ? 1 : 0);
+    input.ky = (has('ArrowUp', ...(ace ? [] : ['KeyW'])) ? 1 : 0) - (has('ArrowDown', ...(ace ? [] : ['KeyS'])) ? 1 : 0); // + で機首上げ
     input.krud = (has('KeyE') ? 1 : 0) - (has('KeyQ') ? 1 : 0);
     input.kthr = (has('PageUp', 'Equal', 'NumpadAdd', 'ShiftLeft', 'ShiftRight', ...(ace ? ['KeyW'] : [])) ? 1 : 0) - (has('PageDown', 'Minus', 'NumpadSubtract', 'ControlLeft', 'ControlRight', ...(ace ? ['KeyS'] : [])) ? 1 : 0);
   };
@@ -262,7 +263,7 @@ function drawAttitude() {
 }
 function keyHelp() {
   const ace = save.opt.keys === 'ace';
-  const rows = [['機首の上げ / 下げ', ace ? '↓ / ↑' : 'S・↓ / W・↑'], ['左右（回転・旋回）', 'A・← / D・→'], ['ラダー（機首を左右に振る）', 'Q / E'],
+  const rows = [['機首の上げ / 下げ', ace ? '↑ / ↓' : 'W・↑ / S・↓'], ['左右（回転・旋回）', 'A・← / D・→'], ['ラダー（機首を左右に振る）', 'Q / E'],
     ['加速 / 減速', (ace ? 'W / S、' : '') + 'Shift / Ctrl、PageUp / PageDown、+ / -'], ['スロットルを 10〜100% に', '1〜9・0（「位置を保つ」の時）'],
     ['カメラ / 天気 / マップ / 写真', 'C / T / M / F'], ['一時停止 / 再開', 'Esc・P / Enter']];
   $('keyHelp').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td><kbd>${b}</kbd></td></tr>`).join('');
@@ -298,7 +299,7 @@ $('photoClose').onclick = closePhoto; $('bPhoto').onclick = takePhoto;
 // ---------- PC のキー表示（左下 = WASD、右下 = 矢印キー）
 function keyCaps() {
   const ace = save.opt.keys === 'ace', ex = expert(), inv = save.opt.invert, invX = save.opt.invertX;
-  const up = inv ? '機首上げ' : '機首下げ', dn = inv ? '機首下げ' : '機首上げ';
+  const up = inv ? '機首下げ' : '機首上げ', dn = inv ? '機首上げ' : '機首下げ';
   const turn = ex ? '回転' : '旋回', L = (invX ? '右' : '左') + turn, R = (invX ? '左' : '右') + turn;
   const cap = { KeyW: ace ? '加速' : up, KeyS: ace ? '減速' : dn, KeyA: L, KeyD: R, KeyQ: ex ? '左ラダー' : '—', KeyE: ex ? '右ラダー' : '—', ArrowUp: up, ArrowDown: dn, ArrowLeft: L, ArrowRight: R };
   document.querySelectorAll('.key[data-k]').forEach(k => { k.querySelector('i').textContent = cap[k.dataset.k]; k.classList.toggle('off', cap[k.dataset.k] === '—'); });
