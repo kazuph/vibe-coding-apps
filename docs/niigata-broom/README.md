@@ -1,10 +1,13 @@
-# ほうきで新潟 — 新潟市中央区フライト
+# ほうきでニッポン — マイクラ風の街を魔法のほうきで飛ぶ
+
+（旧名「ほうきで新潟」。URL は `niigata-broom/` のまま）
 
 マイクラ風（ボクセル）に再現した街の上空を、魔法のほうきで飛び回るフライトシミュレーターです。
 街のあちこちに置いたリングをくぐって、**コンプリート率**（くぐったリングの割合）とポイントを集めます。勝ち負けや時間制限はありません。
 
 - **新潟市中央区**は、PLATEAU の建物データから作り置きした特別な地図（リング 83 個を手で配置）
-- **日本じゅうどこでも**: 日本地図で市区町村を選ぶか、地名・駅名で検索すると、その場所の 5km 四方をブラウザの中で自動で組み立てて、リングも自動で置きます
+- **主要都市の作り置き**: 札幌・仙台・東京・横浜・名古屋・京都・大阪・神戸・広島・福岡・那覇の中心部 5km 四方は、前もって地図を作ってサイトに置いてあります（新潟市中央区と同じく、遊ぶときに外部の地図・標高サーバーへ問い合わせない）
+- **日本じゅうどこでも**: 日本地図で市区町村を選ぶか、市区町村の名前で検索すると、その場所の 5km 四方をブラウザの中で自動で組み立てて、リングも自動で置きます
 - **日本地図のコンプリート**: どこかの地図を 100% にすると、その市区町村が日本地図で金色に塗られます。全国 1,894 市区町村（政令市は区ごと）のうち、いくつ塗ったかが「日本地図のコンプリート率」です
 
 - デモ: https://kazuph.github.io/vibe-coding-apps/niigata-broom/
@@ -28,7 +31,7 @@
 | 左上 | マップ（北が上。タップで全体図、区界は点線） |
 | 右上 | ポイント・コンプリート率・天気／カメラ／記録／メニュー |
 | 上中央 | いちばん近い未通過リングの方向と距離 |
-| 日本地図 | タイトル画面の「🗾 日本地図」。都道府県をタップ → 市区町村ごとの達成（金=コンプリート、橙=飛行中）。市区町村を選んで「ここを飛ぶ」、または地名で検索して「ここを飛ぶ」 |
+| 日本地図 | タイトル画面の「🗾 日本地図」。都道府県をタップ → 市区町村ごとの達成（金=コンプリート、橙=飛行中）。市区町村を選んで「ここを飛ぶ」。主要都市のボタンですぐ飛べる。**検索は市区町村・都道府県の名前だけ**（駅名・住所・建物名・ひらがなの読みでは探せない）。外部の検索サービスは使わず、ページに読み込んだ 1,894 市区町村の一覧から探す |
 | 記録 | 地域ごとのくぐったリングと日時・ポイント、全体の飛行距離・飛行時間・回数をブラウザの `localStorage`（キー `niigata-broom:v1`）に保存。自動で作った地図は IndexedDB に覚えるので、2 回目からは通信なしで開く。記録画面から消去可 |
 
 ### 天気
@@ -50,7 +53,7 @@
 | リングの位置（名所の座標） | **OpenStreetMap** の名称付き地物（萬代橋・朱鷺メッセ・NEXT21 ほか） | 同上 |
 | 自動生成する地図（建物・道路・鉄道・橋・水域・緑地・名所） | **OpenFreeMap** のベクタータイル（OpenStreetMap を OpenMapTiles の形に切った物、ズーム 14）。建物の高さは `render_height`（OSM の高さ・階数。無い建物は 1〜2 階建てとして推定） | [OpenFreeMap](https://openfreemap.org/) / [OpenMapTiles](https://www.openmaptiles.org/) / © OpenStreetMap contributors（ODbL） |
 | 自動生成する地図の地形・遠くの山 | **国土地理院 標高タイル**（`dem_png`、ズーム 14 と 9）。日本の外は **AWS Terrain Tiles**（terrarium） | 国土地理院 / [Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/) |
-| 地名・駅名の検索 | **Nominatim**（押した時だけ・1 秒に 1 回まで） | [Nominatim](https://nominatim.org/) / © OpenStreetMap contributors |
+| 作り置きの主要都市 11 か所 | 上の 2 行と同じデータを `tools/prebuild-cities.cjs` で前もって取得して `data/cities/` に保存（2026年10月14日取得） | 同上 |
 | 日本地図（市区町村の境界 1,894） | **国土数値情報（行政区域）2021年** を smartnews-smri/japan-topography が 0.1% に簡素化した GeoJSON | 国土交通省 [国土数値情報](https://nlftp.mlit.go.jp/ksj/)（出典を表示して利用） / [smartnews-smri/japan-topography](https://github.com/smartnews-smri/japan-topography) |
 | 「いまの新潟」の天気 | **Open-Meteo** Forecast API（`weather_code`・`is_day`・`cloud_cover`・気温） | [Open-Meteo](https://open-meteo.com/)（CC BY 4.0、非商用は API キー不要） |
 
@@ -71,6 +74,14 @@ OSM と PLATEAU の取得日は 2026年10月13日です。
 7. 作った地図とリングを IndexedDB に覚える。市区町村は日本地図の境界で判定する（`js/japan.js`）
 
 5km 四方の作成にかかる時間は、手元の確認で 2.4〜5.8 秒でした（新潟市江南区・金沢駅・東京駅・富士山）。
+
+### 外部サービスへの負荷について
+
+X などで紹介してアクセスが集まっても、外部サービスに迷惑をかけないようにしています。
+
+- 検索は外部サービスを使わない（以前は Nominatim を使っていたが、利用者全員の合計で 1 秒 1 回までの決まりがあるためやめた）
+- 新潟市中央区と主要都市 11 か所は作り置きの地図だけで遊べる
+- それ以外の場所を初めて作るときだけ、OpenFreeMap（同時 4 本まで）と国土地理院の標高タイルを取る。作った地図はそのブラウザに覚えるので、2 回目からは取りに行かない
 
 ## デフォルメしているところ
 
@@ -108,6 +119,7 @@ tools/            データの再生成スクリプト
 4. `sh fetch_osm.sh` … Overpass API で `q.txt` の地物を `osm_raw.json` に
 5. `python3 build.py out` … `out/near.bin.gz`・`out/far.bin.gz`・`out/ward.json` を作る
 6. `python3 japan.py N03-21_210101.json japan.json` … smartnews-smri/japan-topography の `data/municipality/geojson/s0001/N03-21_210101.json` から日本地図のデータを作る
+7. `node tools/prebuild-cities.cjs <playwright-core のパス> <Chromium の実行ファイル>` … `docs/` でローカルサーバー（ポート 8765）を起動してから実行すると、`js/cities.js` の主要都市の地図を `data/cities/<市区町村コード>.bin.gz` に書き出す（都市は 1 つずつ順番に作る。`ONLY=13101` のように指定すると一部だけ作り直す）
 
 ## クレジット
 
@@ -115,6 +127,6 @@ tools/            データの再生成スクリプト
 - 標高: 国土地理院 標高タイル
 - 地図データ: © OpenStreetMap contributors
 - 天気: Open-Meteo.com（CC BY 4.0）
-- 自動生成の地図: OpenFreeMap / OpenMapTiles / © OpenStreetMap contributors、Terrain Tiles on AWS、検索: Nominatim
+- 自動生成の地図: OpenFreeMap / OpenMapTiles / © OpenStreetMap contributors、Terrain Tiles on AWS
 - 市区町村の境界: 国土交通省 国土数値情報（行政区域）、smartnews-smri/japan-topography
 - 3D 描画: three.js / フォント: DotGothic16（Google Fonts, SIL OFL）
