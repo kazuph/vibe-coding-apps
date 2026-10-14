@@ -176,6 +176,9 @@ function layoutHud() {
     if (!sc.height) return;
     $('btns').style.top = sc.bottom + 8 + 'px'; $('wxLabel').style.top = sc.bottom + 14 + 'px';
     $('nav').style.top = innerWidth < 560 ? Math.max(sc.bottom, mp.bottom) + 8 + 'px' : '';
+    // PC のキー表示（左下）があるときは、スロットルのレバーと計器をその上に並べる
+    const kl = $('keysL').getBoundingClientRect(), b = kl.height ? innerHeight - kl.top + 8 + 'px' : '';
+    $('thr').style.bottom = b; $('meter').style.bottom = b;
   });
 }
 addEventListener('resize', layoutHud);
