@@ -11,6 +11,7 @@ export const CITIES = [
   { code: '28110', name: '神戸市中央区', pref: '兵庫県', lat: 34.6900, lon: 135.1900, label: '神戸（三宮・メリケンパーク）' },
   { code: '34101', name: '広島市中区', pref: '広島県', lat: 34.3940, lon: 132.4560, label: '広島（平和記念公園・紙屋町）' },
   { code: '40133', name: '福岡市中央区', pref: '福岡県', lat: 33.5902, lon: 130.3960, label: '福岡（天神・大濠公園）' },
+  { code: '46201', name: '鹿児島市', pref: '鹿児島県', lat: 31.5900, lon: 130.5560, label: '鹿児島（天文館・桜島フェリー）' },
   { code: '47201', name: '那覇市', pref: '沖縄県', lat: 26.2155, lon: 127.6810, label: '那覇（国際通り・那覇港）' },
 ].map(c => ({ ...c, id: `c:${c.code}`, muni: c.code, packed: `data/cities/${c.code}.bin.gz` }));
 export const cityByMuni = new Map(CITIES.map(c => [c.muni, c]));
