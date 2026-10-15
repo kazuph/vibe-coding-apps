@@ -39,7 +39,7 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | None | `docs/kids-learning/` | Standalone learning app |
 | None | `docs/walkingpad/` | WalkPad Console (KS-HD-Z1D treadmill via Web Bluetooth, 3D runner) |
 | None | `docs/niigata-3d/` | Niigata Station 3D map (2027 Bandai plaza plan + Toki Messe / Ryutopia areas; PLATEAU + OSM + city plans, three.js) |
-| None | `docs/niigata-broom/` | Houki de Nippon (formerly Niigata Broom Flight): Minecraft-style voxel flight; Niigata Chuo-ku from PLATEAU, 11 major cities prebuilt in `data/cities/`, any municipality generated in-browser from OpenFreeMap + GSI DEM; rings, loops, weather, Japan-map completion, localStorage records (three.js) |
+| None | `docs/niigata-broom/` | Houki de Nippon (formerly Niigata Broom Flight): Minecraft-style voxel flight; Niigata Chuo-ku from PLATEAU, 12 major cities prebuilt in `data/cities/`, any municipality generated in-browser from OpenFreeMap + GSI DEM; rings, loops, weather, Japan-map completion, localStorage records (three.js) |
 | None | `docs/ruby-tanks/` | Ruby Tanks (tank-AI programming battle on ruby.wasm / CRuby 3.4, BGM via Ruby DSL) |
 | None | `docs/hoshizora/` | Tonight's Sky (point a phone at the sky; DeviceOrientation + compass overlay of real star/Moon/planet positions) |
 | None | `docs/figure-skating-report/` | Figure skating training guide (docs only) |
