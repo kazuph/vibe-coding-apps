@@ -19,14 +19,14 @@ export const PITCH = 1.0;   // rad/s。巡航（約 42m/s）で宙返りの半�
 const KEY = 'niigata-broom:v1';
 // 新潟市中央区（PLATEAU から作った作り置きの地域）
 const BUILTIN = { id: 'niigata-chuo', name: '新潟市中央区', muni: '15103', pref: '新潟県', lat: 37.9125, lon: 139.0615, builtin: true };
-const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'beginner', ctlChosen: false, keys: 'pilot', keysV: 2, thr: 'spring', sens: 1, invert: false, invertX: false, dirV: 2, sound: true, weather: 'clear', cam: 0 } });
+const fresh = () => ({ v: 2, regions: {}, current: BUILTIN.id, dist: 0, time: 0, flights: 0, first: Date.now(), opt: { ctl: 'beginner', ctlChosen: false, keys: 'pilot', keysV: 2, thr: 'spring', sens: 1, invert: false, invertX: false, dirV: 3, sound: true, weather: 'clear', cam: 0 } });
 const newRegion = (r) => ({ done: {}, points: 0, completedAt: null, total: 0, totalPts: 0, created: Date.now(), ...r });
 let save;
 try {
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
   save = { ...fresh(), ...raw }; save.opt = { ...fresh().opt, ...(raw.opt || {}) };
   if (!save.opt.ctlChosen) save.opt.ctl = 'beginner'; // 操作モードを自分で選んだことがない人は初心者から
-  if (raw.opt && raw.opt.dirV !== 2) { save.opt.invert = false; save.opt.dirV = 2; } // 上下の向きを「スティックは反転・矢印キーはそのまま」に変えた時に、前の反転設定を既定へ戻す
+  if (raw.opt && raw.opt.dirV !== 3) { save.opt.invert = false; save.opt.dirV = 3; } // スティックの既定を「上に倒すと上昇」に変えた時に、前の反転設定を既定へ戻す
   if (raw.opt && raw.opt.keysV !== 2) { save.opt.keys = 'pilot'; save.opt.keysV = 2; } // とどパイロットと同じキー配置を既定にした時に、1 度だけ切り替える（前の配置は設定から選べる）
   if (!raw.v && raw.done) { // 地域ごとの記録になる前（新潟市中央区だけだった頃）の記録を引き継ぐ
     save.regions = { [BUILTIN.id]: newRegion({ ...BUILTIN, done: raw.done, points: raw.points || 0, completedAt: raw.completedAt || null, total: 83 }) };
@@ -72,7 +72,7 @@ const input = { x: 0, y: 0, kx: 0, ky: 0, rud: 0, krud: 0, kthr: 0, touchThr: nu
     const r = stick.getBoundingClientRect(), R = r.width / 2;
     let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R); const d = Math.hypot(dx, dy), m = R * 0.78;
     if (d > m) { dx *= m / d; dy *= m / d; }
-    knob.style.transform = `translate(${dx}px, ${dy}px)`; input.x = dx / m; input.y = dy / m; // スティックは下に引くと上昇（上下反転）
+    knob.style.transform = `translate(${dx}px, ${dy}px)`; input.x = dx / m; input.y = -dy / m; // スティックは上に倒すと上昇（とどパイロットの十字キーと同じ向き）
   };
   stick.addEventListener('pointerdown', (e) => { id = e.pointerId; stick.setPointerCapture(id); set(e); audio.unlock(); });
   stick.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
@@ -218,15 +218,15 @@ $('go').onclick = () => startFlying();
 const expert = () => save.opt.ctl === 'expert';
 function stickLabel() {
   keyCaps();
-  const y = save.opt.invert ? ['↑上昇', '↓下降', '上に倒し'] : ['↑下降', '↓上昇', '下に引き'];
+  const y = save.opt.invert ? ['↑下降', '↓上昇', '下に引き'] : ['↑上昇', '↓下降', '上に倒し'];
   const x = expert() ? (save.opt.invertX ? '←右回転 →左回転' : '←左回転 →右回転') : (save.opt.invertX ? '←右旋回 →左旋回' : '←左旋回 →右旋回');
   $('stickLbl').textContent = expert() ? `${y[0]} ${y[1]} ${x}（傾けて${y[2] === '下に引き' ? '引く' : '倒す'}と曲がる）` : `${y[0]} ${y[1]} ${x}（${y[2]}続けると宙返り）`;
   $('howCtl').textContent = expert()
-    ? 'エキスパート操作: 左右で機体を回転（ロール）、上下で機首の上げ下げ。曲がるときは傾けてから引く。手を離しても水平には戻らない。左右の小さいボタン（PC は Q / E）で機首を左右に振る（ラダー）。'
+    ? 'エキスパート操作: 左右で機体を回転（ロール）、上下で機首の上げ下げ。曲がるときは傾けてから機首を上げる。手を離しても水平には戻らない。左右の小さいボタン（PC は Q / E）で機首を左右に振る（ラダー）。'
     : '初心者操作: 左右でそのまま左右へ曲がる。手を離すと自動で水平に戻る。';
   document.querySelectorAll('input[name=ctl]').forEach(r => { r.checked = r.value === save.opt.ctl; });
   $('rudL').hidden = $('rudR').hidden = !expert();
-  $('howY').textContent = save.opt.invert ? 'ジョイスティックは上に倒すと上昇、下に引くと下降。上に倒し続けると宙返り。' : 'ジョイスティックは下に引くと上昇、上に倒すと下降。下に引き続けると宙返り。';
+  $('howY').textContent = save.opt.invert ? 'ジョイスティックは下に引くと上昇、上に倒すと下降。下に引き続けると宙返り。' : 'ジョイスティックは上に倒すと上昇、下に引くと下降。上に倒し続けると宙返り。';
 }
 $('optInvert').checked = save.opt.invert; $('optInvert').onchange = (e) => { save.opt.invert = e.target.checked; persist(); stickLabel(); };
 $('optInvertX').checked = save.opt.invertX; $('optInvertX').onchange = (e) => { save.opt.invertX = e.target.checked; persist(); stickLabel(); };
