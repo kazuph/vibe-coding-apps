@@ -6,16 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Git worktree（必須）★
 
-**新規ブランチでの作業・タスク単位の開発は、必ず `git worktree` で別ディレクトリを切って行う。** メインのクローン上で直接ブランチを切り替えて作業しない（衝突・取りこぼし防止）。
-
-- 略称 `git wt` をシェルにエイリアスしておくとよい（例: `git config --global alias.wt worktree`）。
-- 典型例（`main` から feature 用の別フォルダを追加）:
-  ```bash
-  git fetch origin main
-  git worktree add ../vibe-coding-apps-<ブランチ名> -b feature/<topic> origin/main
-  cd ../vibe-coding-apps-<ブランチ名>
-  ```
-- マージ・片付け後: `git worktree remove ../vibe-coding-apps-<ブランチ名>`（作業ツリー側で未コミットがないことを確認してから）。
+**新規ブランチでの作業・タスク単位の開発は、必ず `git wt <ブランチ名>` で `.worktree/` 配下に worktree を作って行う。** メインのクローン上で直接ブランチを切り替えて作業しない（衝突・取りこぼし防止）。
 
 ## Project Overview
 
