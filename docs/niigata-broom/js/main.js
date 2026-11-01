@@ -180,9 +180,14 @@ function layoutHud() {
     if (!sc.height) return;
     $('btns').style.top = sc.bottom + 8 + 'px'; $('wxLabel').style.top = sc.bottom + 14 + 'px';
     $('nav').style.top = innerWidth < 560 ? Math.max(sc.bottom, mp.bottom) + 8 + 'px' : '';
-    // PC のキー表示（左下）があるときは、スロットルのレバーと計器をその上に並べる
-    const kl = $('keysL').getBoundingClientRect(), b = kl.height ? innerHeight - kl.top + 8 + 'px' : '';
-    $('thr').style.bottom = b; $('meter').style.bottom = b;
+    // PC のキー表示があるときは、ジョイスティック・加減速バー・計器をその上に並べる
+    const kl = $('keysL').getBoundingClientRect();
+    if (kl.height) document.documentElement.style.setProperty('--ctlB', innerHeight - kl.top + 8 + 'px');
+    else document.documentElement.style.removeProperty('--ctlB');
+    // 加減速バーが右端のボタン列にかかるときは、バーを短くして収める
+    const track = $('thrTrack'); track.style.height = '';
+    const th = $('thr').getBoundingClientRect(), bt = $('btns').getBoundingClientRect(), over = bt.bottom + 8 - th.top;
+    if (over > 0 && th.left < bt.right && bt.left < th.right) track.style.height = Math.max(80, track.offsetHeight - over) + 'px';
   });
 }
 addEventListener('resize', layoutHud);
