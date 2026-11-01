@@ -81,4 +81,4 @@
 @media (any-pointer:coarse) and (min-width:600px) and (max-width:900px) and (min-height:600px){.message{margin-right:230px}}
 @media (any-pointer:coarse) and (max-width:650px){.message{justify-self:stretch;margin-right:90px}}
 @media (any-pointer:coarse) and (max-height:500px){#app:has(#intro:not(.hidden)) .brand,#app:has(#intro:not(.hidden)) .compass,#app:has(#intro:not(.hidden)) .instrument{visibility:hidden}}
-@media (any-pointer:coarse) and (min-width:600px) and (min-height:600px){.retry-keys{display:none}}
+@media (any-pointer:coarse){.retry-keys{display:none}}
