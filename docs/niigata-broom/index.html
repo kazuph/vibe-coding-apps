@@ -170,25 +170,26 @@
     #thrTrack { height: 110px; }
     #att { width: 44px; height: 44px; }
   }
-  /* 横長のタッチ画面: ジョイスティックは右手で持てる右下へ。ラダーはスティックの左に並べる */
-  @media (orientation: landscape) {
-    :root { --stkR: calc(max(14px, env(safe-area-inset-right)) + 8px); }
-    #stick { left: auto; right: var(--stkR); transform: none; }
-    #stickLbl { left: auto; right: max(10px, env(safe-area-inset-right)); transform: none; }
-    #rudR { left: auto; right: calc(var(--stkR) + var(--stk) + 12px); }
-    #rudL { left: auto; right: calc(var(--stkR) + var(--stk) + 12px + var(--rud) + 8px); }
+  @media (any-pointer: coarse) { .pc { display: none !important; } }
+  /* 操作の配置: 縦でも横でも、左下にジョイスティック（右隣にラダー）、右下に加減速バー（左隣に計器）。--ctlB は PC のキー表示があると main.js がその上の高さにする */
+  :root { --ctlB: max(18px, env(safe-area-inset-bottom)); --ctlL: max(14px, env(safe-area-inset-left)); --ctlR: max(10px, env(safe-area-inset-right)); --thrW: 52px; }
+  #stick { left: var(--ctlL); right: auto; bottom: var(--ctlB); transform: none; }
+  #stickLbl { left: var(--ctlL); right: auto; bottom: calc(var(--ctlB) + var(--stk) + 8px); transform: none; }
+  #rudL, #rudR { right: auto; bottom: calc(var(--ctlB) + (var(--stk) - var(--rud)) / 2); }
+  #rudL { left: calc(var(--ctlL) + var(--stk) + 12px); }
+  #rudR { left: calc(var(--ctlL) + var(--stk) + 12px + var(--rud) + 8px); }
+  #thr { left: auto; right: var(--ctlR); bottom: var(--ctlB); }
+  #meter { left: auto; right: calc(var(--ctlR) + var(--thrW) + 10px); bottom: var(--ctlB); }
+  /* PC: 右端のボタン列に重ならないよう、バーを少し内側に置く */
+  @media (hover: hover) and (pointer: fine) and (not (any-pointer: coarse)) {
+    #thr { right: calc(var(--ctlR) + 60px); }
+    #meter { right: calc(var(--ctlR) + 60px + var(--thrW) + 10px); }
   }
-@media (any-pointer: coarse) { .pc { display:none !important; } }
-@media (orientation:landscape) and (any-pointer:fine) and (any-pointer:coarse) { .pc {display:none} }
-@media (orientation:landscape) and (hover:hover) and (pointer:fine) {
- #stick {bottom:220px} #stickLbl {bottom:376px}
- #rudL,#rudR {bottom:260px}
-}
-@media (orientation:landscape) and (any-pointer:coarse) {
- #stick {bottom:max(18px,env(safe-area-inset-bottom))}
- #stickLbl {bottom:calc(max(18px,env(safe-area-inset-bottom)) + var(--stk) + 8px)}
- #rudL,#rudR {bottom:calc(max(18px,env(safe-area-inset-bottom)) + (var(--stk) - var(--rud)) / 2)}
-}
+  @media (any-pointer: coarse) and (min-width: 700px) and (min-height: 700px) { :root { --thrW: 72px; } }
+  /* 縦長のスマホ: 計器はラダーと重ならないよう、スティックの上に置く */
+  @media (max-width: 560px) {
+    #meter { left: var(--ctlL); right: auto; bottom: calc(var(--ctlB) + var(--stk) + 30px); }
+  }
 </style>
 </head>
 <body>
