@@ -35,6 +35,7 @@ vibe-coding-apps/
 | なし | `docs/kids-learning/` | 学習アプリ（スタンドアロン） |
 | なし | `docs/walkingpad/` | WalkPad Console（KS-HD-Z1DをWeb Bluetoothで制御・3Dランナー付き） |
 | なし | `docs/niigata-3d/` | 新潟駅 3Dマップ（改修完成予想の万代広場＋朱鷺メッセ・りゅーとぴあ周辺。PLATEAU/OSM/新潟市資料） |
+| `todo-pilot/` | `docs/todo-pilot/` | とどパイロット（飛行機で空港を離着陸するフライトゲーム） |
 | なし | `docs/niigata-broom/` | ほうきでニッポン（マイクラ風の街を魔法のほうきで飛ぶフライト。新潟市中央区はPLATEAU、主要都市11か所は作り置き、全国の市区町村を自動生成。国土地理院標高/OSM/OpenFreeMap・天気はOpen-Meteo） |
 | なし | `docs/ruby-tanks/` | Ruby Tanks（ruby.wasm でCRubyを動かす戦車AIプログラミング対戦・BGMもRuby DSL） |
 | なし | `docs/hoshizora/` | 今夜の空（スマホを夜空にかざすと加速度・コンパスでその方角の本物の星・月・惑星を表示） |
