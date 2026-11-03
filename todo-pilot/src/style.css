@@ -58,14 +58,18 @@
  .touch{left:0;right:0;bottom:0}
  .touch .phone-directions,.touch .touch-flight{display:none}
  .touch .tablet-controls{display:block;position:fixed;inset:0;pointer-events:none}
- .stick,.tablet-throttle,.tablet-firework{position:absolute;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+ .stick,.throttle-bar{position:absolute;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
  .stick{left:28px;bottom:28px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,#ffffffd9 0 40%,#ffffffa6 41% 100%);border:4px solid #fff;box-shadow:0 6px 0 #669ca666,0 10px 26px #305b6b30;color:#5b8797;font-weight:900;font-size:13px}
  .stick span{position:absolute;pointer-events:none;white-space:nowrap}.stick-up{top:10px;left:50%;transform:translateX(-50%)}.stick-down{bottom:10px;left:50%;transform:translateX(-50%)}.stick-left{left:12px;top:50%;transform:translateY(-50%)}.stick-right{right:12px;top:50%;transform:translateY(-50%)}
  .knob{position:absolute;left:50%;top:50%;width:84px;height:84px;margin:-42px 0 0 -42px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3d6,#ffbd54 45%,#e69538);border:4px solid #fff;box-shadow:0 5px 0 #d9943e,0 8px 16px #305b6b40;pointer-events:none;transition:transform .12s ease-out}
  .stick.active .knob{transition:none}
- .tablet-throttle{right:24px;bottom:24px;display:flex;flex-direction:column;gap:10px}
- .touch .tablet-throttle button{width:125px;height:70px;background:#ffbd54;color:white;font-size:16px}
- .touch .tablet-firework{right:24px;bottom:190px;width:125px;font-size:14px}
+ .throttle-bar{right:28px;bottom:28px;width:96px;padding:10px 0;border-radius:24px;background:#ffffffb8;border:4px solid #fff;box-shadow:0 6px 0 #669ca666;display:flex;flex-direction:column;align-items:center;gap:24px;color:#5b8797;font-weight:900;font-size:13px}
+ .thr-label{white-space:nowrap;pointer-events:none}
+ .thr-track{position:relative;width:34px;height:200px;border-radius:12px;background:#dbe9ea;box-shadow:inset 0 2px 4px #557c8640}
+ .thr-fill{position:absolute;left:0;right:0;top:50%;height:0;border-radius:10px;background:linear-gradient(#ffbd54,#ffd98f)}.thr-fill.brake{background:linear-gradient(#a9dbe4,#69b6c6)}
+ .thr-center{position:absolute;left:-8px;right:-8px;top:50%;height:3px;margin-top:-1.5px;background:#ffffffcc;border-radius:2px}
+ .thr-knob{position:absolute;left:-14px;right:-14px;top:50%;height:34px;margin-top:-17px;border-radius:12px;background:radial-gradient(circle at 35% 30%,#fff3d6,#ffbd54 55%,#e69538);border:3px solid #fff;box-shadow:0 4px 0 #d9943e,0 6px 12px #305b6b40;pointer-events:none;transition:top .12s ease-out}
+ .throttle-bar.active .thr-knob,.throttle-bar.active .thr-fill{transition:none}
  .instrument{right:175px;bottom:28px}
 }
 
@@ -92,8 +96,10 @@ button,input,label,a{touch-action:manipulation}
 .touch button,.stick{touch-action:none}
 
 /* よるモードの切り替えボタン（右上、方位計の左） */
-.night-toggle{position:absolute;top:max(28px,env(safe-area-inset-top));right:215px;z-index:5;pointer-events:auto;height:48px;padding:0 16px;border-radius:16px;background:#ffffffe6;color:#3b6474;border:3px solid #fff;font-size:20px;font-weight:900;box-shadow:0 4px 0 #76b8c5;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.night-toggle{position:fixed;top:316px;left:126px;transform:translateX(-50%);z-index:5;pointer-events:auto;height:48px;padding:0 16px;border-radius:16px;background:#ffffffe6;color:#3b6474;border:3px solid #fff;font-size:20px;font-weight:900;box-shadow:0 4px 0 #76b8c5;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .night-toggle span{font-size:14px}
-.night-toggle:active{transform:translateY(3px);box-shadow:none}
+.night-toggle:active{transform:translate(-50%,3px);box-shadow:none}
 .night .night-toggle{background:#24345fe6;color:#ffe9a8;border-color:#5a6fb0;box-shadow:0 4px 0 #0b1530}
-@media(max-width:650px){.night-toggle{right:84px;top:max(132px,env(safe-area-inset-top));height:40px;padding:0 10px;font-size:16px}.night-toggle span{font-size:11px}}
+@media(max-width:650px){.night-toggle{height:40px;padding:0 10px;font-size:16px}.night-toggle span{font-size:11px}}
+/* スマホでは地図の下のよるボタンと重ならないよう、メッセージを少し下げる */
+@media(max-width:650px){.message{margin-top:290px}}

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {heldKeys,stick} from './input.js';
+import {heldKeys,stick,throttle} from './input.js';
 import {loadRealWorld,worldTick,setWorldNight} from './real-world.js';
 import './style.css';
 import './app-shell.js';
@@ -158,7 +158,9 @@ let gearRetracted=state.airborne&&state.speed>250,gearExtension=gearRetracted?0:
 const fireworks=[],fireworkParticles=[];
 const fireworkColors=[0xffe066,0xff6da7,0x72dfff,0x9cff91,0xcc95ff,0xffffff].map(color=>new THREE.MeshBasicMaterial({color}));
 function clearFireworks(){for(const p of [...fireworks,...fireworkParticles])scene.remove(p.mesh);fireworks.length=0;fireworkParticles.length=0}
-function launchFirework(x,z){const color=fireworkColors[Math.floor(Math.random()*fireworkColors.length)];const ground=realGroundHeight(x,z),startY=ground+.8,burstY=Math.max(state.height,ground+30),rise=burstY-startY,time=THREE.MathUtils.clamp(rise/45,1.2,3.2);const mesh=box(.45,.9,.45,color,x,startY,z,scene,false);fireworks.push({mesh,color,life:time,riseSpeed:rise/time,burstY,trail:0})}
+function launchFirework(x,z){const color=fireworkColors[Math.floor(Math.random()*fireworkColors.length)];const ground=realGroundHeight(x,z),startY=ground+.8,burstY=Math.max(state.height,startY),rise=burstY-startY,time=rise<1?0:THREE.MathUtils.clamp(rise/45,.4,3.2);const mesh=box(.45,.9,.45,color,x,startY,z,scene,false);fireworks.push({mesh,color,life:time,riseSpeed:time?rise/time:0,burstY,trail:0})}
+// Burst right where the missile is (used when it hits a building).
+function burstAt(position){burstFirework({mesh:{position:position.clone()},color:fireworkColors[Math.floor(Math.random()*fireworkColors.length)]})}
 function burstFirework(f){
 // Evenly spaced stars make the round chrysanthemum shape of a Japanese firework.
 for(const [count,speed,color] of [[100,19,fireworkColors[0]],[52,12,f.color]])for(let i=0;i<count;i++){
@@ -174,6 +176,14 @@ document.querySelector('#reset').addEventListener('click',reset,listenerOptions)
 function toggleSafety(){const input=document.querySelector('#safe-mode');input.checked=!input.checked;showMessage(input.checked?'あんぜんモード ON！ ぶつかっても だいじょうぶ':'あんぜんモード OFF！ ぶつかると ばくはつするよ',3000)}
 addEventListener('keydown',e=>{if((state.started||state.crashed)&&e.code==='KeyR'){e.preventDefault();if(!e.repeat&&!startButton.disabled){reset();startFlight()}return}if(!state.started&&!state.crashed&&!intro.classList.contains('hidden')&&(e.code==='Space'||e.code==='KeyK')){e.preventDefault();keys.delete(e.code);if(!e.repeat&&!startButton.disabled)startFlight();return}if(state.started)startAudio();if(state.started&&e.code==='KeyQ'){e.preventDefault();if(!e.repeat)toggleSafety();return}if(state.started && e.code==='KeyL' && !e.repeat){e.preventDefault();fireMissile();return}if(state.crashed && !crashScreen.classList.contains('hidden') && (e.code==='Space'||e.code==='KeyK')){e.preventDefault();keys.delete(e.code);if(!e.repeat){reset();startFlight()}return}if(['KeyW','KeyA','KeyS','KeyD','KeyJ','KeyK','Space','ShiftLeft','ShiftRight'].includes(e.code)){e.preventDefault();keys.add(e.code)}},listenerOptions);
 document.querySelectorAll('[data-key]').forEach(b=>{const key=b.dataset.key;b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);if(key==='KeyL'){if(state.started)fireMissile();return}keys.add(key)},listenerOptions);for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,()=>keys.delete(key),listenerOptions)});
+const throttleEl=document.querySelector('#throttle'),thrTrack=throttleEl.querySelector('.thr-track'),thrKnob=throttleEl.querySelector('.thr-knob'),thrFill=throttleEl.querySelector('.thr-fill');let throttlePointer=null;
+function showThrottle(v){thrKnob.style.top=`${(1-v)*50}%`;thrFill.style.top=`${v>0?(1-v)*50:50}%`;thrFill.style.height=`${Math.abs(v)*50}%`;thrFill.classList.toggle('brake',v<0)}
+function updateThrottle(e){const r=thrTrack.getBoundingClientRect();const v=THREE.MathUtils.clamp((r.top+r.height/2-e.clientY)/(r.height/2),-1,1);throttle.value=Math.abs(v)<.1?0:v;showThrottle(throttle.value)}
+function releaseThrottle(){throttlePointer=null;throttle.value=0;showThrottle(0);throttleEl.classList.remove('active')}
+throttleEl.addEventListener('pointerdown',e=>{if(throttlePointer!==null)return;e.preventDefault();throttlePointer=e.pointerId;throttleEl.setPointerCapture(e.pointerId);throttleEl.classList.add('active');startAudio();updateThrottle(e)},listenerOptions);
+throttleEl.addEventListener('pointermove',e=>{if(e.pointerId===throttlePointer)updateThrottle(e)},listenerOptions);
+for(const event of ['pointerup','pointercancel','lostpointercapture'])throttleEl.addEventListener(event,e=>{if(e.pointerId===throttlePointer)releaseThrottle()},listenerOptions);
+showThrottle(0);
 const stickEl=document.querySelector('#stick'), knob=document.querySelector('#knob');let stickPointer=null;
 function updateStick(e){const r=stickEl.getBoundingClientRect(),R=r.width/2,m=R*.62;let dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+R);const d=Math.hypot(dx,dy);if(d>m){dx*=m/d;dy*=m/d}knob.style.transform=`translate(${dx}px,${dy}px)`;const dead=v=>Math.abs(v)<.12?0:(v-Math.sign(v)*.12)/.88;stick.x=dead(dx/m);stick.y=dead(-dy/m)}
 function releaseStick(){stickPointer=null;stick.x=stick.y=0;knob.style.transform='';stickEl.classList.remove('active')}
@@ -207,7 +217,7 @@ function fireMissile(target){const now=performance.now();if(now-lastMissile<500)
 const aimRay=new THREE.Raycaster(),aimPointer=new THREE.Vector2();
 function aimPoint(clientX,clientY){const r=renderer.domElement.getBoundingClientRect();aimPointer.set((clientX-r.left)/r.width*2-1,-(clientY-r.top)/r.height*2+1);aimRay.setFromCamera(aimPointer,camera);const {origin,direction}=aimRay.ray;const p=new THREE.Vector3();for(let t=10;t<2500;t+=4){p.copy(origin).addScaledVector(direction,t);if(p.y<=realGroundHeight(p.x,p.z))return p}return origin.clone().addScaledVector(direction,500)}
 renderer.domElement.addEventListener('pointerdown',e=>{if(!state.started||e.button>0)return;startAudio();fireMissile(aimPoint(e.clientX,e.clientY))},listenerOptions);
-if(import.meta.env.DEV)window.__todoFlight={state,plane,camera,keys,obstacles,segmentHitsBuilding,airportToWorld,missiles,fireworks,fireworkParticles,realGroundHeight};
+if(import.meta.env.DEV)window.__todoFlight={state,plane,camera,keys,obstacles,segmentHitsBuilding,airportToWorld,missiles,fireworks,fireworkParticles,realGroundHeight,fireMissile};
 const targetCam=new THREE.Vector3(), look=new THREE.Vector3();let last=performance.now(), animationFrame, lastDangerCheck=0, lastDangerVoice=0;
 // Left = +1. Keys give full turns; the stick turns as far as it is tilted.
 function steerTurn(){return THREE.MathUtils.clamp((keys.has('KeyA')?1:0)-(keys.has('KeyD')?1:0)-stick.x,-1,1)}
@@ -218,11 +228,11 @@ const ascending=keyUp||stick.y>.3;
 const descending=keyDown||stick.y<-.3;
 const braking=keys.has('KeyJ');
 // J first brakes, then pushes the aircraft backwards while on the ground.
-state.speed=nextSpeed(state.speed,dt,keys.has('KeyK'),braking,state.airborne);
+state.speed=nextSpeed(state.speed,dt,keys.has('KeyK'),braking,state.airborne,throttle.value);
 const turn=steerTurn();
 const steeringGrip=Math.min(Math.abs(state.speed)/45,1);
 const speedTurnFactor=THREE.MathUtils.clamp(1.15-state.speed/1100,.35,1);
-const accelerationTurnFactor=keys.has('KeyK')?.72:1;
+const accelerationTurnFactor=keys.has('KeyK')||throttle.value>.3?.72:1;
 state.heading+=turn*dt*(state.airborne?.70:.65)*steeringGrip*speedTurnFactor*accelerationTurnFactor*(state.speed<0?-1:1);
 // A simple lift model: lift grows with speed squared; below flying speed the plane sinks.
 const liftRatio=(state.speed/240)**2;
@@ -246,7 +256,7 @@ const onRunway=(Math.abs(local.x)<=4.05&&local.z>=-426&&local.z<=24)||(Math.abs(
 if(touchedDown){if(!document.querySelector('#safe-mode').checked&&(!onRunway||!safeTouchdown))explode(!onRunway?'かっそうろに おりようね。':'スピードを おとして、ゆるやかに おりようね。');else {document.querySelector('#status').textContent='ちゃくりく！';showMessage(matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'ちゃくりく！ げんそくボタンで とまろう':matchMedia('(any-pointer: coarse)').matches?'ちゃくりく！ 「ブレーキ」で とまろう':'ちゃくりく！ Jで ブレーキを かけよう',5000);speak('land')}}
 if(!document.querySelector('#safe-mode').checked && !state.crashed && (obstacles.some(o=>overlapsObstacleHeight(o,previousHeight,state.height,1.5) && segmentHitsBuilding(previousX,previousZ,state.x,state.z,o)) || hitsRealBuilding(previousX,previousZ,previousHeight, state.x,state.z,state.height)))explode();
 }
-for(let i=missiles.length-1;i>=0;i--){const m=missiles[i],previous=m.mesh.position.clone();m.life-=dt;if(!m.aimed)m.velocity.y-=18*dt;m.mesh.position.addScaledVector(m.velocity,dt);m.mesh.rotation.x=Math.atan2(m.velocity.y,Math.hypot(m.velocity.x,m.velocity.z));const pos=m.mesh.position;const hit=pos.y<=realGroundHeight(pos.x,pos.z)+.3||obstacles.some(o=>overlapsObstacleHeight(o,previous.y,pos.y)&&segmentHitsBuilding(previous.x,previous.z,pos.x,pos.z,o))||hitsRealBuilding(previous.x,previous.z,previous.y,pos.x,pos.z,pos.y);if(hit||(m.aimed&&m.life<=0)){launchFirework(pos.x,pos.z);scene.remove(m.mesh);missiles.splice(i,1)}else if(m.life<=0){scene.remove(m.mesh);missiles.splice(i,1)}}
+for(let i=missiles.length-1;i>=0;i--){const m=missiles[i],previous=m.mesh.position.clone();m.life-=dt;if(!m.aimed)m.velocity.y-=18*dt;m.mesh.position.addScaledVector(m.velocity,dt);m.mesh.rotation.x=Math.atan2(m.velocity.y,Math.hypot(m.velocity.x,m.velocity.z));const pos=m.mesh.position;const hitGround=pos.y<=realGroundHeight(pos.x,pos.z)+.3,hitBuilding=obstacles.some(o=>overlapsObstacleHeight(o,previous.y,pos.y)&&segmentHitsBuilding(previous.x,previous.z,pos.x,pos.z,o))||hitsRealBuilding(previous.x,previous.z,previous.y,pos.x,pos.z,pos.y);if(hitBuilding){burstAt(pos);scene.remove(m.mesh);missiles.splice(i,1)}else if(hitGround||(m.aimed&&m.life<=0)){launchFirework(pos.x,pos.z);scene.remove(m.mesh);missiles.splice(i,1)}else if(m.life<=0){scene.remove(m.mesh);missiles.splice(i,1)}}
 for(let i=fireworks.length-1;i>=0;i--){const f=fireworks[i];f.life-=dt;f.mesh.position.y=Math.min(f.mesh.position.y+f.riseSpeed*dt,f.burstY);f.trail-=dt;if(f.trail<=0){f.trail=.08;const mesh=box(.22,.22,.22,fireworkColors[5],f.mesh.position.x,f.mesh.position.y,f.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-2,vz:0,life:.45,maxLife:.45})}if(f.life<=0){burstFirework(f);scene.remove(f.mesh);fireworks.splice(i,1)}}
 for(let i=fireworkParticles.length-1;i>=0;i--){const p=fireworkParticles[i];p.life-=dt;p.vy-=(p.isStar?3:7)*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;if(p.isStar){p.trail-=dt;if(p.trail<=0&&p.life>.25){p.trail=.12;const mesh=box(.22,.22,.22,p.color,p.mesh.position.x,p.mesh.position.y,p.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-1,vz:0,life:.55,maxLife:.55})}}p.mesh.scale.setScalar(Math.max(0,(p.isStar?.48:.22)*p.life/p.maxLife));if(p.life<=0){scene.remove(p.mesh);fireworkParticles.splice(i,1)}}
 for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.life-=dt;p.vy-=18*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*3;p.mesh.rotation.y+=dt*2;if(p.life<=0){scene.remove(p.mesh);sparks.splice(i,1)}}
@@ -266,6 +276,9 @@ safetyHud.hidden=!state.started;safetyHud.textContent=matchMedia('(any-pointer: 
 const degrees=((Math.round(-state.heading*180/Math.PI)%360)+360)%360;document.querySelector('#heading').textContent=['北','北東','東','南東','南','南西','西','北西'][Math.round(degrees/45)%8];document.querySelector('#degrees').textContent=`${degrees}°`;document.querySelector('#speed').textContent=Math.round(Math.abs(state.speed));document.querySelector('#height').textContent=Math.round(altitudeMeters);document.querySelector('#meter').style.width=`${Math.abs(state.speed)/900*100}%`;worldTick(now/1000);renderer.render(scene,camera)}
 if(savedGame){camera.position.fromArray(savedGame.camera);plane.visible=!state.crashed;if(state.crashed)crashScreen.classList.remove('hidden')}else camera.position.set(state.x+Math.sin(state.heading)*8.55,state.height+4.5,state.z+Math.cos(state.heading)*8.55);animationFrame=requestAnimationFrame(animate);
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)},listenerOptions);
+// Keep the night button centred under the mini map, whatever size the map is at.
+function placeNightButton(){const r=miniMap.getBoundingClientRect();if(!r.width)return;nightButton.style.left=`${r.left+r.width/2}px`;nightButton.style.top=`${r.bottom+14}px`}
+addEventListener('resize',placeNightButton,listenerOptions);placeNightButton();requestAnimationFrame(placeNightButton);
 
 // Vite replaces this module without reloading the page or losing the flight.
 if(import.meta.hot){
