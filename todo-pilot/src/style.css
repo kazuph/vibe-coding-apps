@@ -90,3 +90,10 @@
 html,body,#app{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;touch-action:none}
 button,input,label,a{touch-action:manipulation}
 .touch button,.stick{touch-action:none}
+
+/* よるモードの切り替えボタン（右上、方位計の左） */
+.night-toggle{position:absolute;top:max(28px,env(safe-area-inset-top));right:215px;z-index:5;pointer-events:auto;height:48px;padding:0 16px;border-radius:16px;background:#ffffffe6;color:#3b6474;border:3px solid #fff;font-size:20px;font-weight:900;box-shadow:0 4px 0 #76b8c5;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.night-toggle span{font-size:14px}
+.night-toggle:active{transform:translateY(3px);box-shadow:none}
+.night .night-toggle{background:#24345fe6;color:#ffe9a8;border-color:#5a6fb0;box-shadow:0 4px 0 #0b1530}
+@media(max-width:650px){.night-toggle{right:84px;top:max(132px,env(safe-area-inset-top));height:40px;padding:0 10px;font-size:16px}.night-toggle span{font-size:11px}}

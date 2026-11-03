@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {heldKeys,stick} from './input.js';
-import {loadRealWorld,worldTick} from './real-world.js';
+import {loadRealWorld,worldTick,setWorldNight} from './real-world.js';
 import './style.css';
 import './app-shell.js';
 import {startAudio,updateEngine,speak,explosion,warning} from './sound.js';
@@ -26,8 +26,32 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWid
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.querySelector('#scene').append(renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xe6f9ff, 0x88b277, 2.1));
+const skyLight = new THREE.HemisphereLight(0xe6f9ff, 0x88b277, 2.1); scene.add(skyLight);
 const sun = new THREE.DirectionalLight(0xfff0c8, 2.4); sun.position.set(-35, 80, 30); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = -65; sun.shadow.camera.right = 65; sun.shadow.camera.top = 65; sun.shadow.camera.bottom = -65; sun.shadow.bias = -.0003; scene.add(sun); scene.add(sun.target);
+// Night mode: dark sky, moonlight and stars. The choice is kept in localStorage.
+const nightSky = new THREE.Group(); nightSky.visible = false; scene.add(nightSky);
+{
+  const count = 1400, pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) { const y = Math.random() * .95 + .05, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - y * y); pos.set([Math.cos(a) * r * 4000, y * 4000, Math.sin(a) * r * 4000], i * 3); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  nightSky.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, fog: false, transparent: true, opacity: .9 })));
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(90, 24, 16), new THREE.MeshBasicMaterial({ color: 0xfff6d8, fog: false }));
+  moon.position.set(-1600, 2200, -2400); nightSky.add(moon);
+}
+const nightButton = document.querySelector('#night');
+function setNight(on) {
+  document.documentElement.classList.toggle('night', on);
+  scene.background.set(on ? 0x0a1433 : 0x9edff3); scene.fog.color.set(on ? 0x101c3d : 0xafe4ee);
+  skyLight.color.set(on ? 0x5a6fb0 : 0xe6f9ff); skyLight.groundColor.set(on ? 0x1d2a3a : 0x88b277); skyLight.intensity = on ? .9 : 2.1;
+  sun.color.set(on ? 0xa8bfff : 0xfff0c8); sun.intensity = on ? .7 : 2.4;
+  renderer.toneMappingExposure = on ? .9 : 1;
+  nightSky.visible = on; setWorldNight(on);
+  nightButton.setAttribute('aria-pressed', String(on));
+  nightButton.innerHTML = on ? '☀️ <span>ひる</span>' : '🌙 <span>よる</span>';
+  try { localStorage.setItem('todo-pilot-night', on ? '1' : '0'); } catch {}
+}
+nightButton.addEventListener('click', () => setNight(!document.documentElement.classList.contains('night')), listenerOptions);
+setNight((() => { try { return localStorage.getItem('todo-pilot-night') === '1'; } catch { return false; } })());
 const mat = color => new THREE.MeshStandardMaterial({color, roughness: 1});
 const grass = mat(0x8dca6c), grassLight = mat(0xa0d77c), dirt = mat(0xb58354), road = mat(0x667c7d), white = mat(0xf9f3d9), yellow = mat(0xfad476), green = mat(0x66ae62), green2 = mat(0x79bf6b), trunk = mat(0x99704c), cloudMat = mat(0xffffff);
 const unitBox=new THREE.BoxGeometry(1,1,1);
@@ -134,7 +158,7 @@ let gearRetracted=state.airborne&&state.speed>250,gearExtension=gearRetracted?0:
 const fireworks=[],fireworkParticles=[];
 const fireworkColors=[0xffe066,0xff6da7,0x72dfff,0x9cff91,0xcc95ff,0xffffff].map(color=>new THREE.MeshBasicMaterial({color}));
 function clearFireworks(){for(const p of [...fireworks,...fireworkParticles])scene.remove(p.mesh);fireworks.length=0;fireworkParticles.length=0}
-function launchFirework(x,z){const color=fireworkColors[Math.floor(Math.random()*fireworkColors.length)];const mesh=box(.45,.9,.45,color,x,realGroundHeight(x,z)+.8,z,scene,false);fireworks.push({mesh,color,life:1.4,trail:0})}
+function launchFirework(x,z){const color=fireworkColors[Math.floor(Math.random()*fireworkColors.length)];const ground=realGroundHeight(x,z),startY=ground+.8,burstY=Math.max(state.height,ground+30),rise=burstY-startY,time=THREE.MathUtils.clamp(rise/45,1.2,3.2);const mesh=box(.45,.9,.45,color,x,startY,z,scene,false);fireworks.push({mesh,color,life:time,riseSpeed:rise/time,burstY,trail:0})}
 function burstFirework(f){
 // Evenly spaced stars make the round chrysanthemum shape of a Japanese firework.
 for(const [count,speed,color] of [[100,19,fireworkColors[0]],[52,12,f.color]])for(let i=0;i<count;i++){
@@ -178,8 +202,12 @@ function realGroundHeight(x,z){const i=realCellAt(x,z);if(i<0)return 0;return Ma
 function hitsRealBuilding(x0,z0,y0,x1,z1,y1){if(!realMap)return false;const steps=Math.max(1,Math.ceil(Math.hypot(x1-x0,z1-z0)/.65));for(let n=0;n<=steps;n++){const t=n/steps,x=x0+(x1-x0)*t,z=z0+(z1-z0)*t,y=y0+(y1-y0)*t,i=realCellAt(x,z);if(i>=0&&realMap.world.bh[i]>0){const top=realMap.world.top[i]*realMap.world.B*.18-1.14;if(y<=top)return true}}return false}
 function explode(reason){if(state.crashed)return;crashScreen.querySelector('p').textContent=reason||'しょうがいぶつに きをつけて、かっそうろに おりようね。';explosion();speak('crash');state.crashed=true;state.started=false;plane.visible=false;keys.clear();document.querySelector('#status').textContent='ぶつかった！';message.classList.add('hidden');touch.classList.add('hidden');crashTimer=setTimeout(()=>{if(state.crashed)crashScreen.classList.remove('hidden')},2200);spawnBlast(state.x,state.height+2,state.z)}
 let lastMissile=0;
-function fireMissile(){const now=performance.now();if(now-lastMissile<500)return;lastMissile=now;const pitch=plane.rotation.x,forward=new THREE.Vector3(-Math.sin(state.heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(state.heading)*Math.cos(pitch));const mesh=new THREE.Group();box(.35,.35,2.5,fuselage,0,0,0,mesh);box(.4,.4,.45,red,0,0,-1.2,mesh);mesh.rotation.y=state.heading;mesh.rotation.x=pitch;mesh.position.set(state.x+forward.x*9,state.height+2+forward.y*9,state.z+forward.z*9);scene.add(mesh);missiles.push({mesh,velocity:forward.multiplyScalar(60+state.speed/3.6*.18),life:12})}
-if(import.meta.env.DEV)window.__todoFlight={state,plane,camera,keys,obstacles,segmentHitsBuilding,airportToWorld};
+function fireMissile(target){const now=performance.now();if(now-lastMissile<500)return;lastMissile=now;const pitch=plane.rotation.x,forward=new THREE.Vector3(-Math.sin(state.heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(state.heading)*Math.cos(pitch));const mesh=new THREE.Group();box(.35,.35,2.5,fuselage,0,0,0,mesh);box(.4,.4,.45,red,0,0,-1.2,mesh);mesh.rotation.y=state.heading;mesh.rotation.x=pitch;mesh.position.set(state.x+forward.x*9,state.height+2+forward.y*9,state.z+forward.z*9);scene.add(mesh);const speed=60+state.speed/3.6*.18;if(target){const dir=target.clone().sub(mesh.position);const distance=dir.length();if(distance>1){dir.normalize();const aimSpeed=Math.max(speed,distance/2.5);mesh.rotation.set(0,Math.atan2(-dir.x,-dir.z),0);missiles.push({mesh,velocity:dir.multiplyScalar(aimSpeed),life:distance/aimSpeed,aimed:true,target:target.clone()});return}}missiles.push({mesh,velocity:forward.multiplyScalar(speed),life:12})}
+// Tap or click the world: march along the camera ray to the first ground point (or a far point in the sky).
+const aimRay=new THREE.Raycaster(),aimPointer=new THREE.Vector2();
+function aimPoint(clientX,clientY){const r=renderer.domElement.getBoundingClientRect();aimPointer.set((clientX-r.left)/r.width*2-1,-(clientY-r.top)/r.height*2+1);aimRay.setFromCamera(aimPointer,camera);const {origin,direction}=aimRay.ray;const p=new THREE.Vector3();for(let t=10;t<2500;t+=4){p.copy(origin).addScaledVector(direction,t);if(p.y<=realGroundHeight(p.x,p.z))return p}return origin.clone().addScaledVector(direction,500)}
+renderer.domElement.addEventListener('pointerdown',e=>{if(!state.started||e.button>0)return;startAudio();fireMissile(aimPoint(e.clientX,e.clientY))},listenerOptions);
+if(import.meta.env.DEV)window.__todoFlight={state,plane,camera,keys,obstacles,segmentHitsBuilding,airportToWorld,missiles,fireworks,fireworkParticles,realGroundHeight};
 const targetCam=new THREE.Vector3(), look=new THREE.Vector3();let last=performance.now(), animationFrame, lastDangerCheck=0, lastDangerVoice=0;
 // Left = +1. Keys give full turns; the stick turns as far as it is tilted.
 function steerTurn(){return THREE.MathUtils.clamp((keys.has('KeyA')?1:0)-(keys.has('KeyD')?1:0)-stick.x,-1,1)}
@@ -218,15 +246,15 @@ const onRunway=(Math.abs(local.x)<=4.05&&local.z>=-426&&local.z<=24)||(Math.abs(
 if(touchedDown){if(!document.querySelector('#safe-mode').checked&&(!onRunway||!safeTouchdown))explode(!onRunway?'かっそうろに おりようね。':'スピードを おとして、ゆるやかに おりようね。');else {document.querySelector('#status').textContent='ちゃくりく！';showMessage(matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'ちゃくりく！ げんそくボタンで とまろう':matchMedia('(any-pointer: coarse)').matches?'ちゃくりく！ 「ブレーキ」で とまろう':'ちゃくりく！ Jで ブレーキを かけよう',5000);speak('land')}}
 if(!document.querySelector('#safe-mode').checked && !state.crashed && (obstacles.some(o=>overlapsObstacleHeight(o,previousHeight,state.height,1.5) && segmentHitsBuilding(previousX,previousZ,state.x,state.z,o)) || hitsRealBuilding(previousX,previousZ,previousHeight, state.x,state.z,state.height)))explode();
 }
-for(let i=missiles.length-1;i>=0;i--){const m=missiles[i],previous=m.mesh.position.clone();m.life-=dt;m.velocity.y-=18*dt;m.mesh.position.addScaledVector(m.velocity,dt);m.mesh.rotation.x=Math.atan2(m.velocity.y,Math.hypot(m.velocity.x,m.velocity.z));const pos=m.mesh.position;const hit=pos.y<=realGroundHeight(pos.x,pos.z)+.3||obstacles.some(o=>overlapsObstacleHeight(o,previous.y,pos.y)&&segmentHitsBuilding(previous.x,previous.z,pos.x,pos.z,o))||hitsRealBuilding(previous.x,previous.z,previous.y,pos.x,pos.z,pos.y);if(hit){launchFirework(pos.x,pos.z);scene.remove(m.mesh);missiles.splice(i,1)}else if(m.life<=0){scene.remove(m.mesh);missiles.splice(i,1)}}
-for(let i=fireworks.length-1;i>=0;i--){const f=fireworks[i];f.life-=dt;f.mesh.position.y+=28*dt;f.trail-=dt;if(f.trail<=0){f.trail=.08;const mesh=box(.22,.22,.22,fireworkColors[5],f.mesh.position.x,f.mesh.position.y,f.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-2,vz:0,life:.45,maxLife:.45})}if(f.life<=0){burstFirework(f);scene.remove(f.mesh);fireworks.splice(i,1)}}
+for(let i=missiles.length-1;i>=0;i--){const m=missiles[i],previous=m.mesh.position.clone();m.life-=dt;if(!m.aimed)m.velocity.y-=18*dt;m.mesh.position.addScaledVector(m.velocity,dt);m.mesh.rotation.x=Math.atan2(m.velocity.y,Math.hypot(m.velocity.x,m.velocity.z));const pos=m.mesh.position;const hit=pos.y<=realGroundHeight(pos.x,pos.z)+.3||obstacles.some(o=>overlapsObstacleHeight(o,previous.y,pos.y)&&segmentHitsBuilding(previous.x,previous.z,pos.x,pos.z,o))||hitsRealBuilding(previous.x,previous.z,previous.y,pos.x,pos.z,pos.y);if(hit||(m.aimed&&m.life<=0)){launchFirework(pos.x,pos.z);scene.remove(m.mesh);missiles.splice(i,1)}else if(m.life<=0){scene.remove(m.mesh);missiles.splice(i,1)}}
+for(let i=fireworks.length-1;i>=0;i--){const f=fireworks[i];f.life-=dt;f.mesh.position.y=Math.min(f.mesh.position.y+f.riseSpeed*dt,f.burstY);f.trail-=dt;if(f.trail<=0){f.trail=.08;const mesh=box(.22,.22,.22,fireworkColors[5],f.mesh.position.x,f.mesh.position.y,f.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-2,vz:0,life:.45,maxLife:.45})}if(f.life<=0){burstFirework(f);scene.remove(f.mesh);fireworks.splice(i,1)}}
 for(let i=fireworkParticles.length-1;i>=0;i--){const p=fireworkParticles[i];p.life-=dt;p.vy-=(p.isStar?3:7)*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;if(p.isStar){p.trail-=dt;if(p.trail<=0&&p.life>.25){p.trail=.12;const mesh=box(.22,.22,.22,p.color,p.mesh.position.x,p.mesh.position.y,p.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-1,vz:0,life:.55,maxLife:.55})}}p.mesh.scale.setScalar(Math.max(0,(p.isStar?.48:.22)*p.life/p.maxLife));if(p.life<=0){scene.remove(p.mesh);fireworkParticles.splice(i,1)}}
 for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.life-=dt;p.vy-=18*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*3;p.mesh.rotation.y+=dt*2;if(p.life<=0){scene.remove(p.mesh);sparks.splice(i,1)}}
 for(let i=blastClouds.length-1;i>=0;i--){const p=blastClouds[i];p.life-=dt;const age=1-p.life/p.maxLife;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.vx*=Math.exp(-dt*1.2);p.vz*=Math.exp(-dt*1.2);p.mesh.scale.setScalar(p.size*(1+age*(p.smoke?2.4:3.2)));p.mesh.material.opacity=(p.smoke?.8:.95)*Math.min(1,Math.max(0,p.life/(p.smoke?1.1:.45)));if(p.life<=0){scene.remove(p.mesh);p.mesh.material.dispose();blastClouds.splice(i,1)}}
 if(!state.airborne||state.speed<235)gearRetracted=false;else if(state.speed>250&&state.height>4)gearRetracted=true;
 gearExtension=THREE.MathUtils.lerp(gearExtension,gearRetracted?0:1,1-Math.exp(-3*dt));landingGear.visible=gearExtension>.02;landingGear.scale.y=Math.max(.001,gearExtension);landingGear.position.y=(1-gearExtension)*1.1;
 plane.position.set(state.x, state.height+.35, state.z);plane.rotation.y=state.heading;plane.rotation.z=THREE.MathUtils.lerp(plane.rotation.z,steerTurn()*(state.airborne?.78:.08),1-Math.exp(-5*dt));const flightPitch=state.airborne?THREE.MathUtils.clamp(Math.atan2(state.verticalSpeed,Math.max(state.speed/3.6*.18,.18)),-.52,.52):0;plane.rotation.x=THREE.MathUtils.lerp(plane.rotation.x,flightPitch,1-Math.exp(-5*dt));
-const behind=new THREE.Vector3(Math.sin(state.heading)*8.55,4.5,Math.cos(state.heading)*8.55);targetCam.set(state.x+behind.x,state.height+behind.y,state.z+behind.z);camera.position.lerp(targetCam,1-Math.exp(-10*dt));const viewAhead=12;look.set(state.x-Math.sin(state.heading)*viewAhead,state.height+.9+Math.tan(plane.rotation.x)*viewAhead,state.z-Math.cos(state.heading)*viewAhead);camera.lookAt(look);sun.position.set(state.x-35,state.height+80,state.z+30);sun.target.position.set(state.x,0,state.z);sun.target.updateMatrixWorld();
+nightSky.position.copy(camera.position);const behind=new THREE.Vector3(Math.sin(state.heading)*8.55,4.5,Math.cos(state.heading)*8.55);targetCam.set(state.x+behind.x,state.height+behind.y,state.z+behind.z);camera.position.lerp(targetCam,1-Math.exp(-10*dt));const viewAhead=12;look.set(state.x-Math.sin(state.heading)*viewAhead,state.height+.9+Math.tan(plane.rotation.x)*viewAhead,state.z-Math.cos(state.heading)*viewAhead);camera.lookAt(look);sun.position.set(state.x-35,state.height+80,state.z+30);sun.target.position.set(state.x,0,state.z);sun.target.updateMatrixWorld();
 updateEngine(state.started,state.speed);
 if(state.started&&!state.airborne&&state.speed>=240&&!state.readyAnnounced){state.readyAnnounced=true;speak('ready')}
 if(!state.airborne&&state.speed<220)state.readyAnnounced=false;
