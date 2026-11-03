@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {heldKeys} from './input.js';
 import {loadRealWorld,worldTick} from './real-world.js';
 import './style.css';
+import './app-shell.js';
 import {startAudio,updateEngine,speak,explosion,warning} from './sound.js';
 import {nextSpeed} from './ground-motion.js';
 import {landingIsSafe} from './landing.js';
