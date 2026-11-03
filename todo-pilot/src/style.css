@@ -58,9 +58,11 @@
  .touch{left:0;right:0;bottom:0}
  .touch .phone-directions,.touch .touch-flight{display:none}
  .touch .tablet-controls{display:block;position:fixed;inset:0;pointer-events:none}
- .dpad,.tablet-throttle,.tablet-firework{position:absolute;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
- .dpad{left:24px;bottom:24px;width:180px;height:180px;border-radius:24px;background:#ffffffb8;color:#426d7e;font-weight:900;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);place-items:center}
- .pad-up{grid-area:1/2;white-space:nowrap}.pad-left{grid-area:2/1}.pad-right{grid-area:2/3}.pad-down{grid-area:3/2;white-space:nowrap}
+ .stick,.tablet-throttle,.tablet-firework{position:absolute;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+ .stick{left:28px;bottom:28px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,#ffffffd9 0 40%,#ffffffa6 41% 100%);border:4px solid #fff;box-shadow:0 6px 0 #669ca666,0 10px 26px #305b6b30;color:#5b8797;font-weight:900;font-size:13px}
+ .stick span{position:absolute;pointer-events:none;white-space:nowrap}.stick-up{top:10px;left:50%;transform:translateX(-50%)}.stick-down{bottom:10px;left:50%;transform:translateX(-50%)}.stick-left{left:12px;top:50%;transform:translateY(-50%)}.stick-right{right:12px;top:50%;transform:translateY(-50%)}
+ .knob{position:absolute;left:50%;top:50%;width:84px;height:84px;margin:-42px 0 0 -42px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3d6,#ffbd54 45%,#e69538);border:4px solid #fff;box-shadow:0 5px 0 #d9943e,0 8px 16px #305b6b40;pointer-events:none;transition:transform .12s ease-out}
+ .stick.active .knob{transition:none}
  .tablet-throttle{right:24px;bottom:24px;display:flex;flex-direction:column;gap:10px}
  .touch .tablet-throttle button{width:125px;height:70px;background:#ffbd54;color:white;font-size:16px}
  .touch .tablet-firework{right:24px;bottom:190px;width:125px;font-size:14px}
@@ -87,4 +89,4 @@
 /* iPad などでアプリのように扱う: 文字選択・長押しメニュー・タップ時の灰色表示・拡大・引っ張り更新を止める */
 html,body,#app{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;touch-action:none}
 button,input,label,a{touch-action:manipulation}
-.touch button,.dpad{touch-action:none}
+.touch button,.stick{touch-action:none}
