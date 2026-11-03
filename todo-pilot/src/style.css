@@ -83,3 +83,8 @@
 @media (any-pointer:coarse) and (max-height:500px){#app:has(#intro:not(.hidden)) .brand,#app:has(#intro:not(.hidden)) .compass,#app:has(#intro:not(.hidden)) .instrument{visibility:hidden}}
 @media (any-pointer:coarse){.retry-keys{display:none}}
 @media (any-pointer:coarse) and (max-width:650px){#app:has(#intro:not(.hidden)) .altitude-tape,#app:has(#crash:not(.hidden)) .altitude-tape{visibility:hidden}}
+
+/* iPad などでアプリのように扱う: 文字選択・長押しメニュー・タップ時の灰色表示・拡大・引っ張り更新を止める */
+html,body,#app{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;touch-action:none}
+button,input,label,a{touch-action:manipulation}
+.touch button,.dpad{touch-action:none}

@@ -1,0 +1,14 @@
+{
+  "name": "とどパイロット",
+  "short_name": "とどパイロット",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#a5dded",
+  "theme_color": "#8cd8f6",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
