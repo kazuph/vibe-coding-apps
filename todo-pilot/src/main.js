@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import {heldKeys} from './input.js';
-import {loadRealWorld,worldTick} from './real-world.js';
+import {heldKeys,stick} from './input.js';
+import {loadRealWorld,worldTick,setWorldNight} from './real-world.js';
 import './style.css';
 import './app-shell.js';
 import {startAudio,updateEngine,speak,explosion,warning} from './sound.js';
@@ -26,8 +26,32 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWid
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.querySelector('#scene').append(renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xe6f9ff, 0x88b277, 2.1));
+const skyLight = new THREE.HemisphereLight(0xe6f9ff, 0x88b277, 2.1); scene.add(skyLight);
 const sun = new THREE.DirectionalLight(0xfff0c8, 2.4); sun.position.set(-35, 80, 30); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = -65; sun.shadow.camera.right = 65; sun.shadow.camera.top = 65; sun.shadow.camera.bottom = -65; sun.shadow.bias = -.0003; scene.add(sun); scene.add(sun.target);
+// Night mode: dark sky, moonlight and stars. The choice is kept in localStorage.
+const nightSky = new THREE.Group(); nightSky.visible = false; scene.add(nightSky);
+{
+  const count = 1400, pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) { const y = Math.random() * .95 + .05, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - y * y); pos.set([Math.cos(a) * r * 4000, y * 4000, Math.sin(a) * r * 4000], i * 3); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  nightSky.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, fog: false, transparent: true, opacity: .9 })));
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(90, 24, 16), new THREE.MeshBasicMaterial({ color: 0xfff6d8, fog: false }));
+  moon.position.set(-1600, 2200, -2400); nightSky.add(moon);
+}
+const nightButton = document.querySelector('#night');
+function setNight(on) {
+  document.documentElement.classList.toggle('night', on);
+  scene.background.set(on ? 0x0a1433 : 0x9edff3); scene.fog.color.set(on ? 0x101c3d : 0xafe4ee);
+  skyLight.color.set(on ? 0x5a6fb0 : 0xe6f9ff); skyLight.groundColor.set(on ? 0x1d2a3a : 0x88b277); skyLight.intensity = on ? .9 : 2.1;
+  sun.color.set(on ? 0xa8bfff : 0xfff0c8); sun.intensity = on ? .7 : 2.4;
+  renderer.toneMappingExposure = on ? .9 : 1;
+  nightSky.visible = on; setWorldNight(on);
+  nightButton.setAttribute('aria-pressed', String(on));
+  nightButton.innerHTML = on ? '☀️ <span>ひる</span>' : '🌙 <span>よる</span>';
+  try { localStorage.setItem('todo-pilot-night', on ? '1' : '0'); } catch {}
+}
+nightButton.addEventListener('click', () => setNight(!document.documentElement.classList.contains('night')), listenerOptions);
+setNight((() => { try { return localStorage.getItem('todo-pilot-night') === '1'; } catch { return false; } })());
 const mat = color => new THREE.MeshStandardMaterial({color, roughness: 1});
 const grass = mat(0x8dca6c), grassLight = mat(0xa0d77c), dirt = mat(0xb58354), road = mat(0x667c7d), white = mat(0xf9f3d9), yellow = mat(0xfad476), green = mat(0x66ae62), green2 = mat(0x79bf6b), trunk = mat(0x99704c), cloudMat = mat(0xffffff);
 const unitBox=new THREE.BoxGeometry(1,1,1);
@@ -134,7 +158,7 @@ let gearRetracted=state.airborne&&state.speed>250,gearExtension=gearRetracted?0:
 const fireworks=[],fireworkParticles=[];
 const fireworkColors=[0xffe066,0xff6da7,0x72dfff,0x9cff91,0xcc95ff,0xffffff].map(color=>new THREE.MeshBasicMaterial({color}));
 function clearFireworks(){for(const p of [...fireworks,...fireworkParticles])scene.remove(p.mesh);fireworks.length=0;fireworkParticles.length=0}
-function launchFirework(x,z){const color=fireworkColors[Math.floor(Math.random()*fireworkColors.length)];const mesh=box(.45,.9,.45,color,x,realGroundHeight(x,z)+.8,z,scene,false);fireworks.push({mesh,color,life:1.4,trail:0})}
+function launchFirework(x,z){const color=fireworkColors[Math.floor(Math.random()*fireworkColors.length)];const ground=realGroundHeight(x,z),startY=ground+.8,burstY=Math.max(state.height,ground+30),rise=burstY-startY,time=THREE.MathUtils.clamp(rise/45,1.2,3.2);const mesh=box(.45,.9,.45,color,x,startY,z,scene,false);fireworks.push({mesh,color,life:time,riseSpeed:rise/time,burstY,trail:0})}
 function burstFirework(f){
 // Evenly spaced stars make the round chrysanthemum shape of a Japanese firework.
 for(const [count,speed,color] of [[100,19,fireworkColors[0]],[52,12,f.color]])for(let i=0;i<count;i++){
@@ -144,20 +168,18 @@ fireworkParticles.push({mesh,vx:Math.cos(angle)*ring*speed,vy:vertical*speed,vz:
 }}
 function showMessage(text,time=3500){message.textContent=text;message.classList.remove('hidden');clearTimeout(messageTimer);messageTimer=setTimeout(()=>message.classList.add('hidden'),time)}
 function reset(){Object.assign(state,{started:false,speed:0,height:0,verticalSpeed:0,heading:airportAngle,x:airportToWorld(0,8).x,z:airportToWorld(0,8).z,airborne:false,crashed:false,stalled:false,readyAnnounced:false});keys.clear();clearTimeout(crashTimer);for(const missile of missiles)scene.remove(missile.mesh);missiles.length=0;clearFireworks();plane.visible=true;crashScreen.classList.add('hidden');for(const spark of sparks)scene.remove(spark.mesh);sparks.length=0;for(const cloud of blastClouds){scene.remove(cloud.mesh);cloud.mesh.material.dispose()}blastClouds.length=0;intro.classList.remove('hidden');message.classList.add('hidden');touch.classList.add('hidden');document.querySelector('#status').textContent='じゅんび OK!';}
-function startFlight(){startAudio();state.started=true;document.documentElement.requestFullscreen?.().catch(() => {});intro.classList.add('hidden');if(matchMedia('(any-pointer: coarse)').matches)touch.classList.remove('hidden');document.querySelector('#status').textContent='しゅっぱつ！';showMessage(matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'かそくして 240 km/hを こえたら 十字キーの「▲ とぶ」で しゅっぱつ！':matchMedia('(any-pointer: coarse)').matches?'かそくして 240 km/hを こえたら「とぶ！」で しゅっぱつ！':'Kで かそく！ 240 km/hを こえたら スペースで とびたとう！',6000)}
+function startFlight(){startAudio();state.started=true;document.documentElement.requestFullscreen?.().catch(() => {});intro.classList.add('hidden');if(matchMedia('(any-pointer: coarse)').matches)touch.classList.remove('hidden');document.querySelector('#status').textContent='しゅっぱつ！';showMessage(matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'かそくして 240 km/hを こえたら スティックを うえに たおして しゅっぱつ！':matchMedia('(any-pointer: coarse)').matches?'かそくして 240 km/hを こえたら「とぶ！」で しゅっぱつ！':'Kで かそく！ 240 km/hを こえたら スペースで とびたとう！',6000)}
 document.querySelector('#start').addEventListener('click',startFlight,listenerOptions);
 document.querySelector('#reset').addEventListener('click',reset,listenerOptions);document.querySelector('#retry').addEventListener('click',()=>{reset();startFlight()},listenerOptions);
 function toggleSafety(){const input=document.querySelector('#safe-mode');input.checked=!input.checked;showMessage(input.checked?'あんぜんモード ON！ ぶつかっても だいじょうぶ':'あんぜんモード OFF！ ぶつかると ばくはつするよ',3000)}
 addEventListener('keydown',e=>{if((state.started||state.crashed)&&e.code==='KeyR'){e.preventDefault();if(!e.repeat&&!startButton.disabled){reset();startFlight()}return}if(!state.started&&!state.crashed&&!intro.classList.contains('hidden')&&(e.code==='Space'||e.code==='KeyK')){e.preventDefault();keys.delete(e.code);if(!e.repeat&&!startButton.disabled)startFlight();return}if(state.started)startAudio();if(state.started&&e.code==='KeyQ'){e.preventDefault();if(!e.repeat)toggleSafety();return}if(state.started && e.code==='KeyL' && !e.repeat){e.preventDefault();fireMissile();return}if(state.crashed && !crashScreen.classList.contains('hidden') && (e.code==='Space'||e.code==='KeyK')){e.preventDefault();keys.delete(e.code);if(!e.repeat){reset();startFlight()}return}if(['KeyW','KeyA','KeyS','KeyD','KeyJ','KeyK','Space','ShiftLeft','ShiftRight'].includes(e.code)){e.preventDefault();keys.add(e.code)}},listenerOptions);
 document.querySelectorAll('[data-key]').forEach(b=>{const key=b.dataset.key;b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);if(key==='KeyL'){if(state.started)fireMissile();return}keys.add(key)},listenerOptions);for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,()=>keys.delete(key),listenerOptions)});
-const dpad=document.querySelector('#dpad');let dpadPointer=null;const dpadKeys=['KeyW','KeyS','KeyA','KeyD'],dpadHeld=new Set(),physicalHeld=new Set();
-addEventListener('keydown',e=>{if(dpadKeys.includes(e.code))physicalHeld.add(e.code)},listenerOptions);
-addEventListener('keyup',e=>{physicalHeld.delete(e.code);if(dpadHeld.has(e.code))keys.add(e.code)},listenerOptions);
-function clearDpad(){for(const key of dpadHeld)if(!physicalHeld.has(key))keys.delete(key);dpadHeld.clear();dpadPointer=null}
-function updateDpad(e){const r=dpad.getBoundingClientRect();const x=(e.clientX-r.left-r.width/2)/(r.width/2),y=(e.clientY-r.top-r.height/2)/(r.height/2);for(const key of dpadHeld)if(!physicalHeld.has(key))keys.delete(key);dpadHeld.clear();for(const [on,key] of [[x< -1/3,'KeyA'],[x>1/3,'KeyD'],[y< -1/3,'KeyW'],[y>1/3,'KeyS']])if(on){dpadHeld.add(key);keys.add(key)}}
-dpad.addEventListener('pointerdown',e=>{if(dpadPointer!==null)return;e.preventDefault();dpadPointer=e.pointerId;dpad.setPointerCapture(e.pointerId);updateDpad(e)},listenerOptions);
-dpad.addEventListener('pointermove',e=>{if(e.pointerId===dpadPointer)updateDpad(e)},listenerOptions);
-for(const event of ['pointerup','pointercancel','lostpointercapture'])dpad.addEventListener(event,e=>{if(e.pointerId===dpadPointer)clearDpad()},listenerOptions);
+const stickEl=document.querySelector('#stick'), knob=document.querySelector('#knob');let stickPointer=null;
+function updateStick(e){const r=stickEl.getBoundingClientRect(),R=r.width/2,m=R*.62;let dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+R);const d=Math.hypot(dx,dy);if(d>m){dx*=m/d;dy*=m/d}knob.style.transform=`translate(${dx}px,${dy}px)`;const dead=v=>Math.abs(v)<.12?0:(v-Math.sign(v)*.12)/.88;stick.x=dead(dx/m);stick.y=dead(-dy/m)}
+function releaseStick(){stickPointer=null;stick.x=stick.y=0;knob.style.transform='';stickEl.classList.remove('active')}
+stickEl.addEventListener('pointerdown',e=>{if(stickPointer!==null)return;e.preventDefault();stickPointer=e.pointerId;stickEl.setPointerCapture(e.pointerId);stickEl.classList.add('active');updateStick(e)},listenerOptions);
+stickEl.addEventListener('pointermove',e=>{if(e.pointerId===stickPointer)updateStick(e)},listenerOptions);
+for(const event of ['pointerup','pointercancel','lostpointercapture'])stickEl.addEventListener(event,e=>{if(e.pointerId===stickPointer)releaseStick()},listenerOptions);
 addEventListener('blur',()=>{physicalHeld.clear();clearDpad()},listenerOptions);
 // Sweep the plane's path against expanded building bounds so fast movement cannot skip a collision.
 function segmentHitsBuilding(x0,z0,x1,z1,o){if(o.airportLocal){const a=worldToAirport(x0,z0),b=worldToAirport(x1,z1);x0=a.x;z0=a.z;x1=b.x;z1=b.z}let min=0,max=1;for(const [p,d,lo,hi] of [[x0,x1-x0,o.x-o.w/2-.6,o.x+o.w/2+.6],[z0,z1-z0,o.z-o.d/2-.6,o.z+o.d/2+.6]]){if(Math.abs(d)<1e-9){if(p<lo||p>hi)return false;continue}let a=(lo-p)/d,b=(hi-p)/d;if(a>b)[a,b]=[b,a];min=Math.max(min,a);max=Math.min(max,b);if(min>max)return false}return true}
@@ -180,29 +202,36 @@ function realGroundHeight(x,z){const i=realCellAt(x,z);if(i<0)return 0;return Ma
 function hitsRealBuilding(x0,z0,y0,x1,z1,y1){if(!realMap)return false;const steps=Math.max(1,Math.ceil(Math.hypot(x1-x0,z1-z0)/.65));for(let n=0;n<=steps;n++){const t=n/steps,x=x0+(x1-x0)*t,z=z0+(z1-z0)*t,y=y0+(y1-y0)*t,i=realCellAt(x,z);if(i>=0&&realMap.world.bh[i]>0){const top=realMap.world.top[i]*realMap.world.B*.18-1.14;if(y<=top)return true}}return false}
 function explode(reason){if(state.crashed)return;crashScreen.querySelector('p').textContent=reason||'しょうがいぶつに きをつけて、かっそうろに おりようね。';explosion();speak('crash');state.crashed=true;state.started=false;plane.visible=false;keys.clear();document.querySelector('#status').textContent='ぶつかった！';message.classList.add('hidden');touch.classList.add('hidden');crashTimer=setTimeout(()=>{if(state.crashed)crashScreen.classList.remove('hidden')},2200);spawnBlast(state.x,state.height+2,state.z)}
 let lastMissile=0;
-function fireMissile(){const now=performance.now();if(now-lastMissile<500)return;lastMissile=now;const pitch=plane.rotation.x,forward=new THREE.Vector3(-Math.sin(state.heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(state.heading)*Math.cos(pitch));const mesh=new THREE.Group();box(.35,.35,2.5,fuselage,0,0,0,mesh);box(.4,.4,.45,red,0,0,-1.2,mesh);mesh.rotation.y=state.heading;mesh.rotation.x=pitch;mesh.position.set(state.x+forward.x*9,state.height+2+forward.y*9,state.z+forward.z*9);scene.add(mesh);missiles.push({mesh,velocity:forward.multiplyScalar(60+state.speed/3.6*.18),life:12})}
-if(import.meta.env.DEV)window.__todoFlight={state,plane,camera,keys,obstacles,segmentHitsBuilding,airportToWorld};
+function fireMissile(target){const now=performance.now();if(now-lastMissile<500)return;lastMissile=now;const pitch=plane.rotation.x,forward=new THREE.Vector3(-Math.sin(state.heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(state.heading)*Math.cos(pitch));const mesh=new THREE.Group();box(.35,.35,2.5,fuselage,0,0,0,mesh);box(.4,.4,.45,red,0,0,-1.2,mesh);mesh.rotation.y=state.heading;mesh.rotation.x=pitch;mesh.position.set(state.x+forward.x*9,state.height+2+forward.y*9,state.z+forward.z*9);scene.add(mesh);const speed=60+state.speed/3.6*.18;if(target){const dir=target.clone().sub(mesh.position);const distance=dir.length();if(distance>1){dir.normalize();const aimSpeed=Math.max(speed,distance/2.5);mesh.rotation.set(0,Math.atan2(-dir.x,-dir.z),0);missiles.push({mesh,velocity:dir.multiplyScalar(aimSpeed),life:distance/aimSpeed,aimed:true,target:target.clone()});return}}missiles.push({mesh,velocity:forward.multiplyScalar(speed),life:12})}
+// Tap or click the world: march along the camera ray to the first ground point (or a far point in the sky).
+const aimRay=new THREE.Raycaster(),aimPointer=new THREE.Vector2();
+function aimPoint(clientX,clientY){const r=renderer.domElement.getBoundingClientRect();aimPointer.set((clientX-r.left)/r.width*2-1,-(clientY-r.top)/r.height*2+1);aimRay.setFromCamera(aimPointer,camera);const {origin,direction}=aimRay.ray;const p=new THREE.Vector3();for(let t=10;t<2500;t+=4){p.copy(origin).addScaledVector(direction,t);if(p.y<=realGroundHeight(p.x,p.z))return p}return origin.clone().addScaledVector(direction,500)}
+renderer.domElement.addEventListener('pointerdown',e=>{if(!state.started||e.button>0)return;startAudio();fireMissile(aimPoint(e.clientX,e.clientY))},listenerOptions);
+if(import.meta.env.DEV)window.__todoFlight={state,plane,camera,keys,obstacles,segmentHitsBuilding,airportToWorld,missiles,fireworks,fireworkParticles,realGroundHeight};
 const targetCam=new THREE.Vector3(), look=new THREE.Vector3();let last=performance.now(), animationFrame, lastDangerCheck=0, lastDangerVoice=0;
+// Left = +1. Keys give full turns; the stick turns as far as it is tilted.
+function steerTurn(){return THREE.MathUtils.clamp((keys.has('KeyA')?1:0)-(keys.has('KeyD')?1:0)-stick.x,-1,1)}
 function animate(now){animationFrame=requestAnimationFrame(animate);const dt=Math.min((now-last)/1000,.05);last=now;
 if(state.started){
-const ascending=keys.has('Space')||keys.has('KeyW');
-const descending=keys.has('ShiftLeft')||keys.has('ShiftRight')||keys.has('KeyS');
+const keyUp=keys.has('Space')||keys.has('KeyW'), keyDown=keys.has('ShiftLeft')||keys.has('ShiftRight')||keys.has('KeyS');
+const ascending=keyUp||stick.y>.3;
+const descending=keyDown||stick.y<-.3;
 const braking=keys.has('KeyJ');
 // J first brakes, then pushes the aircraft backwards while on the ground.
 state.speed=nextSpeed(state.speed,dt,keys.has('KeyK'),braking,state.airborne);
-const turn=(keys.has('KeyA')?1:0)-(keys.has('KeyD')?1:0);
+const turn=steerTurn();
 const steeringGrip=Math.min(Math.abs(state.speed)/45,1);
 const speedTurnFactor=THREE.MathUtils.clamp(1.15-state.speed/1100,.35,1);
 const accelerationTurnFactor=keys.has('KeyK')?.72:1;
 state.heading+=turn*dt*(state.airborne?.70:.65)*steeringGrip*speedTurnFactor*accelerationTurnFactor*(state.speed<0?-1:1);
 // A simple lift model: lift grows with speed squared; below flying speed the plane sinks.
 const liftRatio=(state.speed/240)**2;
-if(!state.airborne && ascending && liftRatio>=1){state.airborne=true;state.verticalSpeed=.18;document.querySelector('#status').textContent='ひこうちゅう！';showMessage(matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'とびたった！ 十字キーの下で ゆっくり おりよう ☁':matchMedia('(any-pointer: coarse)').matches?'とびたった！ 「おりる」で ゆっくり おりよう ☁':'とびたった！ Shiftで ゆっくり おりよう ☁',5000)}
+if(!state.airborne && ascending && liftRatio>=1){state.airborne=true;state.verticalSpeed=.18;document.querySelector('#status').textContent='ひこうちゅう！';showMessage(matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'とびたった！ スティックを したに たおすと ゆっくり おりるよ ☁':matchMedia('(any-pointer: coarse)').matches?'とびたった！ 「おりる」で ゆっくり おりよう ☁':'とびたった！ Shiftで ゆっくり おりよう ☁',5000)}
 const previousHeight=state.height; let touchedDown=false, safeTouchdown=false;
 if(state.airborne){
   if(state.speed<220 && !state.stalled){state.stalled=true;warning();speak('stall');document.querySelector('#status').textContent='しっそく！';showMessage(matchMedia('(any-pointer: coarse)').matches?'スピードが たりない！ 「かそく」で スピードを あげよう':'スピードが たりない！ Kで かそくしよう',5000)}
   if(state.stalled && state.speed>=240){state.stalled=false;document.querySelector('#status').textContent='ひこうちゅう！';showMessage('スピードが もどったよ！',3000)}
-  const verticalInput=(ascending?1:0)-(descending?1:0);
+  const verticalInput=THREE.MathUtils.clamp((keyUp?1:0)-(keyDown?1:0)+stick.y,-1,1);
   const targetVertical = state.stalled ? -Math.max(4, (1-liftRatio)*15) : THREE.MathUtils.clamp((liftRatio-1)*8, -12, 5) + verticalInput*(state.speed/3.6)*.58;
   state.verticalSpeed += (targetVertical*.18-state.verticalSpeed)*Math.min(1,dt*3.5);
   state.height += state.verticalSpeed*dt;
@@ -217,20 +246,20 @@ const onRunway=(Math.abs(local.x)<=4.05&&local.z>=-426&&local.z<=24)||(Math.abs(
 if(touchedDown){if(!document.querySelector('#safe-mode').checked&&(!onRunway||!safeTouchdown))explode(!onRunway?'かっそうろに おりようね。':'スピードを おとして、ゆるやかに おりようね。');else {document.querySelector('#status').textContent='ちゃくりく！';showMessage(matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'ちゃくりく！ げんそくボタンで とまろう':matchMedia('(any-pointer: coarse)').matches?'ちゃくりく！ 「ブレーキ」で とまろう':'ちゃくりく！ Jで ブレーキを かけよう',5000);speak('land')}}
 if(!document.querySelector('#safe-mode').checked && !state.crashed && (obstacles.some(o=>overlapsObstacleHeight(o,previousHeight,state.height,1.5) && segmentHitsBuilding(previousX,previousZ,state.x,state.z,o)) || hitsRealBuilding(previousX,previousZ,previousHeight, state.x,state.z,state.height)))explode();
 }
-for(let i=missiles.length-1;i>=0;i--){const m=missiles[i],previous=m.mesh.position.clone();m.life-=dt;m.velocity.y-=18*dt;m.mesh.position.addScaledVector(m.velocity,dt);m.mesh.rotation.x=Math.atan2(m.velocity.y,Math.hypot(m.velocity.x,m.velocity.z));const pos=m.mesh.position;const hit=pos.y<=realGroundHeight(pos.x,pos.z)+.3||obstacles.some(o=>overlapsObstacleHeight(o,previous.y,pos.y)&&segmentHitsBuilding(previous.x,previous.z,pos.x,pos.z,o))||hitsRealBuilding(previous.x,previous.z,previous.y,pos.x,pos.z,pos.y);if(hit){launchFirework(pos.x,pos.z);scene.remove(m.mesh);missiles.splice(i,1)}else if(m.life<=0){scene.remove(m.mesh);missiles.splice(i,1)}}
-for(let i=fireworks.length-1;i>=0;i--){const f=fireworks[i];f.life-=dt;f.mesh.position.y+=28*dt;f.trail-=dt;if(f.trail<=0){f.trail=.08;const mesh=box(.22,.22,.22,fireworkColors[5],f.mesh.position.x,f.mesh.position.y,f.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-2,vz:0,life:.45,maxLife:.45})}if(f.life<=0){burstFirework(f);scene.remove(f.mesh);fireworks.splice(i,1)}}
+for(let i=missiles.length-1;i>=0;i--){const m=missiles[i],previous=m.mesh.position.clone();m.life-=dt;if(!m.aimed)m.velocity.y-=18*dt;m.mesh.position.addScaledVector(m.velocity,dt);m.mesh.rotation.x=Math.atan2(m.velocity.y,Math.hypot(m.velocity.x,m.velocity.z));const pos=m.mesh.position;const hit=pos.y<=realGroundHeight(pos.x,pos.z)+.3||obstacles.some(o=>overlapsObstacleHeight(o,previous.y,pos.y)&&segmentHitsBuilding(previous.x,previous.z,pos.x,pos.z,o))||hitsRealBuilding(previous.x,previous.z,previous.y,pos.x,pos.z,pos.y);if(hit||(m.aimed&&m.life<=0)){launchFirework(pos.x,pos.z);scene.remove(m.mesh);missiles.splice(i,1)}else if(m.life<=0){scene.remove(m.mesh);missiles.splice(i,1)}}
+for(let i=fireworks.length-1;i>=0;i--){const f=fireworks[i];f.life-=dt;f.mesh.position.y=Math.min(f.mesh.position.y+f.riseSpeed*dt,f.burstY);f.trail-=dt;if(f.trail<=0){f.trail=.08;const mesh=box(.22,.22,.22,fireworkColors[5],f.mesh.position.x,f.mesh.position.y,f.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-2,vz:0,life:.45,maxLife:.45})}if(f.life<=0){burstFirework(f);scene.remove(f.mesh);fireworks.splice(i,1)}}
 for(let i=fireworkParticles.length-1;i>=0;i--){const p=fireworkParticles[i];p.life-=dt;p.vy-=(p.isStar?3:7)*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;if(p.isStar){p.trail-=dt;if(p.trail<=0&&p.life>.25){p.trail=.12;const mesh=box(.22,.22,.22,p.color,p.mesh.position.x,p.mesh.position.y,p.mesh.position.z,scene,false);fireworkParticles.push({mesh,vx:0,vy:-1,vz:0,life:.55,maxLife:.55})}}p.mesh.scale.setScalar(Math.max(0,(p.isStar?.48:.22)*p.life/p.maxLife));if(p.life<=0){scene.remove(p.mesh);fireworkParticles.splice(i,1)}}
 for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.life-=dt;p.vy-=18*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*3;p.mesh.rotation.y+=dt*2;if(p.life<=0){scene.remove(p.mesh);sparks.splice(i,1)}}
 for(let i=blastClouds.length-1;i>=0;i--){const p=blastClouds[i];p.life-=dt;const age=1-p.life/p.maxLife;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.vx*=Math.exp(-dt*1.2);p.vz*=Math.exp(-dt*1.2);p.mesh.scale.setScalar(p.size*(1+age*(p.smoke?2.4:3.2)));p.mesh.material.opacity=(p.smoke?.8:.95)*Math.min(1,Math.max(0,p.life/(p.smoke?1.1:.45)));if(p.life<=0){scene.remove(p.mesh);p.mesh.material.dispose();blastClouds.splice(i,1)}}
 if(!state.airborne||state.speed<235)gearRetracted=false;else if(state.speed>250&&state.height>4)gearRetracted=true;
 gearExtension=THREE.MathUtils.lerp(gearExtension,gearRetracted?0:1,1-Math.exp(-3*dt));landingGear.visible=gearExtension>.02;landingGear.scale.y=Math.max(.001,gearExtension);landingGear.position.y=(1-gearExtension)*1.1;
-plane.position.set(state.x, state.height+.35, state.z);plane.rotation.y=state.heading;plane.rotation.z=THREE.MathUtils.lerp(plane.rotation.z,((keys.has('KeyA')?1:0)-(keys.has('KeyD')?1:0))*(state.airborne?.78:.08),1-Math.exp(-5*dt));const flightPitch=state.airborne?THREE.MathUtils.clamp(Math.atan2(state.verticalSpeed,Math.max(state.speed/3.6*.18,.18)),-.52,.52):0;plane.rotation.x=THREE.MathUtils.lerp(plane.rotation.x,flightPitch,1-Math.exp(-5*dt));
-const behind=new THREE.Vector3(Math.sin(state.heading)*8.55,4.5,Math.cos(state.heading)*8.55);targetCam.set(state.x+behind.x,state.height+behind.y,state.z+behind.z);camera.position.lerp(targetCam,1-Math.exp(-10*dt));const viewAhead=12;look.set(state.x-Math.sin(state.heading)*viewAhead,state.height+.9+Math.tan(plane.rotation.x)*viewAhead,state.z-Math.cos(state.heading)*viewAhead);camera.lookAt(look);sun.position.set(state.x-35,state.height+80,state.z+30);sun.target.position.set(state.x,0,state.z);sun.target.updateMatrixWorld();
+plane.position.set(state.x, state.height+.35, state.z);plane.rotation.y=state.heading;plane.rotation.z=THREE.MathUtils.lerp(plane.rotation.z,steerTurn()*(state.airborne?.78:.08),1-Math.exp(-5*dt));const flightPitch=state.airborne?THREE.MathUtils.clamp(Math.atan2(state.verticalSpeed,Math.max(state.speed/3.6*.18,.18)),-.52,.52):0;plane.rotation.x=THREE.MathUtils.lerp(plane.rotation.x,flightPitch,1-Math.exp(-5*dt));
+nightSky.position.copy(camera.position);const behind=new THREE.Vector3(Math.sin(state.heading)*8.55,4.5,Math.cos(state.heading)*8.55);targetCam.set(state.x+behind.x,state.height+behind.y,state.z+behind.z);camera.position.lerp(targetCam,1-Math.exp(-10*dt));const viewAhead=12;look.set(state.x-Math.sin(state.heading)*viewAhead,state.height+.9+Math.tan(plane.rotation.x)*viewAhead,state.z-Math.cos(state.heading)*viewAhead);camera.lookAt(look);sun.position.set(state.x-35,state.height+80,state.z+30);sun.target.position.set(state.x,0,state.z);sun.target.updateMatrixWorld();
 updateEngine(state.started,state.speed);
 if(state.started&&!state.airborne&&state.speed>=240&&!state.readyAnnounced){state.readyAnnounced=true;speak('ready')}
 if(!state.airborne&&state.speed<220)state.readyAnnounced=false;
 if(state.started&&!document.querySelector('#safe-mode').checked&&state.speed>50&&now-lastDangerCheck>400){lastDangerCheck=now;const lookAhead=Math.max(30,state.speed/3.6*2.2),endX=state.x-Math.sin(state.heading)*lookAhead,endZ=state.z-Math.cos(state.heading)*lookAhead;if(now-lastDangerVoice>5000&&(obstacles.some(o=>overlapsObstacleHeight(o,state.height,state.height,1.5)&&segmentHitsBuilding(state.x,state.z,endX,endZ,o))||hitsRealBuilding(state.x,state.z,state.height,endX,endZ,state.height))){lastDangerVoice=now;speak('danger')}}
-takeoffHint.classList.toggle('hidden',!(state.started&&!state.airborne&&state.speed>=240));takeoffHint.querySelector('span').textContent=matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'十字キーの「▲ とぶ」で しゅっぱつ':matchMedia('(any-pointer: coarse)').matches?'「とぶ！」で しゅっぱつ':'W または スペースで しゅっぱつ';
+takeoffHint.classList.toggle('hidden',!(state.started&&!state.airborne&&state.speed>=240));takeoffHint.querySelector('span').textContent=matchMedia('(any-pointer: coarse) and (min-width:600px) and (min-height:600px)').matches?'スティックを うえに たおして しゅっぱつ':matchMedia('(any-pointer: coarse)').matches?'「とぶ！」で しゅっぱつ':'W または スペースで しゅっぱつ';
 const altitudeMeters=state.height/.18;const altitudeBase=Math.floor(altitudeMeters/20)*20;const tapeHeight=altitudeTicks.clientHeight;const tickRange=Math.ceil(tapeHeight/80)+1;altitudeTicks.innerHTML=Array.from({length:tickRange*2+1},(_,i)=>{const value=altitudeBase+(i-tickRange)*20;if(value<0)return '';const y=tapeHeight/2-(value-altitudeMeters)*2;return `<div class="altitude-tick" style="top:${y}px"><span>${value}</span><i></i></div>`}).join('');
 compassNeedle.style.transform=`rotate(${state.heading}rad)`;drawMap();
 safetyHud.hidden=!state.started;safetyHud.textContent=matchMedia('(any-pointer: coarse)').matches?(document.querySelector('#safe-mode').checked?'あんぜん ON':'あんぜん OFF'):(document.querySelector('#safe-mode').checked?'あんぜん ON　Qで切替・Rでやりなおし':'あんぜん OFF　Qで切替・Rでやりなおし');

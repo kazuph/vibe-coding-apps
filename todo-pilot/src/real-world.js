@@ -21,3 +21,7 @@ export function loadRealWorld(anchor,onProgress){
  return promise;
 }
 export function worldTick(t){U.uTime.value=t}
+// Night mode for the voxel world: dim the sun and ambient light, darken the fog and light up windows.
+const dayUniforms={sun:U.uSunCol.value.clone(),sky:U.uSkyAmb.value.clone(),ground:U.uGroundAmb.value.clone(),fog:U.uFogCol.value.clone()};
+const nightUniforms={sun:dayUniforms.sun.clone().setRGB(.22,.27,.42),sky:dayUniforms.sky.clone().setRGB(.15,.19,.33),ground:dayUniforms.ground.clone().setRGB(.06,.07,.1),fog:dayUniforms.fog.clone().setRGB(.06,.1,.22)};
+export function setWorldNight(on){const v=on?nightUniforms:dayUniforms;U.uNight.value=on?1:0;U.uSunCol.value.copy(v.sun);U.uSkyAmb.value.copy(v.sky);U.uGroundAmb.value.copy(v.ground);U.uFogCol.value.copy(v.fog)}
