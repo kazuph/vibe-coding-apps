@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>マグロ図鑑：種類 × 部位（大トロ・中トロ・赤身）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f5efe4; --paper2:#ebe3d4; --ink:#1d1b19; --sub:#6b6259; --line:#d6cbb8;
+  --shu:#b8322a; --navy:#1d2a44;
+  --aka:#b3192f; --chu:#e0727a; --oto:#f3c4c0; --suna:#f9e0dc;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:"Zen Kaku Gothic New",system-ui,sans-serif;line-height:1.7;-webkit-text-size-adjust:100%}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 60px}
+h1,h2,h3{font-family:"Shippori Mincho",serif;font-weight:800;letter-spacing:.04em;line-height:1.35}
+h1{font-size:clamp(26px,5vw,40px);margin:8px 0 4px}
+h1 small{display:block;font-size:.42em;color:var(--shu);letter-spacing:.3em;font-weight:600;margin-bottom:6px}
+.lead{color:var(--sub);margin:0 0 18px;font-size:15px}
+h2{font-size:clamp(20px,3.6vw,26px);margin:44px 0 6px;display:flex;align-items:center;gap:10px}
+h2 .no{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--shu);color:#fff;font-size:15px;font-family:"Zen Kaku Gothic New";flex:none}
+.desc{color:var(--sub);font-size:14px;margin:0 0 14px}
+.card{background:#fffaf2;border:1px solid var(--line);border-radius:14px;padding:14px}
+
+/* species tabs */
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 8px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;border:1px solid var(--line);background:#fffaf2;border-radius:999px;padding:7px 14px;font:inherit;font-size:14px;cursor:pointer;color:var(--ink);white-space:nowrap}
+.tab small{color:var(--sub);font-size:11px;margin-left:4px}
+.tab[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tab[aria-pressed=true] small{color:#cfc6b8}
+
+/* 3D */
+.stage{position:relative;height:380px;overflow:hidden;border-radius:12px;background:
+  radial-gradient(ellipse at 50% 38%,#fff8ec 0%,#efe6d6 60%,#e4d9c5 100%);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.stage:active{cursor:grabbing}
+.fit{position:absolute;left:50%;top:50%;width:0;height:0;perspective:1300px}
+.scene{position:absolute;left:0;top:0;width:0;height:0;transform-style:preserve-3d}
+.plane{position:absolute;transform-style:preserve-3d}
+.side{width:600px;height:220px;left:-300px;top:-110px}
+.slice{position:absolute;left:0;top:0;width:0;height:0;transform-style:preserve-3d;cursor:pointer}
+.q{position:absolute;transition:filter .2s}
+.slice.sel .q{filter:drop-shadow(0 0 6px rgba(184,50,42,.9))}
+.tag3d{position:absolute;white-space:nowrap;font-weight:700;font-size:13px;color:var(--ink);background:rgba(255,250,242,.9);border:1px solid var(--line);padding:1px 8px;border-radius:999px;transform:translate(-50%,-100%)}
+.hint{position:absolute;left:10px;bottom:8px;font-size:12px;color:var(--sub);pointer-events:none}
+.ctrls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-top:10px}
+.ctrls label{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:8px}
+input[type=range]{accent-color:var(--shu);width:160px}
+.btn{border:1px solid var(--line);background:#fffaf2;border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;color:var(--ink)}
+.btn.on{background:var(--shu);color:#fff;border-color:var(--shu)}
+.posbtns{display:flex;gap:6px}
+
+.detail{display:grid;grid-template-columns:minmax(220px,340px) 1fr;gap:16px;margin-top:14px;align-items:center}
+.detail h3{margin:0 0 4px;font-size:19px}
+.detail p{margin:6px 0;font-size:14.5px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-size:12.5px;border-radius:999px;padding:2px 10px;border:1px solid rgba(0,0,0,.08)}
+@media (max-width:640px){.detail{grid-template-columns:1fr}.stage{height:330px}}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin:10px 0 0}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:16px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.15);display:inline-block}
+
+/* compare grid */
+.scrollx{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;border:1px solid var(--line);background:#fffaf2}
+table{border-collapse:separate;border-spacing:0;width:100%}
+.grid th,.grid td,.mx th,.mx td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:8px;vertical-align:middle;text-align:center}
+.grid tr:last-child td,.grid tr:last-child th,.mx tr:last-child td,.mx tr:last-child th{border-bottom:none}
+th:last-child,td:last-child{border-right:none!important}
+.sticky{position:sticky;left:0;background:#f3ead9;z-index:1;text-align:left!important;white-space:nowrap;font-weight:700}
+.grid thead th{background:#f3ead9;font-weight:700;min-width:150px}
+.sp-h{font-family:"Shippori Mincho",serif;font-size:16px}
+.sp-h small{display:block;font-family:"Zen Kaku Gothic New";font-size:11.5px;color:var(--sub);font-weight:400}
+.grid td svg{display:block;margin:0 auto}
+.rowh small{display:block;font-weight:400;color:var(--sub);font-size:11.5px}
+.icon svg{display:block;margin:4px auto 0}
+
+/* side map */
+.sidemap svg{width:100%;height:auto;display:block}
+.zone{cursor:pointer;transition:opacity .15s}
+.zone:hover{opacity:.85}
+.zone.sel{stroke:#111;stroke-width:2.5}
+.zinfo{margin-top:10px;min-height:66px}
+.zinfo b{font-family:"Shippori Mincho",serif;font-size:17px}
+
+/* matrix */
+.mx th,.mx td{font-size:13.5px;min-width:128px}
+.mx thead th{background:#f3ead9}
+.mx td .s{display:block;font-size:22px;line-height:1.2;font-weight:700}
+.mx td .n{display:block;color:var(--sub);font-size:12px;line-height:1.45}
+.s.g4{color:var(--shu)} .s.g3{color:#c46a2b} .s.g2{color:#8a7a5c} .s.g1{color:#b9ad98}
+
+/* glossary */
+.gl{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.gl .card h3{margin:0 0 2px;font-size:17px;display:flex;align-items:center;gap:8px}
+.gl .card h3 i{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid rgba(0,0,0,.15)}
+.gl .card p{margin:4px 0 0;font-size:13.5px}
+.gl .card .w{font-size:12px;color:var(--sub)}
+.note{font-size:12.5px;color:var(--sub);margin-top:30px;border-top:1px dashed var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><small>TUNA × CUTS</small>マグロの種類と部位がわかる図鑑</h1>
+  <p class="lead">横に「マグロの種類」、縦（分解方向）に「部位と呼び名」。大トロ・中トロ・赤身が魚体のどこから取れるのかを、立体の輪切りで見られます。</p>
+
+  <!-- 1. 3D -->
+  <h2><span class="no">1</span>輪切りを立体で見る</h2>
+  <p class="desc">マグロを「かみ（頭側）・なか・しも（尾側）」で輪切りにし、さらに背と腹、左右に4つ割り（五枚おろし）にした模型です。ドラッグで回転、スライダーで分解できます。輪切りをタップすると下に断面の詳細が出ます。</p>
+  <div class="tabs" id="tabs3d"></div>
+  <div class="stage" id="stage">
+    <div class="fit" id="fit"><div class="scene" id="scene"></div></div>
+    <div class="hint">ドラッグで回転 ／ 輪切りをタップで詳細</div>
+  </div>
+  <div class="ctrls">
+    <label>組み立て <input type="range" id="explode" min="0" max="100" value="0"> 分解</label>
+    <button class="btn" id="btnExplode">分解する</button>
+    <button class="btn on" id="btnSpin">自動回転</button>
+    <div class="posbtns" id="posbtns"></div>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="card detail" id="detail"></div>
+
+  <!-- 2. compare grid -->
+  <h2><span class="no">2</span>断面くらべ：種類 × 位置</h2>
+  <p class="desc">横がマグロの種類、縦が魚体の位置です。断面の大きさは比べやすいように揃えています（実際はクロマグロが最大、ビンナガが最小）。下の腹側の淡いピンクが大トロ、その上と背の皮ぎわの桃色が中トロです。</p>
+  <div class="scrollx"><table class="grid" id="grid"></table></div>
+
+  <!-- 3. side map -->
+  <h2><span class="no">3</span>側面図：部位の呼び名</h2>
+  <p class="desc">背と腹を分ける線は側線（血合いが通る位置）です。区画をタップすると説明が出ます。●は少量しか取れない希少部位です。</p>
+  <div class="tabs" id="tabsSide"></div>
+  <div class="card sidemap"><div id="sidemap"></div><div class="zinfo" id="zinfo"></div></div>
+
+  <!-- 4. matrix -->
+  <h2><span class="no">4</span>種類 × 部位の早見表</h2>
+  <p class="desc">◎ よく取れる・名物 ／ ○ 取れる ／ △ 少し・大型のみ ／ ― ほぼ取れない。一般的な傾向で、個体の大きさ・季節・天然か養殖かで変わります。</p>
+  <div class="scrollx"><table class="mx" id="mx"></table></div>
+
+  <!-- 5. glossary -->
+  <h2><span class="no">5</span>部位の呼び名辞典</h2>
+  <div class="gl" id="gl"></div>
+
+  <p class="note">※ 図は理解のための模式図です。実際の脂の入り方は、個体の大きさ・漁場・季節で大きく変わります。養殖のクロマグロは背側にも脂が回りやすく、天然より中トロ・大トロの割合が多くなる傾向があります。</p>
+</div>
+
+<script>
+/* ===================== DATA ===================== */
+const SPECIES = [
+  {k:'kuro', name:'クロマグロ', alias:'本マグロ', size:'最大 全長3m超・400kg超', len:1.0,
+   feat:'脂の量も大トロの取れ高も最も多い「マグロの王様」。赤身は濃い赤で香りと酸味が強い。冬が旬。',
+   col:{aka:'#b3192f',chu:'#e0727a',oto:'#f3c4c0',suna:'#fae3de',chiai:'#4a0d16'},
+   pos:{kami:{o:.30,c:.12,r:.11,suna:true}, naka:{o:.20,c:.12,r:.09}, shimo:{o:0,c:.18,r:.06}},
+   note:{kami:'腹側が分厚い大トロ。いちばん下が砂ずり、筋が蛇腹状に入る所が蛇腹。背の皮ぎわにも中トロ（背トロ）が付く。1尾でいちばん値が張る位置。',
+         naka:'腹側はまだ大トロが取れるが、かみより薄くなる。背は赤身が中心で、皮ぎわに中トロ。',
+         shimo:'腹の脂は中トロ程度に。背しもは筋が増えた赤身。尾に近いほど身が締まる。'},
+   fins:{yellow:false,pect:1,eye:5}},
+  {k:'minami', name:'ミナミマグロ', alias:'インドマグロ', size:'全長2m前後・最大200kg級', len:.8,
+   feat:'南半球のマグロ。脂のきめが細かく上品で、トロの評価が高い。赤身はやや淡い色で穏やかな酸味。',
+   col:{aka:'#c0303f',chu:'#e3818a',oto:'#f5cdc9',suna:'#fbe6e2',chiai:'#4f1019'},
+   pos:{kami:{o:.25,c:.12,r:.10,suna:true}, naka:{o:.16,c:.12,r:.08}, shimo:{o:0,c:.16,r:.05}},
+   note:{kami:'クロマグロに次いで大トロがしっかり取れる。脂の口どけが軽いのが特徴。',
+         naka:'大トロは薄めになり、中トロの割合が増える。',
+         shimo:'腹に中トロが少し、背は赤身。'},
+   fins:{yellow:false,pect:1,eye:5}},
+  {k:'mebachi', name:'メバチ', alias:'バチマグロ', size:'全長2m前後・最大200kg級', len:.75,
+   feat:'目が大きいのが名前の由来。国内で刺身として流通する量が多く、スーパーの赤身の主力。もっちりした鮮やかな赤身。',
+   col:{aka:'#c41f35',chu:'#e47c80',oto:'#f2c6c2',suna:'#f9e2de',chiai:'#4d0f18'},
+   pos:{kami:{o:.08,c:.18,r:.06}, naka:{o:0,c:.16,r:.05}, shimo:{o:0,c:.08,r:.03}},
+   note:{kami:'腹には中トロが取れ、大型ならごく薄く大トロも。全体としては赤身中心の魚。',
+         naka:'腹は中トロ、背は鮮やかな赤身。',
+         shimo:'ほぼ赤身。腹の皮ぎわにわずかに脂。'},
+   fins:{yellow:false,pect:1,eye:8}},
+  {k:'kihada', name:'キハダ', alias:'キワダ', size:'全長2m前後・最大200kg級', len:.75,
+   feat:'黄色く長いひれが目印。脂が少なくさっぱりした淡い紅色の赤身で、関西で好まれる。トロはほとんど取れない。',
+   col:{aka:'#d65562',chu:'#ec9a9c',oto:'#f6d2cf',suna:'#fbe8e5',chiai:'#5a1520'},
+   pos:{kami:{o:0,c:.10,r:.03}, naka:{o:0,c:.06,r:.02}, shimo:{o:0,c:0,r:0}},
+   note:{kami:'脂ののった腹身が中トロとして扱われる程度。ほぼ赤身。',
+         naka:'ほとんど赤身。さっぱりした味わい。',
+         shimo:'赤身のみ。'},
+   fins:{yellow:true,pect:1,eye:5}},
+  {k:'binnaga', name:'ビンナガ', alias:'ビンチョウ・トンボ', size:'全長1m前後・最大40kg級', len:.45,
+   feat:'胸びれがとても長い小型のマグロ。身は淡いピンクで、ツナ缶の主原料。脂ののった腹身は「ビントロ」と呼ばれる。',
+   col:{aka:'#e6a39c',chu:'#f1c6be',oto:'#f8e2dc',suna:'#fbeeea',chiai:'#7a3030'},
+   pos:{kami:{o:0,c:.16,r:.03}, naka:{o:0,c:.10,r:.02}, shimo:{o:0,c:0,r:0}},
+   note:{kami:'腹側の脂ののった部分が「ビントロ」。クロマグロの大トロとは別物で、白っぽくやわらかい。',
+         naka:'腹にわずかにビントロ、ほかは淡い色の身。',
+         shimo:'淡い色の身のみ。加熱すると白くなる。'},
+   fins:{yellow:false,pect:2.1,eye:6}},
+];
+const POS = [
+  {k:'kami', name:'かみ', sub:'頭側', x:195, H:144},
+  {k:'naka', name:'なか', sub:'胴の中央', x:320, H:127},
+  {k:'shimo',name:'しも', sub:'尾側', x:412, H:75},
+];
+const GRADE = [
+  {k:'oto',  name:'大トロ'},
+  {k:'chu',  name:'中トロ'},
+  {k:'aka',  name:'赤身'},
+  {k:'suna', name:'砂ずり'},
+  {k:'chiai',name:'血合い'},
+];
+
+/* ===================== CROSS-SECTION SVG ===================== */
+let UID=0;
+function sectionSVG(sp, posK, H, opt={}){
+  const p = sp.pos[posK], c = sp.col, id = 'u'+(UID++);
+  const W = H*.74, rx=W/2, ry=H/2, pad=4;
+  const quad = opt.quad;           // 0:背左 1:背右 2:腹左 3:腹右
+  const lab = opt.labels;
+  const extraR = lab ? 132 : 0;
+  const vb = `${-rx-pad} ${-ry-pad} ${W+pad*2+extraR} ${H+pad*2}`;
+  const cav = posK==='kami' ? {cy:ry*.38, rx:rx*.45, ry:ry*.32} : posK==='naka' ? {cy:ry*.32, rx:rx*.32, ry:ry*.2} : null;
+  let qclip='';
+  if(quad!=null){
+    const x = (quad%2===0) ? -rx-pad : 0, y = quad<2 ? -ry-pad : 0;
+    qclip = `<clipPath id="q${id}"><rect x="${x}" y="${y}" width="${rx+pad}" height="${ry+pad}"/></clipPath>`;
+  }
+  const mw = Math.max(5, H*.05);
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${(W+pad*2+extraR)*(opt.scale||1)}" height="${(H+pad*2)*(opt.scale||1)}" style="overflow:visible">
+  <defs>
+    <clipPath id="c${id}"><ellipse rx="${rx}" ry="${ry}"/></clipPath>${qclip}
+    <pattern id="m${id}" width="${mw}" height="${mw}" patternUnits="userSpaceOnUse" patternTransform="rotate(-18)">
+      <rect width="${mw}" height="${mw}" fill="${c.oto}"/><path d="M0 ${mw/2} H${mw}" stroke="rgba(255,255,255,.75)" stroke-width="${mw*.18}"/></pattern>
+    <pattern id="n${id}" width="${mw}" height="${mw}" patternUnits="userSpaceOnUse" patternTransform="rotate(-18)">
+      <rect width="${mw}" height="${mw}" fill="${c.suna}"/><path d="M0 ${mw/2} H${mw}" stroke="rgba(255,255,255,.9)" stroke-width="${mw*.22}"/></pattern>
+    <linearGradient id="g${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2a44"/><stop offset=".48" stop-color="#3f5470"/><stop offset=".56" stop-color="#9fb0bf"/><stop offset="1" stop-color="#dfe6ea"/></linearGradient>
+  </defs>
+  <g ${quad!=null?`clip-path="url(#q${id})"`:''}>
+  <g clip-path="url(#c${id})">
+    <rect x="${-rx}" y="${-ry}" width="${W}" height="${H}" fill="${p.r>0?c.chu:c.aka}"/>`;
+  if(p.r>0) s += `<ellipse rx="${rx-p.r*H}" ry="${ry-p.r*H}" cy="${p.r*H*.15}" fill="${c.aka}"/>`;
+  if(p.o+p.c>0) s += `<ellipse cy="${ry}" rx="${rx*1.15}" ry="${(p.o+p.c)*H}" fill="${c.chu}"/>`;
+  if(p.o>0) s += `<ellipse cy="${ry}" rx="${rx*1.1}" ry="${p.o*H}" fill="url(#m${id})"/>`;
+  if(p.suna) s += `<ellipse cy="${ry}" rx="${rx*.72}" ry="${H*.075}" fill="url(#n${id})"/>`;
+  // 血合い（側線沿い）
+  s += `<ellipse cx="${-rx*.8}" cy="${-H*.01}" rx="${rx*.22}" ry="${H*.065}" fill="${c.chiai}"/>
+        <ellipse cx="${rx*.8}" cy="${-H*.01}" rx="${rx*.22}" ry="${H*.065}" fill="${c.chiai}"/>`;
+  if(cav) s += `<ellipse cy="${cav.cy}" rx="${cav.rx}" ry="${cav.ry}" fill="#3a3238"/><ellipse cy="${cav.cy-cav.ry*.25}" rx="${cav.rx*.6}" ry="${cav.ry*.35}" fill="#4a4048" opacity=".7"/>`;
+  // 隔膜
+  s += `<line x1="0" y1="${-ry}" x2="0" y2="${cav?cav.cy-cav.ry:ry}" stroke="rgba(255,255,255,.55)" stroke-width="${Math.max(.8,H*.008)}"/>
+        <line x1="${-rx}" y1="0" x2="${rx}" y2="0" stroke="rgba(255,255,255,.45)" stroke-width="${Math.max(.8,H*.008)}"/>
+        <circle r="${H*.055}" fill="#efe7da" stroke="#c9bba6" stroke-width="${Math.max(.8,H*.01)}"/>
+  </g>
+  <ellipse rx="${rx}" ry="${ry}" fill="none" stroke="url(#g${id})" stroke-width="${Math.max(2,H*.028)}"/>`;
+  if(opt.qlabel){
+    const [qx,qy] = [[-1,-1],[1,-1],[-1,1],[1,1]][quad];
+    const txt = (qy<0?'背':'腹') + POS.find(x=>x.k===posK).name;
+    const fs = Math.max(9, H*.1);
+    s += `<text x="${qx*rx*.5}" y="${qy*ry*.5}" text-anchor="middle" dominant-baseline="middle" font-size="${fs}" font-weight="700" fill="#fff" stroke="rgba(0,0,0,.55)" stroke-width="${fs*.22}" paint-order="stroke" style="opacity:var(--lab,0)">${txt}</text>`;
+  }
+  s += `</g>`;
+  if(lab) s += labelLayer(p, posK, rx, ry, H, cav);
+  return s + `</svg>`;
+}
+function bandPoint(rx,ry,H,outerT,innerT,outerScale,innerScale,cav){
+  let best=null;
+  for(let f=0; f<=.75; f+=.05){
+    const x = rx*f;
+    const bodyBot = ry*Math.sqrt(Math.max(0,1-f*f));
+    const top = ry - outerT*H*Math.sqrt(Math.max(0,1-(f/outerScale)**2));
+    let bot = bodyBot;
+    if(innerT>0){ const it = ry - innerT*H*Math.sqrt(Math.max(0,1-(f/innerScale)**2)); bot = Math.min(bot,it); }
+    let t2 = top;
+    if(cav && x < cav.rx*.95) t2 = Math.max(t2, cav.cy + cav.ry*Math.sqrt(Math.max(0,1-(x/cav.rx)**2)));
+    const gap = bot - t2;
+    if(!best || gap>best.g) best={g:gap,x,y:(t2+bot)/2};
+  }
+  return best && best.g>3 ? best : null;
+}
+function labelLayer(p,posK,rx,ry,H,cav){
+  const L=[];
+  L.push({t:'中骨',x:0,y:0});
+  L.push({t:'赤身',x:rx*.38,y:-ry*.32});
+  if(p.r>0) L.push({t:'中トロ（背トロ）',x:rx*.15,y:-ry+p.r*H*.45});
+  L.push({t:'血合い',x:rx*.82,y:-H*.01});
+  if(cav) L.push({t:'腹腔（内臓があった所）',x:cav.rx*.3,y:cav.cy});
+  if(p.c>0){ const b=bandPoint(rx,ry,H,p.o+p.c,p.o,1.15,1.1,cav); if(b) L.push({t:p.o>0?'中トロ':'中トロ（脂ののった腹身）',x:b.x,y:b.y}); }
+  if(p.o>0){ const b=bandPoint(rx,ry,H,p.o,p.suna?.075:0,1.1,.72,cav); if(b) L.push({t:'大トロ（蛇腹）',x:b.x,y:b.y}); }
+  if(p.suna) L.push({t:'砂ずり',x:rx*.12,y:ry*.95});
+  L.sort((a,b)=>a.y-b.y);
+  const gap=17, top=-ry+6, bottom=ry-2;
+  let ys = L.map(l=>l.y);
+  for(let i=0;i<ys.length;i++){ ys[i]=Math.max(ys[i], i?ys[i-1]+gap:top); }
+  const over = ys[ys.length-1]-bottom;
+  if(over>0){ for(let i=ys.length-1;i>=0;i--){ ys[i]-=over; if(i&&ys[i-1]>ys[i]-gap) ys[i-1]=ys[i]-gap; else break; } }
+  const tx = rx+22;
+  return L.map((l,i)=>`<polyline points="${l.x},${l.y} ${rx+8},${ys[i]} ${tx-3},${ys[i]}" fill="none" stroke="#1d1b19" stroke-width=".8"/>
+    <circle cx="${l.x}" cy="${l.y}" r="2.2" fill="#1d1b19" stroke="#fff" stroke-width=".8"/>
+    <text x="${tx}" y="${ys[i]}" font-size="11.5" dominant-baseline="middle" fill="#1d1b19">${l.t}</text>`).join('');
+}
+
+/* ===================== TUNA SILHOUETTE ===================== */
+const BODY = 'M20,112 C60,70 130,42 210,38 C300,34 400,62 470,98 L500,104 C520,80 545,45 585,18 C570,60 562,90 560,110 C562,130 570,160 585,202 C545,175 520,140 500,116 L470,122 C400,160 300,186 210,184 C130,180 60,156 20,112 Z';
+function tunaSVG(sp, opt={}){
+  const id='t'+(UID++), f=sp.fins;
+  const fy = f.yellow ? '#e3b52e' : '#2b3a57';
+  const ext = f.yellow ? 34 : 0;
+  const pl = 110*f.pect;
+  let finlets='';
+  for(let i=0;i<7;i++){ const x=388+i*12, yt=64+i*5.2, yb=156-i*5.2;
+    finlets += `<path d="M${x},${yt+2} l6,-8 l4,9 z M${x},${yb-2} l6,8 l4,-9 z" fill="#e8c440"/>`; }
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${opt.compact?0:-ext} 600 ${220+(opt.compact?0:ext*2)}" ${opt.w?`width="${opt.w}"`:''} ${opt.h?`height="${opt.h}"`:''} style="overflow:visible">
+  <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#18233a"/><stop offset=".42" stop-color="#34496a"/><stop offset=".55" stop-color="#8ea2b6"/><stop offset="1" stop-color="#e4e9ec"/></linearGradient>
+    <clipPath id="b${id}"><path d="${BODY}"/></clipPath></defs>
+  <path d="M168,44 C178,24 190,10 198,4 C206,18 222,30 236,38 Z" fill="#22304b"/>
+  <path d="M328,54 C338,${32-ext} 348,${18-ext} 360,${8-ext} C360,30 364,48 372,62 Z" fill="${fy}"/>
+  <path d="M328,168 C338,${190+ext} 348,${204+ext} 360,${214+ext} C360,192 364,174 372,160 Z" fill="${fy}"/>
+  <path d="${BODY}" fill="url(#${id})"/>`;
+  if(opt.zones) s += `<g clip-path="url(#b${id})">${opt.zones}</g>`;
+  s += finlets +
+  `<path d="M118,112 C150,104 ${118+pl*.6},${104+pl*.02} ${118+pl},${120+pl*.06} C${118+pl*.6},${122} 150,124 118,122 Z" fill="#26344f" opacity=".55"/>
+  <circle cx="58" cy="100" r="${f.eye}" fill="#f2efe8"/><circle cx="58" cy="100" r="${f.eye*.55}" fill="#111"/>
+  <path d="M22,113 C34,116 44,117 52,116" stroke="#0d1424" stroke-width="1.6" fill="none"/>
+  <path d="M100,72 C112,96 112,128 100,150" stroke="rgba(10,15,30,.45)" stroke-width="1.6" fill="none"/>`;
+  if(opt.over) s += opt.over;
+  return s + '</svg>';
+}
+
+/* ===================== STATE ===================== */
+let curSp = 0, curPos = 'kami', explodeT = 0, rotX=-14, rotY=-38, spin=true, spinPhase=0;
+const $ = s=>document.querySelector(s);
+
+function makeTabs(el, onSel, getCur){
+  el.innerHTML = SPECIES.map((s,i)=>`<button class="tab" data-i="${i}" aria-pressed="${i===getCur()}">${s.name}<small>${s.alias}</small></button>`).join('');
+  el.onclick = e=>{ const b=e.target.closest('.tab'); if(!b) return; onSel(+b.dataset.i); };
+}
+function refreshTabs(){ document.querySelectorAll('.tabs').forEach(t=>t.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-pressed', +b.dataset.i===curSp))); }
+function selectSp(i){ curSp=i; refreshTabs(); build3D(); renderDetail(); renderSide(); renderLegend(); }
+
+/* ===================== 3D ===================== */
+function build3D(){
+  const sp = SPECIES[curSp];
+  const scene = $('#scene');
+  const zones = POS.map(p=>`<line x1="${p.x}" y1="20" x2="${p.x}" y2="200" stroke="#b8322a" stroke-width="2" stroke-dasharray="5 4"/>`).join('')
+              + `<line x1="20" y1="110" x2="500" y2="110" stroke="rgba(255,255,255,.5)" stroke-width="1.2" stroke-dasharray="3 4"/>`;
+  let html = `<div class="plane side" id="sidePlane">${tunaSVG(sp,{w:600,h:220,compact:true,over:zones})}</div>`;
+  POS.forEach(p=>{
+    const W=p.H*.74;
+    let qs='';
+    for(let q=0;q<4;q++){
+      qs += `<div class="q" data-q="${q}" style="left:${-W/2-4}px;top:${-p.H/2-4}px">${sectionSVG(sp,p.k,p.H,{quad:q,qlabel:true})}</div>`;
+    }
+    html += `<div class="slice${p.k===curPos?' sel':''}" data-pos="${p.k}" data-x="${p.x-300}" data-h="${p.H}">${qs}
+      <div class="tag3d" style="left:0;top:${-p.H/2-10}px">${p.name}<span style="font-weight:400;color:#6b6259;font-size:11px;margin-left:4px">${p.sub}</span></div></div>`;
+  });
+  scene.innerHTML = html;
+  layout3D();
+}
+function layout3D(){
+  const t = explodeT, ease = t*t*(3-2*t);
+  $('#scene').style.transform = `rotateX(${rotX+ease*6}deg) rotateY(${rotY-ease*6}deg) translateX(${-ease*20}px)`;
+  $('#scene').style.setProperty('--lab', Math.max(0,(ease-.35)/.65).toFixed(2));
+  const side = $('#sidePlane');
+  if(side){ side.style.transform = `translateZ(${-66 - ease*40}px)`; side.style.opacity = (1-ease*.65).toFixed(2); }
+  document.querySelectorAll('.slice').forEach(el=>{
+    const x = +el.dataset.x, H=+el.dataset.h;
+    const sc = 1 + ease*(H<100?1.0:.45);
+    const xx = x*(1+ease*1.15);
+    el.style.transform = `translateX(${xx}px) rotateY(90deg) scale(${sc})`;
+    const e = ease*H*.16;
+    el.querySelectorAll('.q').forEach(q=>{
+      const n=+q.dataset.q, dx=(n%2===0?-1:1)*e, dy=(n<2?-1:1)*e;
+      q.style.transform = `translate(${dx}px,${dy}px)`;
+    });
+    const tag = el.querySelector('.tag3d'); tag.style.top = (-H/2-10-e)+'px';
+  });
+  const st = $('#stage'), w = st.clientWidth, hh = st.clientHeight;
+  const s = Math.min(1, w/(560 + ease*420), (hh-30)/(250 + ease*170));
+  $('#fit').style.transform = `scale(${s})`;
+  $('#btnExplode').textContent = t>.5 ? '組み立てる' : '分解する';
+}
+let animId=null;
+function animateExplode(to){
+  const from=explodeT, t0=performance.now(), dur=900;
+  cancelAnimationFrame(animId);
+  const step = now=>{ const k=Math.min(1,(now-t0)/dur); explodeT = from+(to-from)*k; $('#explode').value = Math.round(explodeT*100); layout3D(); if(k<1) animId=requestAnimationFrame(step); };
+  animId=requestAnimationFrame(step);
+}
+function setupStage(){
+  const st=$('#stage'); let drag=null;
+  st.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,rx:rotX,ry:rotY,moved:0,target:e.target}; st.setPointerCapture(e.pointerId); });
+  st.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.moved=Math.max(drag.moved,Math.abs(dx)+Math.abs(dy));
+    if(drag.moved>4){ spin=false; $('#btnSpin').classList.remove('on'); }
+    rotY = drag.ry + dx*.45; rotX = Math.max(-70,Math.min(40, drag.rx - dy*.35)); layout3D(); });
+  const end = e=>{ if(!drag) return; if(drag.moved<5){ const sl = drag.target.closest && drag.target.closest('.slice'); if(sl) selectPos(sl.dataset.pos); } drag=null; };
+  st.addEventListener('pointerup',end); st.addEventListener('pointercancel',()=>drag=null);
+  $('#explode').addEventListener('input',e=>{ cancelAnimationFrame(animId); explodeT=e.target.value/100; layout3D(); });
+  $('#btnExplode').onclick=()=>animateExplode(explodeT>.5?0:1);
+  $('#btnSpin').onclick=()=>{ spin=!spin; $('#btnSpin').classList.toggle('on',spin); };
+  $('#posbtns').innerHTML = POS.map(p=>`<button class="btn" data-pos="${p.k}">${p.name}</button>`).join('');
+  $('#posbtns').onclick=e=>{ const b=e.target.closest('button'); if(b) selectPos(b.dataset.pos); };
+  let last=performance.now();
+  const loop=now=>{ const dt=now-last; last=now; if(spin){ spinPhase+=dt*.00045; rotY = -38 + Math.sin(spinPhase)*30; layout3D(); } requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  window.addEventListener('resize', layout3D);
+}
+function selectPos(k){
+  curPos=k;
+  document.querySelectorAll('.slice').forEach(s=>s.classList.toggle('sel', s.dataset.pos===k));
+  document.querySelectorAll('#posbtns button').forEach(b=>b.classList.toggle('on', b.dataset.pos===k));
+  renderDetail();
+}
+function renderDetail(){
+  const sp=SPECIES[curSp], p=POS.find(x=>x.k===curPos), d=sp.pos[curPos], c=sp.col;
+  const chips=[];
+  if(d.suna) chips.push(['砂ずり',c.suna]);
+  if(d.o>0) chips.push(['大トロ',c.oto]);
+  if(d.c>0) chips.push([sp.k==='binnaga'?'ビントロ':'中トロ（腹）',c.chu]);
+  if(d.r>0) chips.push(['中トロ（背の皮ぎわ）',c.chu]);
+  chips.push(['赤身',c.aka]);
+  $('#detail').innerHTML = `<div>${sectionSVG(sp,curPos,220,{labels:true})}</div>
+   <div><h3>${sp.name}・${p.name}（${p.sub}）の断面</h3>
+   <p>${sp.note[curPos]}</p>
+   <div class="chips">${chips.map(([t,col])=>`<span class="chip" style="background:${col};color:${col===c.aka?'#fff':'#1d1b19'}">${t}</span>`).join('')}</div>
+   <p style="font-size:12.5px;color:#6b6259;margin-top:10px">中骨を中心に縦横の膜で4つに分かれます。上の2つが「背」、下の2つが「腹」。これを頭側から「かみ・なか・しも」に切り分けると、背かみ・腹なか…という呼び名になります。</p></div>`;
+  $('#detail svg').style.maxWidth='100%'; $('#detail svg').style.height='auto';
+}
+function renderLegend(){
+  const c=SPECIES[curSp].col;
+  $('#legend').innerHTML = GRADE.map(g=>`<span><i style="background:${c[g.k]}"></i>${g.name}</span>`).join('') +
+    `<span><i style="background:#3a3238"></i>腹腔</span><span><i style="background:#efe7da"></i>中骨</span>`;
+}
+
+/* ===================== GRID ===================== */
+function renderGrid(){
+  const maxLen = 120;
+  let h = `<thead><tr><th class="sticky">位置 ＼ 種類</th>` + SPECIES.map(s=>`<th><div class="sp-h">${s.name}<small>${s.alias}</small></div>
+    <div class="icon">${tunaSVG(s,{w:Math.round(maxLen*s.len),compact:true})}</div><small style="font-weight:400;color:#6b6259;font-size:11px">${s.size}</small></th>`).join('') + `</tr></thead><tbody>`;
+  POS.forEach(p=>{
+    const hh = p.k==='kami'?118:p.k==='naka'?104:66;
+    h += `<tr><th class="sticky rowh">${p.name}<small>${p.sub}</small></th>` +
+      SPECIES.map(s=>`<td>${sectionSVG(s,p.k,hh)}</td>`).join('') + `</tr>`;
+  });
+  $('#grid').innerHTML = h + '</tbody>';
+}
+
+/* ===================== SIDE MAP ===================== */
+const ZONES = [
+  {k:'atama', name:'頭', x0:0,x1:130, y:'all', info:'頭の肉は量が少なく、脳天（頭頂部）やほほ肉が取れます。脳天はトロのような脂と赤身の歯ざわりを併せ持つ希少部位です。'},
+  {k:'se-kami', name:'背かみ', x0:130,x1:260,y:'top', info:'背の頭側。中心は赤身、皮ぎわに中トロ（背トロ）。赤身の中でも筋が少なく、刺身向きの良い部位です。'},
+  {k:'se-naka', name:'背なか', x0:260,x1:370,y:'top', info:'背の中央。赤身らしい赤身が取れる位置。筋が少なく、サク取りしやすい。'},
+  {k:'se-shimo',name:'背しも', x0:370,x1:470,y:'top', info:'背の尾側。よく動かす部分なので筋が多く、身が締まった赤身になります。'},
+  {k:'hara-kami',name:'腹かみ', x0:130,x1:260,y:'bot', info:'腹の頭側。大トロの本場で、1尾でいちばん高価な位置。いちばん腹側が砂ずり、筋が蛇腹状に入る所が蛇腹。'},
+  {k:'hara-naka',name:'腹なか', x0:260,x1:370,y:'bot', info:'腹の中央。大トロ〜中トロ。かみより脂はやや控えめで筋も少なめ。'},
+  {k:'hara-shimo',name:'腹しも',x0:370,x1:470,y:'bot', info:'腹の尾側。中トロ中心。筋が増えるので、ねぎとろなどにも使われます。'},
+  {k:'o', name:'尾', x0:470,x1:600,y:'all', info:'尾の付け根の肉は「尾の身」。筋が多く、ステーキや煮込み向き。市場では尾を切った断面（尾切り）で脂の乗りや身質を見ます。'},
+];
+const SPOTS = [
+  {name:'脳天', x:78, y:66, info:'頭頂部の肉。1尾から少量しか取れない希少部位。'},
+  {name:'ほほ肉', x:72, y:118, info:'えらぶたの奥の肉。肉のような食感で、ステーキや唐揚げに。'},
+  {name:'カマトロ', x:120, y:150, info:'エラの下〜胸びれ周り（カマ）の脂ののった部分。'},
+  {name:'中落ち', x:300, y:110, info:'中骨の間に残った身をスプーンでこそげ取ったもの。ねぎとろ丼などに。'},
+  {name:'尾の身', x:490, y:110, info:'尾の付け根の身。筋が多く加熱向き。'},
+];
+let curZone='hara-kami';
+function zoneColor(z, sp){
+  const c=sp.col, P=sp.pos;
+  const pk = z.x0<200?'kami':z.x0<300?'naka':'shimo';
+  const d = P[pk];
+  if(z.y==='bot') return d.o>0 ? c.oto : d.c>0 ? c.chu : c.aka;
+  if(z.y==='top') return c.aka;
+  return null;
+}
+function renderSide(){
+  const sp=SPECIES[curSp];
+  let z='';
+  ZONES.forEach(zn=>{
+    const col = zoneColor(zn,sp);
+    const y0 = zn.y==='bot'?110:0, y1 = zn.y==='top'?110:240;
+    z += `<rect class="zone${zn.k===curZone?' sel':''}" data-z="${zn.k}" x="${zn.x0}" y="${y0}" width="${zn.x1-zn.x0}" height="${y1-y0}" fill="${col||'transparent'}" opacity="${col?.88:1}"/>`;
+  });
+  // 背の皮ぎわ中トロ帯
+  z += `<path d="M130,48 C200,36 300,32 400,62 L470,98" fill="none" stroke="${sp.pos.kami.r>.05?sp.col.chu:'transparent'}" stroke-width="10" opacity=".85" pointer-events="none"/>`;
+  z += `<line x1="20" y1="110" x2="500" y2="110" stroke="${sp.col.chiai}" stroke-width="3" pointer-events="none"/>`;
+  z += [130,260,370,470].map(x=>`<line x1="${x}" y1="0" x2="${x}" y2="240" stroke="#fff" stroke-width="1.5" stroke-dasharray="4 3" pointer-events="none"/>`).join('');
+  let over = ZONES.filter(zn=>zn.y!=='all').map(zn=>`<text x="${(zn.x0+zn.x1)/2}" y="${zn.y==='top'?74:156}" text-anchor="middle" font-size="15" font-weight="700" fill="#fff" stroke="rgba(0,0,0,.5)" stroke-width="3" paint-order="stroke" pointer-events="none">${zn.name}</text>`).join('');
+  over += SPOTS.map((s,i)=>`<g class="spot" data-s="${i}" style="cursor:pointer"><circle cx="${s.x}" cy="${s.y}" r="6" fill="#b8322a" stroke="#fff" stroke-width="2"/>
+    <text x="${s.x}" y="${s.y+(s.y>120?20:-11)}" text-anchor="middle" font-size="12" font-weight="700" fill="#1d1b19" stroke="#fffaf2" stroke-width="3" paint-order="stroke">${s.name}</text></g>`).join('');
+  over += `<text x="508" y="114" font-size="11" fill="#6b6259">← 側線（血合い）</text>`;
+  $('#sidemap').innerHTML = tunaSVG(sp,{zones:z, over});
+  const zn = ZONES.find(x=>x.k===curZone);
+  $('#zinfo').innerHTML = `<b>${zn.name}</b>　<span style="color:#6b6259;font-size:13px">${sp.name}の場合</span><br><span style="font-size:14px">${zn.info}</span>`;
+  $('#sidemap').onclick = e=>{
+    const sp_ = e.target.closest('.spot');
+    if(sp_){ const s=SPOTS[+sp_.dataset.s]; $('#zinfo').innerHTML=`<b>● ${s.name}</b><br><span style="font-size:14px">${s.info}</span>`; return; }
+    const r = e.target.closest('.zone'); if(r){ curZone=r.dataset.z; renderSide(); }
+  };
+}
+
+/* ===================== MATRIX ===================== */
+const MX = [
+  {part:'大トロ', sub:'腹かみ・腹なか', v:[[4,'最も多く取れる'],[4,'きめ細かく上品'],[2,'大型でわずか'],[1,''],[1,'']]},
+  {part:'中トロ', sub:'腹まわり・背の皮ぎわ', v:[[4,''],[4,''],[3,'腹身が中トロ'],[2,'脂ののった腹身程度'],[2,'腹身＝ビントロ']]},
+  {part:'赤身', sub:'背骨まわり（背なか・背しも）', v:[[4,'濃い赤・香りと酸味'],[3,'やや淡く穏やかな酸味'],[4,'鮮やかな赤・もっちり'],[4,'淡い紅色・さっぱり'],[3,'淡いピンク・加熱向き']]},
+  {part:'砂ずり・蛇腹', sub:'大トロのなかの最上部位', v:[[4,'名物'],[3,''],[2,'大型のみ'],[1,''],[1,'']]},
+  {part:'脳天・ほほ肉・カマトロ', sub:'頭まわりの希少部位', v:[[4,'大型ほど量が取れる'],[3,''],[3,''],[2,'カマは焼き物に'],[2,'']]},
+  {part:'中落ち', sub:'中骨のあいだの身', v:[[4,''],[3,''],[3,''],[3,'さっぱり系'],[2,'']]},
+];
+const SYM={4:'◎',3:'○',2:'△',1:'―'};
+function renderMatrix(){
+  let h = `<thead><tr><th class="sticky">部位 ＼ 種類</th>${SPECIES.map(s=>`<th><div class="sp-h">${s.name}<small>${s.alias}</small></div></th>`).join('')}</tr></thead><tbody>`;
+  MX.forEach(r=>{
+    h += `<tr><th class="sticky rowh">${r.part}<small>${r.sub}</small></th>` + r.v.map(([g,n])=>`<td><span class="s g${g}">${SYM[g]}</span><span class="n">${n}</span></td>`).join('') + `</tr>`;
+  });
+  h += `<tr><th class="sticky rowh">特徴</th>${SPECIES.map(s=>`<td style="text-align:left;font-size:12.5px;line-height:1.55">${s.feat}</td>`).join('')}</tr>`;
+  $('#mx').innerHTML = h + '</tbody>';
+}
+
+/* ===================== GLOSSARY ===================== */
+const GL = [
+  ['大トロ','#f3c4c0','おおとろ','腹かみ・腹なかの腹側。脂が最も多く、白っぽいピンクに白い脂の筋が入る。1尾から取れる量はわずか。'],
+  ['中トロ','#e0727a','ちゅうとろ','大トロと赤身の中間。大トロの周り、腹しも、背の皮ぎわ（背トロ）から取れる。脂と赤身の味のバランスが良い。'],
+  ['赤身','#b3192f','あかみ','背骨まわりの中心部。脂は少なく、マグロ本来の香りと酸味がある。量としては1尾の大半を占める。'],
+  ['砂ずり','#fae3de','すなずり','腹かみの最も腹側。大トロの中でもとくに脂が多い最上の部分。'],
+  ['蛇腹','#f3c4c0','じゃばら','大トロのうち、脂と筋が蛇腹のような縞模様に入る部分。'],
+  ['背トロ','#e0727a','せとろ','背の皮ぎわに付く中トロ。背側にも脂が乗った個体で取れる。'],
+  ['血合い','#4a0d16','ちあい','側線（背と腹の境目）に沿って走る暗赤色の筋肉。鉄分が多く、生食より煮付けなどに使われる。'],
+  ['中落ち','#c9475a','なかおち','五枚におろした後、中骨の間に残った身。こそげ取って、ねぎとろなどに。'],
+  ['脳天','#d9878a','のうてん','頭頂部の肉。トロのような脂と赤身の食感がある希少部位。頭肉とも。'],
+  ['ほほ肉','#a3283a','ほほにく','えらぶたの奥の肉。肉に近い食感で、ステーキや唐揚げに。'],
+  ['カマトロ','#ecaaa8','かまとろ','エラ下〜胸びれまわり（カマ）の脂ののった部分。'],
+  ['尾の身','#9d2232','おのみ','尾の付け根の身。筋が多く、ステーキや煮込み向き。'],
+  ['かみ・なか・しも','#efe7da','位置の呼び名','魚体を頭側から3つに分けた呼び方。背と組み合わせて「背かみ」「腹しも」などと呼ぶ。'],
+  ['五枚おろし','#efe7da','ごまいおろし','大きな魚を背2枚・腹2枚・中骨に分けるおろし方。マグロの断面が4つに分かれるのはこのため。'],
+];
+function renderGlossary(){
+  $('#gl').innerHTML = GL.map(([n,c,y,t])=>`<div class="card"><h3><i style="background:${c}"></i>${n}</h3><div class="w">${y}</div><p>${t}</p></div>`).join('');
+}
+
+/* ===================== INIT ===================== */
+makeTabs($('#tabs3d'), selectSp, ()=>curSp);
+makeTabs($('#tabsSide'), selectSp, ()=>curSp);
+renderGrid(); renderMatrix(); renderGlossary();
+setupStage(); build3D(); selectPos('kami'); renderSide(); renderLegend();
+</script>
+</body>
+</html>

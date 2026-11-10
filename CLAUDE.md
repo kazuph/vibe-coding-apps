@@ -34,6 +34,7 @@ This repository is a **monorepo** containing multiple AI-powered applications bu
 | None | `docs/niigata-broom/` | Houki de Nippon (formerly Niigata Broom Flight): Minecraft-style voxel flight; Niigata Chuo-ku from PLATEAU, 12 major cities prebuilt in `data/cities/`, any municipality generated in-browser from OpenFreeMap + GSI DEM; rings, loops, weather, Japan-map completion, localStorage records (three.js) |
 | None | `docs/ruby-tanks/` | Ruby Tanks (tank-AI programming battle on ruby.wasm / CRuby 3.4, BGM via Ruby DSL) |
 | None | `docs/hoshizora/` | Tonight's Sky (point a phone at the sky; DeviceOrientation + compass overlay of real star/Moon/planet positions) |
+| None | `docs/tuna-zukan/` | Tuna Zukan: 5 tuna species x cuts (otoro/chutoro/akami); CSS-3D rotatable/explodable cross-section slices, comparison grid, side map, matrix (single HTML) |
 | None | `docs/figure-skating-report/` | Figure skating training guide (docs only) |
 | None | `docs/functional-programming-tutorial/` | FP tutorial (docs only) |
 
