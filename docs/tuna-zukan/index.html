@@ -100,12 +100,50 @@ th:last-child,td:last-child{border-right:none!important}
 .gl .card p{margin:4px 0 0;font-size:13.5px}
 .gl .card .w{font-size:12px;color:var(--sub)}
 .note{font-size:12.5px;color:var(--sub);margin-top:30px;border-top:1px dashed var(--line);padding-top:12px}
+/* ===== sea / season / depth ===== */
+.two{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;align-items:start}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.mapbox svg,.latbox svg,.depthbox svg{width:100%;height:auto;display:block}
+.cur{fill:none;stroke-linecap:round;stroke-dasharray:2 10;animation:flow 1.6s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-24}}
+@media (prefers-reduced-motion:reduce){.cur{animation:none}}
+.mk{cursor:pointer}
+.mk.dim{opacity:.18}
+.mk.sel circle{stroke:#111;stroke-width:2.5}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+.mlist{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.mlist li{display:grid;grid-template-columns:24px 1fr;gap:8px;font-size:13.5px;padding:6px 8px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+.mlist li.sel{background:#fff3e8;border-color:#e7c7a8}
+.mlist li.dim{opacity:.35}
+.mlist .num{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700}
+.mlist b{display:block;font-size:14px}
+.cal{border-collapse:separate;border-spacing:3px;width:100%;min-width:640px}
+.cal th{font-size:12px;font-weight:500;color:var(--sub);padding:2px}
+.cal th.sp{text-align:left;font-size:14px;color:var(--ink);font-weight:700;white-space:nowrap;padding-right:8px}
+.cal td{height:34px;border-radius:6px;position:relative;font-size:10px;text-align:center}
+.cal td.sp1{background:#f3e2c8}.cal td.sp2{background:#eaa86b}.cal td.sp3{background:#c6532f}
+.cal td.sp0{background:#efe8dc}
+.cal td .egg{position:absolute;left:50%;bottom:3px;transform:translateX(-50%);width:9px;height:9px;border-radius:50%;background:#2f6fd6;border:1.5px solid #fff}
+.cal td.now{outline:2px solid #1d1b19;outline-offset:1px}
+.cal .rn{font-size:12px;color:var(--sub);text-align:left;padding:0 0 8px 2px;line-height:1.5}
+.why{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.why .card h3{margin:0 0 6px;font-size:17px}
+.why .card p{margin:0;font-size:13.5px}
+.why .card .ic{font-size:26px;line-height:1}
+.toggle{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-bottom:8px}
+.toggle button{border:0;background:#fffaf2;padding:6px 16px;font:inherit;font-size:13px;cursor:pointer}
+.toggle button.on{background:var(--ink);color:#fff}
+.dfish{transition:transform 1.2s cubic-bezier(.5,0,.3,1)}
+#latchart svg{max-width:720px;margin:0 auto}
+.src{font-size:12px;color:var(--sub);margin-top:26px}
+.src ol{padding-left:20px;margin:6px 0}
+.src a{color:#7a4a2a}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1><small>TUNA × CUTS</small>マグロの種類と部位がわかる図鑑</h1>
-  <p class="lead">横に「マグロの種類」、縦（分解方向）に「部位と呼び名」。大トロ・中トロ・赤身が魚体のどこから取れるのかを、立体の輪切りで見られます。</p>
+  <p class="lead">横に「マグロの種類」、縦（分解方向）に「部位と呼び名」。大トロ・中トロ・赤身が魚体のどこから取れるのかを立体の輪切りで見たうえで、どの海でいつ獲れるのか、海流や水温とどう関係するのかまでまとめました。</p>
 
   <!-- 1. 3D -->
   <h2><span class="no">1</span>輪切りを立体で見る</h2>
@@ -140,8 +178,41 @@ th:last-child,td:last-child{border-right:none!important}
   <p class="desc">◎ よく取れる・名物 ／ ○ 取れる ／ △ 少し・大型のみ ／ ― ほぼ取れない。一般的な傾向で、個体の大きさ・季節・天然か養殖かで変わります。</p>
   <div class="scrollx"><table class="mx" id="mx"></table></div>
 
-  <!-- 5. glossary -->
-  <h2><span class="no">5</span>部位の呼び名辞典</h2>
+  <!-- 5. sea map -->
+  <h2><span class="no">5</span>どこで獲れる？ 日本近海と海流</h2>
+  <p class="desc">日本のまわりには南から暖かい黒潮と対馬暖流、北から冷たい親潮が流れています。マグロはこの流れと水温に沿って動き、産卵し、餌を追います。番号をタップすると説明が出ます。</p>
+  <div class="filters" id="mapFilters"></div>
+  <div class="two">
+    <div class="card mapbox" id="seamap"></div>
+    <ul class="mlist" id="mlist"></ul>
+  </div>
+
+  <h3 style="margin:22px 0 4px;font-size:18px">世界ではどの緯度にいる？</h3>
+  <p class="desc">種類ごとのすむ範囲を緯度で並べました。日本で食べるマグロでも、ミナミマグロは南半球、メバチ・キハダは熱帯〜温帯の広い海から来ます。</p>
+  <div class="card latbox" id="latchart"></div>
+
+  <!-- 6. season -->
+  <h2><span class="no">6</span>いつ獲れる？ 季節カレンダー</h2>
+  <p class="desc">日本で流通する天然ものの目安です。色が濃いほど漁が盛ん・脂がのる時期、<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#2f6fd6;vertical-align:middle"></span> は産卵期。黒い枠は今月です。</p>
+  <div class="scrollx" style="padding:8px"><table class="cal" id="cal"></table></div>
+
+  <!-- 7. depth -->
+  <h2><span class="no">7</span>水温と泳ぐ深さ</h2>
+  <p class="desc">海は表面が暖かく、ある深さ（水温躍層）を境に急に冷たくなります。マグロの種類ごとに好む水温と深さが違い、それが獲り方（まき網・一本釣り・延縄）や身の質の違いにつながります。</p>
+  <div class="two">
+    <div class="card depthbox">
+      <div class="toggle" id="dayNight"><button data-v="day" class="on">☀️ 昼</button><button data-v="night">🌙 夜</button></div>
+      <div id="depth"></div>
+    </div>
+    <div class="card latbox" id="tempchart"></div>
+  </div>
+
+  <!-- 8. why -->
+  <h2><span class="no">8</span>なぜそうなる？ 海とマグロの関係</h2>
+  <div class="why" id="why"></div>
+
+  <!-- 9. glossary -->
+  <h2><span class="no">9</span>部位の呼び名辞典</h2>
   <div class="gl" id="gl"></div>
 
   <p class="note">※ 図は理解のための模式図です。実際の脂の入り方は、個体の大きさ・漁場・季節で大きく変わります。養殖のクロマグロは背側にも脂が回りやすく、天然より中トロ・大トロの割合が多くなる傾向があります。</p>
@@ -533,10 +604,239 @@ function renderGlossary(){
   $('#gl').innerHTML = GL.map(([n,c,y,t])=>`<div class="card"><h3><i style="background:${c}"></i>${n}</h3><div class="w">${y}</div><p>${t}</p></div>`).join('');
 }
 
+/* ===================== SEA MAP ===================== */
+const LON0=120.5, LAT0=46, KX=22, KY=25.3;
+const P=(lon,lat)=>[(lon-LON0)*KX,(LAT0-lat)*KY];
+const poly=pts=>pts.map((q,i)=>(i?'L':'M')+P(q[0],q[1]).map(v=>v.toFixed(1)).join(',')).join('')+'Z';
+function smooth(pts){
+  const q=pts.map(a=>P(a[0],a[1])); let d=`M${q[0][0].toFixed(1)},${q[0][1].toFixed(1)}`;
+  for(let i=0;i<q.length-1;i++){
+    const p0=q[i-1]||q[i], p1=q[i], p2=q[i+1], p3=q[i+2]||p2;
+    const c1=[p1[0]+(p2[0]-p0[0])/6, p1[1]+(p2[1]-p0[1])/6], c2=[p2[0]-(p3[0]-p1[0])/6, p2[1]-(p3[1]-p1[1])/6];
+    d+=`C${c1.map(v=>v.toFixed(1))} ${c2.map(v=>v.toFixed(1))} ${p2.map(v=>v.toFixed(1))}`;
+  }
+  return d;
+}
+const LAND=[
+  [[120.5,46],[138.5,46],[137.5,45.4],[135.5,43.9],[133.2,42.8],[131.9,43.1],[130.7,42.6],[130.0,42.3],[128.8,40.8],[127.5,39.8],[128.6,38.6],[129.5,36.9],[129.4,35.9],[129.0,35.1],[127.5,34.6],[126.4,34.6],[126.3,36.0],[126.5,37.4],[124.7,38.0],[124.2,39.9],[122.2,40.4],[121.2,38.8],[120.5,39.3]],
+  [[120.5,37.5],[122.5,37.3],[121.5,36.8],[120.5,36.2]],
+  [[120.5,34.2],[120.9,32.5],[121.9,31.0],[122.0,30.0],[121.5,29.0],[120.7,27.9],[120.5,27.6]],
+  [[121.6,25.3],[122.0,24.6],[121.4,23.0],[120.9,22.0],[120.5,22.3],[120.5,24.6],[121.0,25.0]],
+  // Hokkaido
+  [[141.9,45.5],[142.9,44.7],[144.3,44.1],[145.3,44.3],[145.1,43.6],[145.8,43.4],[144.3,42.9],[143.3,42.0],[141.6,42.6],[140.9,42.0],[141.1,41.8],[140.7,41.7],[140.0,41.4],[139.9,42.2],[140.5,42.6],[140.4,43.3],[141.3,43.2],[141.6,43.9],[141.6,44.4],[141.7,45.3]],
+  // Honshu
+  [[140.9,41.5],[141.4,41.4],[141.5,40.6],[142.0,39.5],[141.6,38.4],[141.0,38.3],[140.9,36.9],[140.8,35.7],[140.4,35.2],[139.9,34.9],[139.8,35.3],[139.1,35.1],[138.8,34.6],[138.4,35.0],[137.0,34.6],[136.9,34.3],[136.0,33.5],[135.1,34.2],[135.3,34.7],[134.0,34.6],[133.0,34.3],[132.0,33.9],[131.0,33.95],[130.9,34.3],[131.4,34.4],[132.4,35.4],[133.4,35.5],[134.6,35.6],[135.4,35.6],[136.0,35.8],[136.7,36.9],[136.9,37.5],[137.3,36.8],[138.2,37.0],[139.0,37.9],[139.6,38.6],[140.0,39.8],[139.8,40.0],[140.0,40.6],[140.3,41.2],[140.6,41.2]],
+  // Shikoku
+  [[132.4,33.4],[132.6,32.8],[133.4,33.4],[134.2,33.3],[134.6,34.1],[133.6,34.3],[132.9,34.0]],
+  // Kyushu
+  [[130.9,33.9],[131.7,33.6],[131.6,32.6],[131.1,31.4],[130.7,31.0],[130.2,31.3],[130.3,32.1],[129.8,32.8],[129.7,33.3],[130.4,33.6]],
+  [[138.2,38.3],[138.6,38.2],[138.4,37.8],[138.2,37.9]], // Sado
+  [[129.2,34.7],[129.5,34.4],[129.3,34.1]], // Tsushima
+  [[129.7,28.5],[129.4,28.2],[129.2,28.3]], // Amami
+  [[128.3,26.9],[127.7,26.1],[127.6,26.3],[128.0,26.7]], // Okinawa
+  [[125.4,24.9],[125.2,24.7],[125.1,24.8]],[[124.3,24.6],[124.0,24.3],[124.1,24.5]],[[123.1,24.5],[122.9,24.4],[123.0,24.5]],
+  [[130.6,30.4],[131.0,30.6],[130.9,30.3]],
+];
+const CUR=[
+  {name:'黒潮', color:'#d9542b', w:7, pts:[[121.6,21.8],[122.6,24.2],[124.5,26.0],[127.0,28.3],[129.3,29.9],[131.0,30.6],[132.5,31.8],[134.0,32.6],[135.8,33.05],[137.5,33.6],[139.3,34.2],[140.7,35.2],[142.5,35.7],[145,35.9],[148,36.2]], lab:[133.8,31.8]},
+  {name:'対馬暖流', color:'#ec8a3c', w:5, pts:[[127.5,28.5],[127.4,31.0],[128.4,33.2],[129.6,34.6],[131.3,35.6],[133.5,36.4],[135.8,37.3],[137.8,38.4],[139.3,39.9],[139.9,41.2],[141.2,41.6],[142.3,41.0],[142.6,40.0]], lab:[132.7,37.1]},
+  {name:'親潮', color:'#2f6fd6', w:6, pts:[[148,45.2],[146.5,43.8],[145.2,42.6],[143.6,41.5],[142.8,40.2],[142.6,38.8],[142.2,37.6]], lab:[146.2,42.3]},
+];
+const AREAS=[
+  {c:[126.6,25.6], rx:2.3, ry:1.5, rot:-35, col:'#2f6fd6', lab:'クロマグロの産卵場（4〜7月）', sp:['kuro']},
+  {c:[134.7,36.8], rx:2.2, ry:.75, rot:-12, col:'#2f6fd6', lab:'日本海の産卵場（6〜8月）', sp:['kuro']},
+  {c:[143.4,38.2], rx:1.6, ry:1.3, rot:0, col:'#7b5cc4', lab:'黒潮と親潮の潮目', sp:['kuro','binnaga','mebachi']},
+];
+const MARKS=[
+  {lon:140.9,lat:41.55, sp:['kuro'], t:'大間・津軽海峡', d:'夏の盛りに日本海側からクロマグロが入り、秋に本格化、11〜1月が最盛期。脂ののったサンマやスルメイカの群れを追って来るため、身にたっぷり脂が乗る。', s:1},
+  {lon:126.6,lat:25.6, sp:['kuro'], t:'南西諸島（沖縄〜八重山）', d:'クロマグロの主な産卵場。4月下旬〜7月上旬に、6歳以上の大型の親魚が暖かい黒潮域で産卵する。', s:2},
+  {lon:134.7,lat:36.8, sp:['kuro'], t:'日本海南西部（隠岐〜能登）', d:'もう一つの産卵場。6月下旬〜7月を中心に、3〜5歳の比較的若い親魚が産卵する。', s:2},
+  {lon:129.4,lat:34.0, sp:['kuro'], t:'対馬・五島（ヨコワ）', d:'南西諸島で6月ごろ生まれた幼魚（ヨコワ）が対馬暖流に乗って日本海を北上。秋〜冬に水温が下がると南下してきて、ひき縄で獲られる。', s:3},
+  {lon:143.4,lat:38.2, sp:['kuro','binnaga','mebachi'], t:'三陸・常磐沖', d:'暖かい黒潮と冷たい親潮がぶつかる潮目。栄養が多くプランクトン→小魚→マグロと餌が集まる好漁場。夏にはクロマグロの産卵も確認されている。', s:4},
+  {lon:135.8,lat:33.1, sp:['binnaga'], t:'潮岬沖', d:'冬〜早春にビンナガ（トンボ）が来遊し、ひき縄で獲られる。黒潮が岸に近づくと好漁、黒潮が大きく離れる「大蛇行」の年は不漁になる。', s:5},
+  {lon:146.6,lat:37.2, sp:['binnaga'], t:'房総〜三陸の沖合', d:'春〜初夏（4〜6月ごろ）、北上するビンナガを竿釣りで狙う。ビンナガは18℃前後の水温帯を好み、その水温の層や水域に漁場ができる。', s:6},
+  {lon:123.2,lat:23.6, sp:['kihada','mebachi'], t:'与那国・八重山のパヤオ', d:'パヤオ（浮魚礁）にキハダやメバチが集まる。琉球列島や小笠原ではキハダがほぼ一年中獲れる。九州より北では夏〜秋。', s:7},
+];
+let mapSp='all', mapSel=null;
+function spColor(k){ return {kuro:'#b3192f',minami:'#7a2a64',mebachi:'#c46a2b',kihada:'#d3a21f',binnaga:'#4f8db5'}[k]; }
+function renderSeaMap(){
+  const W=(148-LON0)*KX, H=(LAT0-22)*KY;
+  let s=`<svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" xmlns="http://www.w3.org/2000/svg">
+  <defs><clipPath id="mclip"><rect width="${W}" height="${H}" rx="10"/></clipPath>
+    <linearGradient id="seaG" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#cfe6ee"/><stop offset="1" stop-color="#dce6f1"/></linearGradient>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="rgba(47,111,214,.12)"/><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(47,111,214,.55)" stroke-width="1.6"/></pattern>
+    <pattern id="hatch2" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><rect width="6" height="6" fill="rgba(123,92,196,.12)"/><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(123,92,196,.55)" stroke-width="1.6"/></pattern>
+  </defs><g clip-path="url(#mclip)">
+  <rect width="${W}" height="${H}" fill="url(#seaG)"/>`;
+  for(let lat=25;lat<=45;lat+=5){ const y=P(0,lat)[1]; s+=`<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(30,60,90,.12)"/><text x="4" y="${y-3}" font-size="10" fill="rgba(30,60,90,.5)">${lat}°N</text>`; }
+  for(let lon=125;lon<=145;lon+=5){ const x=P(lon,0)[0]; s+=`<line y1="0" y2="${H}" x1="${x}" x2="${x}" stroke="rgba(30,60,90,.12)"/><text x="${x+3}" y="${H-5}" font-size="10" fill="rgba(30,60,90,.5)">${lon}°E</text>`; }
+  AREAS.forEach(a=>{ const [cx,cy]=P(...a.c); const on = mapSp==='all'||a.sp.includes(mapSp);
+    s+=`<ellipse cx="${cx}" cy="${cy}" rx="${a.rx*KX}" ry="${a.ry*KY}" transform="rotate(${a.rot} ${cx} ${cy})" fill="url(#${a.col==='#2f6fd6'?'hatch':'hatch2'})" stroke="${a.col}" stroke-width="1.2" stroke-dasharray="4 3" opacity="${on?1:.2}"/>`; });
+  LAND.forEach(l=>s+=`<path d="${poly(l)}" fill="#efe6d4" stroke="#b9a988" stroke-width="1"/>`);
+  CUR.forEach(c=>{ const d=smooth(c.pts);
+    s+=`<path d="${d}" fill="none" stroke="${c.color}" stroke-width="${c.w*2.2}" stroke-opacity=".18" stroke-linecap="round"/>
+        <path class="cur" d="${d}" stroke="${c.color}" stroke-width="${c.w*.55}"/>`;
+    const [lx,ly]=P(...c.lab); s+=`<text x="${lx}" y="${ly}" font-size="14" font-weight="700" fill="${c.color}" stroke="#fff" stroke-width="3" paint-order="stroke">${c.name}</text>`; });
+  // arrow heads
+  CUR.forEach(c=>{ const n=c.pts.length, a=P(...c.pts[n-2]), b=P(...c.pts[n-1]); const ang=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;
+    s+=`<path d="M0,-6 L10,0 L0,6 Z" fill="${c.color}" transform="translate(${b[0]},${b[1]}) rotate(${ang})"/>`; });
+  [['日本海',134.3,39.6],['太平洋',140.5,29.5],['東シナ海',124.0,30.5],['津軽海峡',137.3,41.9]].forEach(([t,lo,la])=>{const [x,y]=P(lo,la); s+=`<text x="${x}" y="${y}" font-size="${t==='津軽海峡'?11:15}" fill="rgba(30,60,90,.55)" font-family="Shippori Mincho,serif" font-weight="600" letter-spacing="2">${t}</text>`;});
+  MARKS.forEach((m,i)=>{ const [x,y]=P(m.lon,m.lat); const on = mapSp==='all'||m.sp.includes(mapSp);
+    s+=`<g class="mk${on?'':' dim'}${mapSel===i?' sel':''}" data-i="${i}"><circle cx="${x}" cy="${y}" r="11" fill="${spColor(m.sp[0])}" stroke="#fff" stroke-width="2"/><text x="${x}" y="${y+4}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" pointer-events="none">${i+1}</text></g>`; });
+  s+=`</g></svg>`;
+  $('#seamap').innerHTML = s + `<div style="font-size:11.5px;color:#6b6259;margin-top:6px">海岸線と海流は模式図です。<span style="color:#2f6fd6">青の斜線</span>＝クロマグロの産卵場、<span style="color:#7b5cc4">紫の斜線</span>＝潮目</div>`;
+  $('#seamap').onclick=e=>{ const g=e.target.closest('.mk'); if(g){ mapSel=+g.dataset.i; renderSeaMap(); } };
+  $('#mlist').innerHTML = MARKS.map((m,i)=>{ const on = mapSp==='all'||m.sp.includes(mapSp);
+    return `<li data-i="${i}" class="${on?'':'dim'} ${mapSel===i?'sel':''}"><span class="num" style="background:${spColor(m.sp[0])}">${i+1}</span><div><b>${m.t}</b>${m.d}<div style="font-size:11.5px;color:#6b6259;margin-top:2px">${m.sp.map(k=>SPECIES.find(x=>x.k===k).name).join('・')}</div></div></li>`; }).join('');
+  $('#mlist').onclick=e=>{ const li=e.target.closest('li'); if(li){ mapSel=+li.dataset.i; renderSeaMap(); } };
+  if(mapSel!=null){ const li=$(`#mlist li[data-i="${mapSel}"]`); }
+}
+function renderMapFilters(){
+  const opts=[['all','すべて']].concat(SPECIES.filter(s=>s.k!=='minami').map(s=>[s.k,s.name]));
+  $('#mapFilters').innerHTML = opts.map(([k,n])=>`<button class="tab" data-k="${k}" aria-pressed="${mapSp===k}">${n}</button>`).join('') +
+    `<span style="font-size:12px;color:#6b6259;align-self:center">※ミナミマグロは南半球なので下の緯度図へ</span>`;
+  $('#mapFilters').onclick=e=>{ const b=e.target.closest('.tab'); if(!b) return; mapSp=b.dataset.k; mapSel=null; renderMapFilters(); renderSeaMap(); };
+}
+
+/* ===================== LATITUDE CHART ===================== */
+const LATD = {
+  kuro:   {dist:[[15,50]], core:[[20,40]], spawn:[[24,28],[35,38]], note:'北半球の温帯〜亜寒帯。マグロ類でいちばん冷たい海に強い'},
+  minami: {dist:[[-10,-50]], core:[[-30,-50]], spawn:[[-8,-20]], note:'南半球だけ。インドネシア南方で産卵し、南緯30〜50度の冷たい海で育つ'},
+  mebachi:{dist:[[40,-40]], core:[[30,-30]], spawn:[[20,-20]], note:'南北40度未満の熱帯〜温帯に広く分布'},
+  kihada: {dist:[[40,-40]], core:[[25,-25]], spawn:[[15,-15]], note:'熱帯の暖かい表層が中心'},
+  binnaga:{dist:[[50,-45]], core:[[25,45],[-20,-40]], spawn:[[10,30],[-10,-25]], note:'温帯の広い範囲。北と南に別々の群れがいる'},
+};
+function renderLat(){
+  const W=600,H=440, top=40, bot=H-20, l=80, r=W-10;
+  const y=lat=>top+(60-lat)/(110)*(bot-top);
+  const cw=(r-l)/SPECIES.length;
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#cfe0f2"/><stop offset=".35" stop-color="#f6e7cf"/><stop offset=".55" stop-color="#f5cfae"/><stop offset=".75" stop-color="#f6e7cf"/><stop offset="1" stop-color="#cfe0f2"/></linearGradient>
+   <pattern id="lh" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#fff"/><line x1="0" y1="0" x2="0" y2="5" stroke="#2f6fd6" stroke-width="2"/></pattern></defs>
+  <rect x="${l}" y="${top}" width="${r-l}" height="${bot-top}" fill="url(#tg)" rx="6"/>`;
+  [60,40,20,0,-20,-40].forEach(lat=>{ s+=`<line x1="${l}" x2="${r}" y1="${y(lat)}" y2="${y(lat)}" stroke="rgba(0,0,0,${lat===0?.35:.1})" ${lat===0?'stroke-dasharray="5 4"':''}/>
+    <text x="${l-6}" y="${y(lat)+4}" text-anchor="end" font-size="14" fill="#6b6259">${lat===0?'赤道':(lat>0?'北':'南')+(lat?Math.abs(lat)+'°':'')}</text>`; });
+  s+=`<rect x="${l}" y="${y(45)}" width="${r-l}" height="${y(24)-y(45)}" fill="none" stroke="#1d1b19" stroke-dasharray="2 3" stroke-width="1"/>
+      <text x="${l+4}" y="${y(45)-4}" font-size="14" fill="#1d1b19">日本のあたり（北緯24〜45°）</text>
+      <text x="${l+6}" y="${y(4)}" font-size="13.5" fill="#a0522d">暖かい</text><text x="${l+6}" y="${y(56)}" font-size="13.5" fill="#3a6aa0">冷たい</text><text x="${l+6}" y="${y(-48)}" font-size="13.5" fill="#3a6aa0">冷たい</text>`;
+  SPECIES.forEach((sp,i)=>{ const d=LATD[sp.k], cx=l+cw*i+cw/2, bw=cw*.42;
+    const bar=(rng,fill,w,op)=>rng.map(([a,b])=>{const y1=y(Math.max(a,b)), y2=y(Math.min(a,b)); return `<rect x="${cx-w/2}" y="${y1}" width="${w}" height="${y2-y1}" rx="${w/2>8?8:w/2}" fill="${fill}" opacity="${op}"/>`;}).join('');
+    s+= bar(d.dist, spColor(sp.k), bw, .25) + bar(d.core, spColor(sp.k), bw, .85) + bar(d.spawn,'url(#lh)', bw*.45, 1);
+    s+=`<text x="${cx}" y="${top-14}" text-anchor="middle" font-size="17" font-weight="700" fill="#1d1b19">${sp.name}</text>`;
+  });
+  s+=`</svg>`;
+  $('#latchart').innerHTML = s + `<div class="legend" style="margin-top:4px"><span><i style="background:#b3192f;opacity:.3"></i>すむ範囲</span><span><i style="background:#b3192f"></i>主な漁場</span><span><i style="background:repeating-linear-gradient(45deg,#2f6fd6 0 2px,#fff 2px 4px)"></i>産卵する海</span></div>
+  <ul style="margin:8px 0 0;padding-left:18px;font-size:13px">${SPECIES.map(sp=>`<li><b>${sp.name}</b>：${LATD[sp.k].note}</li>`).join('')}</ul>
+  <div style="font-size:11.5px;color:#6b6259;margin-top:4px">緯度の範囲はおおよその目安です。</div>`;
+}
+
+/* ===================== SEASON CALENDAR ===================== */
+const CAL = {
+  kuro:   {v:[3,3,2,1,1,1,1,1,1,2,3,3], egg:[4,5,6,7,8], note:'冬が旬（大間は11〜1月が最盛期）。春〜夏は産卵期で、産卵後は脂が落ちる。'},
+  minami: {v:[2,2,2,2,2,2,2,2,2,2,2,2], egg:[9,10,11,12,1,2,3,4], note:'南半球の漁場を移りながら獲るので、ほぼ一年中流通。産卵はインドネシア南方（南半球の春〜秋）。'},
+  mebachi:{v:[2,2,2,2,2,2,2,2,2,2,2,2], egg:[4,5], note:'遠洋の延縄でほぼ通年。北半球では4〜5月が産卵の中心（24℃以上の海）。'},
+  kihada: {v:[1,1,1,1,1,2,3,3,3,3,2,1], egg:[1,2,3,4,5,6,7,8,9,10,11,12], note:'九州より北では夏〜秋。沖縄・小笠原ではほぼ通年。熱帯で一年中産卵。'},
+  binnaga:{v:[3,3,3,2,2,2,1,1,1,1,1,2], egg:[4,5,6], note:'冬〜早春は脂ののった「ビントロ」（紀州沖など）。4〜6月は房総〜三陸沖で竿釣り。'},
+};
+function renderCal(){
+  const m=new Date().getMonth()+1;
+  let h=`<thead><tr><th></th>${[...Array(12)].map((_,i)=>`<th>${i+1}月</th>`).join('')}</tr></thead><tbody>`;
+  SPECIES.forEach(sp=>{ const c=CAL[sp.k];
+    h+=`<tr><th class="sp" rowspan="2">${sp.name}</th>${c.v.map((v,i)=>`<td class="sp${v}${i+1===m?' now':''}">${c.egg.includes(i+1)?'<span class="egg"></span>':''}</td>`).join('')}</tr>
+        <tr><td colspan="12" class="rn">${c.note}</td></tr>`; });
+  $('#cal').innerHTML = h+'</tbody>';
+  $('#cal').insertAdjacentHTML('afterend','');
+}
+
+/* ===================== DEPTH ===================== */
+const DEPTH = { // [day center, night center] in m
+  kihada:[60,40], mebachi:[300,70], binnaga:[110,80], kuro:[90,40], minami:[150,60],
+};
+let dayMode='day';
+function renderDepth(){
+  const W=360,H=430, top=24, bot=H-10, maxD=450;
+  const y=d=>top+d/maxD*(bot-top);
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs>
+   <linearGradient id="wc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd0e0"/><stop offset=".22" stop-color="#5fb0cf"/><stop offset=".34" stop-color="#2e6c9c"/><stop offset="1" stop-color="#0d2547"/></linearGradient></defs>
+   <rect x="40" y="${top}" width="${W-40}" height="${bot-top}" fill="url(#wc)" rx="6"/>
+   <rect x="40" y="${y(100)}" width="${W-40}" height="${y(160)-y(100)}" fill="rgba(255,255,255,.12)"/>
+   <text x="${W-6}" y="${y(130)+4}" text-anchor="end" font-size="11" fill="#fff" opacity=".9">水温躍層（急に冷たくなる）</text>
+   <text x="${W-6}" y="${y(20)}" text-anchor="end" font-size="11" fill="#08304d">表層 約25〜28℃</text>
+   <text x="${W-6}" y="${y(400)}" text-anchor="end" font-size="11" fill="#cfe2f5">深層 約10〜15℃</text>`;
+  [0,100,200,300,400].forEach(d=>s+=`<text x="34" y="${y(d)+4}" text-anchor="end" font-size="10.5" fill="#6b6259">${d}m</text><line x1="40" x2="46" y1="${y(d)}" y2="${y(d)}" stroke="#6b6259"/>`);
+  const order=['kihada','kuro','binnaga','minami','mebachi'];
+  order.forEach((k,i)=>{ const sp=SPECIES.find(x=>x.k===k); const d=DEPTH[k][dayMode==='day'?0:1];
+    const x=58+i*58, fy=y(d);
+    s+=`<g class="dfish" style="transform:translate(${x}px,${fy}px)"><g transform="translate(-26,-12)">${tunaSVG(sp,{w:58,h:21,compact:true})}</g>
+      <text x="3" y="${k==='mebachi'?-12:22}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" stroke="rgba(0,0,0,.6)" stroke-width="3" paint-order="stroke">${sp.name}</text></g>`; });
+  s+=`</svg>`;
+  $('#depth').innerHTML = s + `<p style="font-size:12.5px;margin:6px 0 0">${dayMode==='day'
+    ?'<b>昼</b>：メバチは躍層より下の冷たく暗い深い層へ潜る（大型ほど深い）。大きな目は暗い海で餌を見つけるのに役立つと考えられる。キハダは暖かい表層が中心で、ときどき短く潜って餌をとる。'
+    :'<b>夜</b>：餌の小魚やイカが浅い層へ上がってくるので、メバチも表層近くへ。どの種類も浅い層に集まりやすい。'}</p>
+    <div style="font-size:11.5px;color:#6b6259">深さは目安の模式図です。</div>`;
+}
+function renderTemp(){
+  const T=[['kuro',8,24,'冷たい海でも平気'],['minami',8,20,'冷たい南の海'],['binnaga',14,22,'18℃前後が好き'],['mebachi',10,29,'深い冷水〜表層'],['kihada',18,30,'暖かい表層']];
+  const W=360,H=270,l=86,r=W-12,top=24;
+  const x=t=>l+(t-5)/(32-5)*(r-l);
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="tt" x1="0" x2="1"><stop offset="0" stop-color="#3a7fd0"/><stop offset=".5" stop-color="#f1d9a8"/><stop offset="1" stop-color="#d9542b"/></linearGradient></defs>
+   <text x="${l}" y="14" font-size="12.5" font-weight="700">よくいる水温の目安</text>`;
+  [5,10,15,20,25,30].forEach(t=>s+=`<line x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${H-26}" stroke="rgba(0,0,0,.08)"/><text x="${x(t)}" y="${H-10}" text-anchor="middle" font-size="10.5" fill="#6b6259">${t}℃</text>`);
+  T.forEach(([k,a,b,n],i)=>{ const sp=SPECIES.find(x=>x.k===k), yy=top+12+i*42;
+    s+=`<text x="${l-6}" y="${yy+5}" text-anchor="end" font-size="12" font-weight="700">${sp.name}</text>
+      <rect x="${x(a)}" y="${yy-7}" width="${x(b)-x(a)}" height="14" rx="7" fill="url(#tt)" stroke="${spColor(k)}" stroke-width="1.5"/>
+      <text x="${x(a)}" y="${yy+22}" font-size="10.5" fill="#6b6259">${n}</text>`; });
+  s+=`<line x1="${x(24)}" x2="${x(24)}" y1="${top}" y2="${H-26}" stroke="#2f6fd6" stroke-dasharray="3 3"/><text x="${x(24)-3}" y="${H-30}" text-anchor="end" font-size="10" fill="#2f6fd6">産卵はおよそ24℃以上 →</text></svg>`;
+  $('#tempchart').innerHTML = s + `<p style="font-size:12.5px;margin:4px 0 0">マグロは水温より体温を高く保てる特別な魚ですが、その力は種類で違います。体温を保つ力が強いクロマグロ・ミナミマグロほど冷たい海まで行けます。どの種類も、卵を産むのは暖かい海です。</p><div style="font-size:11.5px;color:#6b6259">範囲は文献により幅のある目安です。</div>`;
+}
+function setupDayNight(){
+  $('#dayNight').onclick=e=>{ const b=e.target.closest('button'); if(!b) return; dayMode=b.dataset.v;
+    $('#dayNight').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    // animate: update transforms in place
+    const order=['kihada','kuro','binnaga','minami','mebachi'];
+    const H=430,top=24,bot=H-10,maxD=450, y=d=>top+d/maxD*(bot-top);
+    document.querySelectorAll('#depth .dfish').forEach((g,i)=>{ const k=order[i]; g.style.transform=`translate(${58+i*58}px,${y(DEPTH[k][dayMode==='day'?0:1])}px)`; });
+    $('#depth p').innerHTML = dayMode==='day'
+      ?'<b>昼</b>：メバチは躍層より下の冷たく暗い深い層へ潜る（大型ほど深い）。大きな目は暗い海で餌を見つけるのに役立つと考えられる。キハダは暖かい表層が中心で、ときどき短く潜って餌をとる。'
+      :'<b>夜</b>：餌の小魚やイカが浅い層へ上がってくるので、メバチも表層近くへ。どの種類も浅い層に集まりやすい。';
+  };
+}
+
+/* ===================== WHY ===================== */
+const WHY=[
+  ['🥶','冬に脂がのるのはなぜ？','秋〜冬のクロマグロは、脂ののったサンマやスルメイカを追って北の冷たい海に来ます。たくさん食べ、冷たい海水から身を守るように脂を蓄えるので、大間の冬のマグロは大トロの脂が指の熱で溶けるほどになります。[1]'],
+  ['🥚','産卵は南の暖かい海で','クロマグロは南西諸島（4〜7月）と日本海（6〜8月）、ビンナガやメバチは24℃以上の海で産卵します。卵と赤ちゃんの成長に暖かい水が必要だからです。産卵で体力を使うので、産卵前後の夏のマグロは脂が少なくなります。[2][3][4]'],
+  ['🌊','海流が子どもを運ぶ','南西諸島で生まれたクロマグロの子（ヨコワ）は対馬暖流に乗って日本海を北上し、秋〜冬に水温が下がると南へ戻ります。若い魚の一部は太平洋を横断してアメリカ西岸まで行き、4〜5歳で産卵のために戻ってきます。[5]'],
+  ['🎣','潮目にマグロが集まる','暖かい黒潮と冷たい親潮がぶつかる三陸沖などの「潮目」や、冷たい水が湧き上がる場所では栄養が増え、プランクトン→小魚→マグロと餌がつながります。マグロは自分の好きな水温の範囲で、こうした場所を渡り歩いて餌をとります。[6]'],
+  ['🐉','黒潮の道すじで漁が変わる','潮岬沖のビンナガ漁は、黒潮が岸に近いと好漁で漁期も長く、黒潮が沖へ大きく離れる「大蛇行」の年は不漁になります。海流の位置が、そのまま漁場の位置を決めます。[7]'],
+  ['🔥','体温を保てる魚だから','マグロは血管が網のように絡み合う「奇網」で熱を逃がさず、体温を水温より高く保てます。キハダは熱を逃がしやすく暑い海向き、クロマグロは熱を保つ力が強く冷たい海まで行けます。[8][9]'],
+  ['👁','メバチの大きな目と深い海','メバチは昼は深く、夜は浅い層を泳ぎ、大型ほど深い層にいます。延縄の針を深く沈めて獲るのはこのためです。暗い深い層で生きることが、名前の由来の大きな目とつながっていると考えられています。[10]'],
+];
+const SRC=[
+  ['nippon.com「大間のマグロ漁」','https://www.nippon.com/ja/images/i00079/'],
+  ['水産庁ほか 仔魚分布調査（琉球新報）','https://ryukyushimpo.jp/news/prentry-228797.html'],
+  ['静岡県水産・海洋技術研究所「ビンナガ」','https://fish-exp.pref.shizuoka.jp/02fishery/2-5/04_binnaga.pdf'],
+  ['静岡県水産・海洋技術研究所「メバチ」','https://fish-exp.pref.shizuoka.jp/02fishery/2-5/02_mebachi.pdf'],
+  ['長崎県総合水産試験場「ヨコワの漁況予測」','https://www.pref.nagasaki.jp/shared/uploads/2018/11/1543368804.pdf'],
+  ['長崎大学 ミナミマグロ幼魚の回遊と生息環境','https://www.nagasaki-u.ac.jp/ja/gakusai/summary/h21/1004_seisan_sui/file/seisan-sui210ronbun.pdf'],
+  ['和歌山県水産試験場 ビンナガの好漁・不漁予測','https://www.pref.wakayama.lg.jp/prefg/070100/070109/seika/seikasen14/seikasen14_d/fil/h140216.pdf'],
+  ['浅虫水族館「マグロ」','https://asamushi-aqua.com/wp-content/uploads/2022/06/3マグロ.pdf'],
+  ['北川貴士「熱帯種キハダの高水温環境への適応」','https://www.sumitomo.or.jp/pdf/kankyo/11_kankyo_seika/Kitagawa_Takashi_seika113113.pdf'],
+  ['高知県水産試験場 まぐろ類資源（メバチの遊泳層）','https://www.pref.kochi.lg.jp/doc/seikahoukokusyo-aohon28/file_contents/other_maguro.pdf'],
+  ['静岡県水産・海洋技術研究所「クロマグロ」','https://fish-exp.pref.shizuoka.jp/02fishery/2-5/01_kuromaguro.pdf'],
+  ['宮崎県水産試験場 ビンナガ漁場と水温（18℃前後）','https://hinatamafin.pref.miyazaki.lg.jp/material/files/group/45/No778_2024_05.pdf'],
+];
+function renderWhy(){
+  $('#why').innerHTML = WHY.map(([ic,t,d])=>`<div class="card"><div class="ic">${ic}</div><h3>${t}</h3><p>${d.replace(/\[(\d+)\]/g,'<sup><a href="#src" style="color:#b8322a;text-decoration:none">[$1]</a></sup>')}</p></div>`).join('');
+  document.querySelector('.note').insertAdjacentHTML('afterend', `<div class="src" id="src"><b>参考にした資料</b><ol>${SRC.map(([t,u])=>`<li><a href="${u}" target="_blank" rel="noopener">${t}</a></li>`).join('')}</ol></div>`);
+}
+
 /* ===================== INIT ===================== */
 makeTabs($('#tabs3d'), selectSp, ()=>curSp);
 makeTabs($('#tabsSide'), selectSp, ()=>curSp);
 renderGrid(); renderMatrix(); renderGlossary();
+renderMapFilters(); renderSeaMap(); renderLat(); renderCal(); renderDepth(); renderTemp(); setupDayNight(); renderWhy();
 setupStage(); build3D(); selectPos('kami'); renderSide(); renderLegend();
 </script>
 </body>
